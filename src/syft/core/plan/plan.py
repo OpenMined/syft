@@ -13,13 +13,19 @@ from typing import Optional
 from typing import Union
 
 # third party
+import traceback
 from google.protobuf.reflection import GeneratedProtocolMessageType
 from nacl.signing import VerifyKey
+
+# syft absolute
+import syft as sy
 
 # syft relative
 from ... import serialize
 from ...logger import traceback_and_raise
 from ...proto.core.node.common.action.action_pb2 import Action as Action_PB
+from ...proto.core.node.common.action.plan_run_class_method_pb2 import PlanRunClassMethodAction as PlanRunClassMethodAction_PB
+from ...proto.core.plan.plan_action_pb2 import PlanAction as PlanAction_pb
 from ...proto.core.plan.plan_pb2 import Plan as Plan_PB
 from ..common.object import Serializable
 from ..common.serde.serializable import bind_protobuf
@@ -28,6 +34,9 @@ from ..node.common import client
 from ..node.common.action.common import Action
 from ..node.common.util import listify
 from ..pointer.pointer import Pointer
+from .plan_pointer import PlanPointer
+from .plan_action import PlanAction
+from .plan_run_class_method_action import PlanRunClassMethodAction
 from ..store.storeable_object import StorableObject
 
 CAMEL_TO_SNAKE_PAT = re.compile(r"(?<!^)(?=[A-Z])")
@@ -177,6 +186,69 @@ class Plan(Serializable):
 
         return Plan_PB
 
+    def strip(self):
+
+        # PlanPointer dict for inputs, outputs and intermediate variables (id_at_location -> PlanPointer)
+        self._seq = dict()
+
+        # Extract PlanPointer from _seq (if only string_id, create PlanPointer)
+        def get_pointer_from_seq(v):
+            id_at_location = v.id_at_location
+            if id_at_location in self._seq.keys():
+                if not isinstance(self._seq[id_at_location], PlanPointer):
+                    self._seq[id_at_location] = PlanPointer(v, self._seq[id_at_location])
+                return self._seq[id_at_location]
+            else:
+                raise Exception
+
+        # Create PlanPointer (stripped Pointer) for each input, (seq_id = inp1, inp2 ... )
+        self._stripped_inputs = dict()
+        for index, k in enumerate(self.inputs):
+            v = self.inputs[k]
+            self._seq[v.id_at_location] = PlanPointer(v, 'inp' + str(index))
+            self._stripped_inputs[k] = self._seq[v.id_at_location]
+
+        # Create PlanPointer (stripped Pointer) for each output, (seq_id = out1, out2 ... )
+        self._stripped_outputs = list()
+        for index, out in enumerate(self.outputs):
+            self._seq[out.id_at_location] = PlanPointer(out, 'out' + str(index))
+            self._stripped_outputs.append(self._seq[out.id_at_location])
+
+        # Stripped Actions -> PlanActions
+        self._plan_actions = list()
+
+        interIndex = 0
+        for action in self.actions:
+
+            # Get name
+            tmpArgs = list()
+            tmpKwargs = dict()
+
+            # Expected: arg and kwargs are already created pointers (i.e. sequential actions)
+            for arg in action.args:
+                tmpArgs.append(get_pointer_from_seq(arg))
+            for k, v in action.kwargs.items():
+                tmpKwargs[k] = get_pointer_from_seq(v)
+
+            # PlanPointer of Pointer whose fn is called
+            _self = get_pointer_from_seq(action._self)
+
+            # If intermediate variable is used, create the PlanPointer for it
+            if action.id_at_location not in self._seq.keys():
+                self._seq[action.id_at_location] = 'inter' + str(interIndex)
+                seq_id = 'inter' + str(interIndex)
+                interIndex += 1
+            else:
+                seq_id = self._seq[action.id_at_location].seq_id
+
+            self._plan_actions.append(
+                PlanAction(
+                    obj_type=".".join([action.__module__, action.__class__.__name__]),
+                    action=PlanRunClassMethodAction(
+                        action.path, seq_id, _self, tmpArgs, tmpKwargs)._object2proto(),
+                )
+            )
+
     def _object2proto(self) -> Plan_PB:
         """Returns a protobuf serialization of self.
 
@@ -197,17 +269,14 @@ class Plan(Serializable):
             """Convert CamelCase classes to snake case for matching protobuf names"""
             return CAMEL_TO_SNAKE_PAT.sub("_", s).lower()
 
-        actions_pb = [
-            Action_PB(
-                obj_type=".".join([action.__module__, action.__class__.__name__]),
-                **{camel_to_snake(action.__class__.__name__): serialize(action)},
-            )
-            for action in self.actions
-        ]
-        inputs_pb = {k: v._object2proto() for k, v in self.inputs.items()}
-        outputs_pb = [out._object2proto() for out in self.outputs]
+        # Strip the plan object (remove all UIDs, Addresses etc.)
+        self.strip()
 
-        return Plan_PB(actions=actions_pb, inputs=inputs_pb, outputs=outputs_pb)
+        inputs_pb = {k: v._object2proto() for k, v in self._stripped_inputs.items()}
+        outputs_pb = [out._object2proto() for out in self._stripped_outputs]
+        planActions_pb = [action._object2proto() for action in self._plan_actions]
+
+        return Plan_PB(actions=planActions_pb, inputs=inputs_pb, outputs=outputs_pb)
 
     @staticmethod
     def _proto2object(proto: Plan_PB) -> "Plan":
@@ -223,6 +292,9 @@ class Plan(Serializable):
             This method is purely an internal method. Please use syft.deserialize()
             if you wish to deserialize an object.
         """
+
+        print('Not implemented.')
+        raise Exception
         actions = []
 
         for action_proto in proto.actions:
@@ -233,10 +305,11 @@ class Plan(Serializable):
             # in the main action class.
             inner_action = getattr(action_proto, action_proto.WhichOneof("action"))
             actions.append(action_cls._proto2object(inner_action))
-
-        inputs = {k: Pointer._proto2object(proto.inputs[k]) for k in proto.inputs}
+        # print(proto.actions)
+        client = sy.VirtualMachine().get_root_client()
+        inputs = {k: PlanPointer._proto2object(proto.inputs[k]).get_pointer_obj(client) for k in proto.inputs}
         outputs = [
-            Pointer._proto2object(pointer_proto) for pointer_proto in proto.outputs
+            PlanPointer._proto2object(pointer_proto).get_pointer_obj(client) for pointer_proto in proto.outputs
         ]
 
         return Plan(actions=actions, inputs=inputs, outputs=outputs)
