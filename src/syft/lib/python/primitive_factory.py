@@ -15,6 +15,7 @@ from ...logger import traceback_and_raise
 from .primitive_interface import PyPrimitive
 
 NoneType = type(None)
+NotImplementedType = type(NotImplemented)
 
 primitives = [
     bool,
@@ -153,6 +154,6 @@ class PrimitiveFactory(ABC):
             return python.String(value=value, id=id)
 
         if value is NotImplemented:
-            return value
+            return python.SyNotImplemented
 
         return python.SyNone
