@@ -7,7 +7,12 @@ from bcrypt import checkpw
 from flask import current_app as app
 import jwt
 import pytest
-from src.main.core.database import *
+
+from src.main.core.database.roles.roles import Role, create_role
+from src.main.core.database.users.user import User, create_user
+from src.main.core.database.groups.groups import Group
+from src.main.core.database.groups.usergroup import UserGroup
+
 
 JSON_DECODE_ERR_MSG = (
     "Expecting property name enclosed in " "double quotes: line 1 column 2 (char 1)"
@@ -1106,34 +1111,6 @@ def test_put_own_user_password_success(client, database, cleanup):
         new_password.encode("UTF-8"),
         user.salt.encode("UTF-8") + user.hashed_password.encode("UTF-8"),
     )
-
-
-def test_put_other_user_email_missing_user(client, database, cleanup):
-    new_role = create_role(*admin_role)
-    database.session.add(new_role)
-    new_role = create_role(*user_role)
-    database.session.add(new_role)
-    new_user = create_user(*user1)
-    database.session.add(new_user)
-
-    database.session.commit()
-
-    token = jwt.encode({"id": 1}, app.config["SECRET_KEY"])
-    headers = {
-        "token": token.decode("UTF-8"),
-    }
-
-    new_password = "BrandNewPassword123"
-    payload = {"password": new_password}
-    result = client.put(
-        "/users/2/password",
-        headers=headers,
-        data=dumps(payload),
-        content_type="application/json",
-    )
-
-    assert result.status_code == 404
-    assert result.get_json()["error"] == "User not found!"
 
 
 # DELETE USER
