@@ -20,10 +20,12 @@ from typing import Union
 # third party
 from nacl.signing import SigningKey
 from nacl.signing import VerifyKey
+from sqlalchemy import create_engine
+from sqlalchemy.orm import declarative_base
+from sqlalchemy.orm import sessionmaker
 
-# syft relative
+# relative
 from ....lib import lib_ast
-from ....logger import critical
 from ....logger import debug
 from ....logger import error
 from ....logger import traceback_and_raise
@@ -42,30 +44,48 @@ from ...io.location import Location
 from ...io.route import Route
 from ...io.route import SoloRoute
 from ...io.virtual import create_virtual_connection
-from ...store import DiskObjectStore
-from ...store import MemoryStore
 from ..abstract.node import AbstractNode
+from ..common.node_service.auth import AuthorizationException
+from ..common.node_service.child_node_lifecycle.child_node_lifecycle_service import (
+    ChildNodeLifecycleService,
+)
+from ..common.node_service.get_repr.get_repr_service import GetReprService
+from ..common.node_service.heritage_update.heritage_update_service import (
+    HeritageUpdateService,
+)
+from ..common.node_service.msg_forwarding.msg_forwarding_service import (
+    SignedMessageWithReplyForwardingService,
+)
+from ..common.node_service.msg_forwarding.msg_forwarding_service import (
+    SignedMessageWithoutReplyForwardingService,
+)
+from ..common.node_service.node_service import EventualNodeServiceWithoutReply
+from ..common.node_service.node_service import ImmediateNodeServiceWithReply
+from ..common.node_service.object_action.obj_action_service import (
+    EventualObjectActionServiceWithoutReply,
+)
+from ..common.node_service.object_action.obj_action_service import (
+    ImmediateObjectActionServiceWithReply,
+)
+from ..common.node_service.object_action.obj_action_service import (
+    ImmediateObjectActionServiceWithoutReply,
+)
+from ..common.node_service.object_search.obj_search_service import (
+    ImmediateObjectSearchService,
+)
+from ..common.node_service.object_search_permission_update.obj_search_permission_service import (
+    ImmediateObjectSearchPermissionUpdateService,
+)
+from ..common.node_service.resolve_pointer_type.resolve_pointer_type_service import (
+    ResolvePointerTypeService,
+)
+from ..common.node_service.testing_services.remote_add_service import RemoteAddService
+from ..common.node_service.testing_services.repr_service import ReprService
 from .action.exception_action import ExceptionMessage
 from .action.exception_action import UnknownPrivateException
 from .client import Client
 from .metadata import Metadata
-from .service.auth import AuthorizationException
-from .service.child_node_lifecycle_service import ChildNodeLifecycleService
-from .service.get_repr_service import GetReprService
-from .service.heritage_update_service import HeritageUpdateService
-from .service.msg_forwarding_service import SignedMessageWithReplyForwardingService
-from .service.msg_forwarding_service import SignedMessageWithoutReplyForwardingService
-from .service.node_service import EventualNodeServiceWithoutReply
-from .service.node_service import ImmediateNodeServiceWithReply
-from .service.obj_action_service import EventualObjectActionServiceWithoutReply
-from .service.obj_action_service import ImmediateObjectActionServiceWithReply
-from .service.obj_action_service import ImmediateObjectActionServiceWithoutReply
-from .service.obj_search_permission_service import (
-    ImmediateObjectSearchPermissionUpdateService,
-)
-from .service.obj_search_service import ImmediateObjectSearchService
-from .service.repr_service import ReprService
-from .service.resolve_pointer_type_service import ResolvePointerTypeService
+from .node_manager.bin_obj_manager import BinObjectManager
 
 # this generic type for Client bound by Client
 ClientT = TypeVar("ClientT", bound=Client)
@@ -104,6 +124,9 @@ class Node(AbstractNode):
         signing_key: Optional[SigningKey] = None,
         verify_key: Optional[VerifyKey] = None,
         db_path: Optional[str] = None,
+        TableBase: Any = None,
+        db_engine: Any = None,
+        db: Any = None,
     ):
 
         # The node has a name - it exists purely to help the
@@ -114,6 +137,30 @@ class Node(AbstractNode):
             name=name, network=network, domain=domain, device=device, vm=vm
         )
 
+        # TableBase is the base class from which all ORM classes must inherit
+        # If one isn't provided then we can simply make one.
+        if TableBase is None:
+            TableBase = declarative_base()
+
+        # If not provided a session connecting us to the database, let's just
+        # initialize a database in memory
+        if db is None:
+
+            # If a DB engine isn't provided then
+            if db_engine is None:
+                engine = create_engine("sqlite://", echo=False)
+
+            db = sessionmaker(bind=db_engine)()
+
+        # cache these variables on self
+        self.TableBase = TableBase
+        self.db_engine = db_engine
+        self.db = db
+
+        # launch the tables in the database
+        # Tudor: experimental
+        # self.TableBase.metadata.create_all(engine)
+
         # Any object that needs to be stored on a node is stored here
         # More specifically, all collections of objects are found here
         # There should be NO COLLECTIONS stored as attributes directly
@@ -121,18 +168,7 @@ class Node(AbstractNode):
         # become quite numerous (or otherwise fill up RAM).
         # self.store is the elastic memory.
 
-        if db_path is not None:
-            try:
-                self.store = DiskObjectStore(db_path=db_path)
-                log = f"Opened DiskObjectStore at {db_path}."
-                debug(log)
-            except Exception as e:
-                log = f"Failed to open DiskObjectStore at {db_path}. {e}"
-                critical(log)
-        else:
-            self.store = MemoryStore()
-            log = "Created MemoryStore."
-            debug(log)
+        self.store = BinObjectManager(db=self.db_engine)
 
         # We need to register all the services once a node is created
         # On the off chance someone forgot to do this (super unlikely)
@@ -144,7 +180,6 @@ class Node(AbstractNode):
         # a reference to what node type this node is. This attribute
         # provides that ability.
         self.node_type = type(self).__name__
-
         # ABOUT SERVICES AND MESSAGES
 
         # Each service corresponds to one or more message types which
@@ -208,7 +243,7 @@ class Node(AbstractNode):
         self.immediate_services_with_reply.append(ImmediateObjectSearchService)
         self.immediate_services_with_reply.append(GetReprService)
         self.immediate_services_with_reply.append(ResolvePointerTypeService)
-
+        self.immediate_services_with_reply.append(RemoteAddService)
         # for services which can run at a later time and do not return a reply
         self.eventual_services_without_reply = list()
         self.eventual_services_without_reply.append(
@@ -292,7 +327,10 @@ class Node(AbstractNode):
 
     def get_metadata_for_client(self) -> Metadata:
         return Metadata(
-            name=self.name if self.name else "", id=self.id, node=self.target_id
+            name=self.name if self.name else "",
+            id=self.id,
+            node=self.target_id,
+            node_type=str(type(self).__name__),
         )
 
     @property
@@ -453,7 +491,7 @@ class Node(AbstractNode):
     def process_message(
         self, msg: SignedMessage, router: dict
     ) -> Union[SyftMessage, None]:
-
+        print(msg.message)
         self.message_counter += 1
 
         debug(f"> Processing 📨 {msg.pprint} @ {self.pprint} {msg.message}")

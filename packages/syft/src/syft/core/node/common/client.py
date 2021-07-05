@@ -13,9 +13,10 @@ from nacl.signing import SigningKey
 from nacl.signing import VerifyKey
 import pandas as pd
 
-# syft relative
+# relative
 from .... import serialize
 from ....lib import create_lib_ast
+from ....lib.python import Int
 from ....logger import critical
 from ....logger import debug
 from ....logger import error
@@ -23,6 +24,7 @@ from ....logger import traceback_and_raise
 from ....proto.core.node.common.client_pb2 import Client as Client_PB
 from ....proto.core.node.common.metadata_pb2 import Metadata as Metadata_PB
 from ....util import get_fully_qualified_name
+from ....util import obj2pointer_type
 from ...common.message import EventualSyftMessageWithoutReply
 from ...common.message import ImmediateSyftMessageWithReply
 from ...common.message import ImmediateSyftMessageWithoutReply
@@ -37,13 +39,16 @@ from ...io.location import SpecificLocation
 from ...io.route import Route
 from ...io.route import SoloRoute
 from ...io.virtual import VirtualClientConnection
-from ...node.common.service.obj_search_service import ObjectSearchMessage
 from ...pointer.garbage_collection import GarbageCollection
 from ...pointer.garbage_collection import gc_get_default_strategy
 from ...pointer.pointer import Pointer
 from ..abstract.node import AbstractNodeClient
 from .action.exception_action import ExceptionMessage
-from .service.child_node_lifecycle_service import RegisterChildNodeMessage
+from .node_service.child_node_lifecycle.child_node_lifecycle_service import (
+    RegisterChildNodeMessage,
+)
+from .node_service.object_search.obj_search_service import ObjectSearchMessage
+from .node_service.testing_services.remote_add_service import RemoteAddMessage
 
 
 class Client(AbstractNodeClient):
@@ -65,7 +70,7 @@ class Client(AbstractNodeClient):
         signing_key: Optional[SigningKey] = None,
         verify_key: Optional[VerifyKey] = None,
     ):
-        name = f"{name} Client" if name is not None else None
+        name = f"{name}" if name is not None else None
         super().__init__(
             name=name, network=network, domain=domain, device=device, vm=vm
         )
@@ -351,6 +356,36 @@ class Client(AbstractNodeClient):
             )
 
         return obj
+
+    def add_remote(self, num: int) -> Pointer:
+
+        # create an Int pointer
+        sy_num = Int(num)
+        id_at_location = UID()
+        ptr_type = obj2pointer_type(obj=sy_num)
+        ptr = ptr_type(
+            client=self,
+            id_at_location=id_at_location,
+            tags=[],
+            description="",
+        )
+
+        pointable = True
+        ptr._pointable = pointable
+
+        if pointable:
+            ptr.gc_enabled = False
+        else:
+            ptr.gc_enabled = True
+
+        # create the remote add message
+        obj_msg = RemoteAddMessage(address=self.address, reply_to=self.address, num=num)
+
+        # send and wait, blocking for the response
+        response = self.send_immediate_msg_with_reply(msg=obj_msg)
+        print("response is", response.num)
+
+        return ptr
 
     @staticmethod
     def get_protobuf_schema() -> GeneratedProtocolMessageType:

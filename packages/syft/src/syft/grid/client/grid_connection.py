@@ -11,20 +11,19 @@ from typing import Tuple
 import requests
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
-from requests_toolbelt.multipart import encoder
 
-# syft relative
+# relative
 from ...core.common.message import SyftMessage
 from ...core.common.serde.serialize import _serialize
+from ...core.node.domain.enums import RequestAPIFields
+from ...core.node.domain.exceptions import RequestAPIException
 from ...proto.core.node.common.metadata_pb2 import Metadata as Metadata_PB
-from ..client.enums import RequestAPIFields
-from ..client.exceptions import RequestAPIException
 from ..connections.http_connection import HTTPConnection
 
 
 class GridHTTPConnection(HTTPConnection):
-    LOGIN_ROUTE = "/users/login"
-    SYFT_ROUTE = "/pysyft"
+    LOGIN_ROUTE = "/login"
+    SYFT_ROUTE = "/syft"
     SYFT_MULTIPART_ROUTE = "/pysyft_multipart"
     SIZE_THRESHOLD = 20971520  # 20 MB
 
@@ -43,8 +42,17 @@ class GridHTTPConnection(HTTPConnection):
 
         header = {}
 
-        if self.session_token:
-            header["token"] = self.session_token
+        if self.session_token and self.token_type:
+            header = dict(
+                Authorization="Bearer "
+                + json.loads(
+                    '{"auth_token":"'
+                    + self.session_token
+                    + '","token_type":"'
+                    + self.token_type
+                    + '"}'
+                )["auth_token"]
+            )
 
         header["Content-Type"] = "application/octet-stream"  # type: ignore
 
@@ -65,17 +73,16 @@ class GridHTTPConnection(HTTPConnection):
         return r
 
     def login(self, credentials: Dict) -> Tuple:
-        # Login request
         response = requests.post(
-            url=self.base_url + GridHTTPConnection.LOGIN_ROUTE, json=credentials
+            url=self.base_url + GridHTTPConnection.LOGIN_ROUTE,
+            json=credentials,
         )
 
         # Response
         content = json.loads(response.text)
-
         # If fail
         if response.status_code != requests.codes.ok:
-            raise Exception(content["error"])
+            raise Exception(content["detail"])
 
         metadata = content["metadata"].encode("ISO-8859-1")
         metadata_pb = Metadata_PB()
@@ -83,7 +90,8 @@ class GridHTTPConnection(HTTPConnection):
 
         # If success
         # Save session token
-        self.session_token = content["token"]
+        self.session_token = content["access_token"]
+        self.token_type = content["token_type"]
 
         # Return node metadata / user private key
         return (metadata_pb, content["key"])
@@ -93,7 +101,6 @@ class GridHTTPConnection(HTTPConnection):
         :return: returns node metadata
         :rtype: str of bytes
         """
-
         # allow retry when connecting in CI
         session = requests.Session()
         retry = Retry(connect=3, backoff_factor=0.5)
@@ -101,12 +108,9 @@ class GridHTTPConnection(HTTPConnection):
         session.mount("http://", adapter)
         session.mount("https://", adapter)
 
-        response = session.get(self.base_url + "/metadata")
-        content = json.loads(response.text)
-
-        metadata = content["metadata"].encode("ISO-8859-1")
+        response = session.get(self.base_url + "/syft/metadata")
         metadata_pb = Metadata_PB()
-        metadata_pb.ParseFromString(metadata)
+        metadata_pb.ParseFromString(response.content)
 
         return metadata_pb
 
@@ -119,28 +123,27 @@ class GridHTTPConnection(HTTPConnection):
         else:
             raise RequestAPIException(response.get(RequestAPIFields.ERROR))
 
-    def send_files(self, file_path: str) -> Dict[str, Any]:
-        session = requests.Session()
+    def send_files(self, file_path: str, metadata: Dict = {}) -> Dict[str, Any]:
+        header = {}
 
-        with open(file_path, "rb") as f:
-
-            form = encoder.MultipartEncoder(
-                {
-                    "file": (file_path, f, "application/octet-stream"),
-                }
+        if self.session_token and self.token_type:
+            header = dict(
+                Authorization="Bearer "
+                + json.loads(
+                    '{"auth_token":"'
+                    + self.session_token
+                    + '","token_type":"'
+                    + self.token_type
+                    + '"}'
+                )["auth_token"]
             )
 
-            headers = {
-                "Prefer": "respond-async",
-                "Content-Type": form.content_type,
-                "token": self.session_token,
-            }
+        files = {
+            "metadata": (None, json.dumps(metadata), "text/plain"),
+            "file": (file_path, open(file_path, "rb"), "application/octet-stream"),
+        }
 
-            resp = session.post(
-                self.base_url + "/data-centric/datasets", headers=headers, data=form
-            )
-
-        session.close()
+        resp = requests.post(self.base_url + "/datasets", files=files, headers=header)
 
         return json.loads(resp.content)
 

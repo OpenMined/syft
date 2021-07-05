@@ -15,7 +15,7 @@ from typing import Tuple
 from typing import Union
 import warnings
 
-# syft relative
+# relative
 from .. import ast
 from .. import lib
 from ..ast.callable import Callable
@@ -25,7 +25,7 @@ from ..core.node.common.action.get_or_set_property_action import GetOrSetPropert
 from ..core.node.common.action.get_or_set_property_action import PropertyActions
 from ..core.node.common.action.run_class_method_action import RunClassMethodAction
 from ..core.node.common.action.save_object_action import SaveObjectAction
-from ..core.node.common.service.resolve_pointer_type_service import (
+from ..core.node.common.node_service.resolve_pointer_type.resolve_pointer_type_messages import (
     ResolvePointerTypeMessage,
 )
 from ..core.pointer.pointer import Pointer
@@ -363,6 +363,7 @@ def wrap_len(attrs: Dict[str, Union[str, CallableT, property]]) -> None:
             """
             data_len_ptr = len_func(self)
             try:
+                print(self.get_request_config())
                 data_len = data_len_ptr.get(**self.get_request_config())
 
                 if data_len is None:

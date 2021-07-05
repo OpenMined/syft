@@ -4,94 +4,69 @@ package syft.grid.messages;
 
 import "proto/core/common/common_object.proto";
 import "proto/core/io/address.proto";
+import "proto/lib/python/dict.proto";
 
 
 
 message SendAssociationRequestMessage {
   syft.core.common.UID msg_id = 1;
   syft.core.io.Address address = 2;
-  string content = 3;
-  syft.core.io.Address reply_to = 4;
+  string reason = 3;
+  string target = 4;
+  string sender = 5;
+  string node_name = 6; 
+  syft.core.io.Address reply_to = 7;
 }
-
-message SendAssociationRequestResponse {
-  syft.core.common.UID msg_id = 1;
-  int32 status_code = 2;
-  string content = 3;
-  syft.core.io.Address address = 4;
-}
-
 
 message ReceiveAssociationRequestMessage {
   syft.core.common.UID msg_id = 1;
   syft.core.io.Address address = 2;
-  string content = 3;
-  syft.core.io.Address reply_to = 4;
+  string sender=4;
+  string name=5;
+  string email=6;
+  string reason=7;
+  string node_name=8;
+  string response=9;
+  syft.core.io.Address reply_to = 10;
 }
-
-message ReceiveAssociationRequestResponse {
-  syft.core.common.UID msg_id = 1;
-  int32 status_code = 2;
-  string content = 3;
-  syft.core.io.Address address = 4;
-}
-
 
 message RespondAssociationRequestMessage {
   syft.core.common.UID msg_id = 1;
   syft.core.io.Address address = 2;
-  string content = 3;
-  syft.core.io.Address reply_to = 4;
+  string response = 3;
+  string target = 4;
+  string node_name = 6;
+  syft.core.io.Address reply_to = 7;
 }
-
-message RespondAssociationRequestResponse {
-  syft.core.common.UID msg_id = 1;
-  int32 status_code = 2;
-  string content = 3;
-  syft.core.io.Address address = 4;
-}
-
 
 message GetAssociationRequestMessage {
   syft.core.common.UID msg_id = 1;
   syft.core.io.Address address = 2;
-  string content = 3;
+  int32 association_id = 3;
   syft.core.io.Address reply_to = 4;
 }
 
 message GetAssociationRequestResponse {
   syft.core.common.UID msg_id = 1;
-  int32 status_code = 2;
-  string content = 3;
-  syft.core.io.Address address = 4;
+  syft.lib.python.Dict content = 2;
+  syft.core.io.Address address = 3;
 }
-
 
 message GetAssociationRequestsMessage {
   syft.core.common.UID msg_id = 1;
   syft.core.io.Address address = 2;
-  string content = 3;
   syft.core.io.Address reply_to = 4;
 }
 
 message GetAssociationRequestsResponse {
   syft.core.common.UID msg_id = 1;
-  int32 status_code = 2;
-  string content = 3;
+  repeated syft.lib.python.Dict content = 2;
   syft.core.io.Address address = 4;
 }
-
 
 message DeleteAssociationRequestMessage {
   syft.core.common.UID msg_id = 1;
   syft.core.io.Address address = 2;
-  string content = 3;
+  int32 association_id = 3;
   syft.core.io.Address reply_to = 4;
-}
-
-message DeleteAssociationRequestResponse {
-  syft.core.common.UID msg_id = 1;
-  int32 status_code = 2;
-  string content = 3;
-  syft.core.io.Address address = 4;
 }

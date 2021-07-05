@@ -1,25 +1,52 @@
 # stdlib
+import logging
 import time
 from typing import Any
 from typing import Dict
 from typing import List
 from typing import Optional
+from typing import Type
 from typing import Union
 
 # third party
 from nacl.signing import SigningKey
 from nacl.signing import VerifyKey
+import names
 import pandas as pd
+from pandas import DataFrame
 
-# syft relative
+# relative
+from ....core import node
+from ....core.common.message import SyftMessage
+from ....core.common.serde.serialize import _serialize as serialize  # noqa: F401
+from ....core.io.location.specific import SpecificLocation
+from ....core.node.common.action.exception_action import ExceptionMessage
+from ....core.pointer.pointer import Pointer
 from ....logger import traceback_and_raise
 from ....util import validate_field
 from ...common.uid import UID
+from ...io.address import Address
 from ...io.location import Location
-from ...io.location import SpecificLocation
 from ...io.route import Route
 from ..common.client import Client
-from .service import RequestMessage
+from ..common.client_manager.association_api import AssociationRequestAPI
+from ..common.client_manager.dataset_api import DatasetRequestAPI
+from ..common.client_manager.group_api import GroupRequestAPI
+from ..common.client_manager.role_api import RoleRequestAPI
+from ..common.client_manager.user_api import UserRequestAPI
+from ..common.client_manager.worker_api import WorkerRequestAPI
+from ..common.node_service.network_search.network_search_messages import (
+    NetworkSearchMessage,
+)
+from ..common.node_service.node_setup.node_setup_messages import GetSetUpMessage
+from ..common.node_service.object_transfer.object_transfer_messages import (
+    LoadObjectMessage,
+)
+from ..common.node_service.request_receiver.request_receiver_messages import (
+    RequestMessage,
+)
+from .enums import PyGridClientEnums
+from .enums import RequestAPIFields
 
 
 class RequestQueueClient:
@@ -27,10 +54,18 @@ class RequestQueueClient:
         self.client = client
         self.handlers = RequestHandlerQueueClient(client=client)
 
+        self.groups = GroupRequestAPI(node=self)
+        self.users = UserRequestAPI(node=self)
+        self.roles = RoleRequestAPI(node=self)
+        self.workers = WorkerRequestAPI(node=self)
+        self.association = AssociationRequestAPI(node=self)
+        self.datasets = DatasetRequestAPI(node=self)
+
     @property
     def requests(self) -> List[RequestMessage]:
+
         # syft absolute
-        from syft.core.node.domain.service.get_all_requests_service import (
+        from syft.core.node.common.node_service.get_all_requests.get_all_requests_messages import (
             GetAllRequestsMessage,
         )
 
@@ -259,6 +294,74 @@ class DomainClient(Client):
 
         self.requests = RequestQueueClient(client=self)
         self.post_init()
+
+        self.groups = GroupRequestAPI(node=self)
+        self.users = UserRequestAPI(node=self)
+        self.roles = RoleRequestAPI(node=self)
+        self.workers = WorkerRequestAPI(node=self)
+        self.association = AssociationRequestAPI(node=self)
+        self.datasets = DatasetRequestAPI(node=self)
+
+    def load(
+        self, obj_ptr: Type[Pointer], address: Address, pointable: bool = False
+    ) -> None:
+        content = {
+            RequestAPIFields.ADDRESS: serialize(address)
+            .SerializeToString()  # type: ignore
+            .decode(PyGridClientEnums.ENCODING),
+            RequestAPIFields.UID: str(obj_ptr.id_at_location.value),
+            RequestAPIFields.POINTABLE: pointable,
+        }
+        self.__perform_grid_request(grid_msg=LoadObjectMessage, content=content)
+
+    def setup(self, *, domain_name: Optional[str], **kwargs: Any) -> Any:
+
+        if domain_name is None:
+            domain_name = names.get_full_name() + "'s Domain"
+            logging.info(
+                "No Domain Name provided... picking randomly as: " + domain_name
+            )
+
+        kwargs["domain_name"] = domain_name
+
+        response = self.conn.setup(**kwargs)  # type: ignore
+        logging.info(response[RequestAPIFields.MESSAGE])
+
+    def get_setup(self, **kwargs: Any) -> Any:
+        return self.__perform_grid_request(grid_msg=GetSetUpMessage, content=kwargs)
+
+    def search(self, query: List, pandas: bool = False) -> Any:
+        response = self.__perform_grid_request(
+            grid_msg=NetworkSearchMessage, content={RequestAPIFields.QUERY: query}
+        )
+        if pandas:
+            response = DataFrame(response)
+
+        return response
+
+    def apply_to_network(self, target: str, reason: str):
+        self.association.create(
+            target=target,
+            sender=self.conn.base_url.replace("/api/v1", ""),
+            reason=reason,
+            node_name=self.name,
+        )
+
+    def _perform_grid_request(
+        self, grid_msg: Any, content: Optional[Dict[Any, Any]] = None
+    ) -> Dict[Any, Any]:
+        if content is None:
+            content = {}
+        # Build Syft Message
+        content[RequestAPIFields.ADDRESS] = self.address
+        content[RequestAPIFields.REPLY_TO] = self.address
+        signed_msg = grid_msg(**content).sign(signing_key=self.signing_key)
+        # Send to the dest
+        response = self.send_immediate_msg_with_reply(msg=signed_msg)
+        if isinstance(response, ExceptionMessage):
+            raise response.exception_type
+        else:
+            return response
 
     @property
     def id(self) -> UID:
