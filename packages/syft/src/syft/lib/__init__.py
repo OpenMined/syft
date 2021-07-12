@@ -2,7 +2,6 @@
 import functools
 import importlib
 import sys
-import warnings
 from types import ModuleType
 from typing import Any
 from typing import Any as TypeAny
@@ -13,16 +12,18 @@ from typing import Optional
 from typing import Set as TypeSet
 from typing import Tuple as TypeTuple
 from typing import Union as TypeUnion
-
-import wrapt
+import warnings
 
 # third party
 from cachetools import cached
 from cachetools.keys import hashkey
 from packaging import version
+import wrapt
 
 # syft relative
-from ..ast import add_classes, add_methods, add_modules
+from ..ast import add_classes
+from ..ast import add_methods
+from ..ast import add_modules
 from ..ast.globals import Globals
 from ..core.node.abstract.node import AbstractNodeClient
 from ..generate_wrapper import GenerateWrapper
@@ -31,7 +32,9 @@ from ..lib.python import create_python_ast
 from ..lib.remote_dataloader import create_remote_dataloader_ast
 from ..lib.torch import create_torch_ast
 from ..lib.torchvision import create_torchvision_ast
-from ..logger import critical, traceback_and_raise, warning
+from ..logger import critical
+from ..logger import traceback_and_raise
+from ..logger import warning
 from .misc import create_union_ast
 from .util import generic_update_ast
 
@@ -277,6 +280,14 @@ def post_import_hook_third_party(module: TypeAny) -> None:
     # warning(msg, print=True)
     # warnings.warn(msg, DeprecationWarning)
     load(module.__name__, ignore_warning=True)
+    register_library(module.__name__)
+
+
+def support_packages() -> TypeSet:
+    """
+    Returns a set of all syft packages currently imported.
+    """
+    return sys.modules["__SYFT_PACKAGE_SUPPORT"]
 
 
 def create_support_ast(
@@ -320,4 +331,30 @@ def add_lib_external(
         for serde_object in objects:
             GenerateWrapper(**serde_object)
     else:
-        critical("Serde objects is expected to be an Iterable.")
+        critical("Serde object is expected to be an Iterable.")
+
+
+def register_library(lib: str) -> None:
+    """
+    Add newly imported library to shared lib space.
+    """
+    # load(lib, ignore_warning=True)
+    if "__SYFT_PACKAGE_SUPPORT" not in sys.modules:
+        sys.modules["__SYFT_PACKAGE_SUPPORT"] = set()
+    sys.modules["__SYFT_PACKAGE_SUPPORT"].add(lib)
+    # bind_library(lib)
+
+
+bind_lib = ""
+
+
+def bind_library(lib: str):
+    """
+    (TODO: Use lib as str or comment out.)
+    Binds lib to a global.
+    """
+    global bind_lib
+    bind_lib = f"{lib}"
+    package = "syft.lib"
+    module_path = f"{package}.{lib}"
+    globals()[bind_lib] = sys.modules[module_path]
