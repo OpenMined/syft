@@ -10,11 +10,12 @@ from typing import Tuple
 from typing import Union
 
 # third party
-import ascii_magic
+# import ascii_magic
 from nacl.signing import SigningKey
 from nacl.signing import VerifyKey
 
 # relative
+# syft relative
 from ....lib.python import String
 from ....logger import critical
 from ....logger import debug
@@ -88,6 +89,7 @@ class Domain(Node):
         signing_key: Optional[SigningKey] = None,
         verify_key: Optional[VerifyKey] = None,
         root_key: Optional[VerifyKey] = None,
+        db_path: Optional[str] = None,
         db_engine: Any = None,
     ):
         super().__init__(
@@ -135,6 +137,9 @@ class Domain(Node):
 
         self.immediate_services_without_reply.append(ObjectRequestServiceWithoutReply)
 
+        # TODO: @Madhava change to a map of accountants that are created on first
+        # use of the DS key
+
         self.requests: List[RequestMessage] = list()
         # available_device_types = set()
         # TODO: add available compute types
@@ -158,20 +163,6 @@ class Domain(Node):
     def loud_print(self):
         install_path = os.path.abspath(
             os.path.join(os.path.realpath(__file__), "../../../../img/")
-        )
-        ascii_magic.to_terminal(
-            ascii_magic.from_image_file(
-                img_path=install_path + "/pygrid.png", columns=83
-            )
-        )
-
-        print(
-            r"""
-                                                     __
-                                                    |  \  _   _   _  .  _
-                                                    |__/ (_) ||| (_| | | )
-
-"""
         )
 
     @property

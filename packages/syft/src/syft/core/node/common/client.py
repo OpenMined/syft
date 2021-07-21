@@ -147,6 +147,8 @@ class Client(AbstractNodeClient, Serializable):
                 if lib_attr is not None:
                     python_attr = getattr(lib_attr, "python", None)
                     setattr(self, "python", python_attr)
+                    python_attr = getattr(lib_attr, "adp", None)
+                    setattr(self, "adp", python_attr)
 
             except Exception as e:
                 critical(f"Failed to set python attribute on client. {e}")
@@ -332,38 +334,6 @@ class Client(AbstractNodeClient, Serializable):
 
         return obj
 
-    def add_remote(self, num: int) -> Pointer:
-
-        # create an Int pointer
-        sy_num = Int(num)
-        id_at_location = UID()
-        ptr_type = obj2pointer_type(obj=sy_num)
-        ptr = ptr_type(
-            client=self,
-            id_at_location=id_at_location,
-            tags=[],
-            description="",
-        )
-
-        pointable = True
-        ptr._pointable = pointable
-
-        if pointable:
-            ptr.gc_enabled = False
-        else:
-            ptr.gc_enabled = True
-
-        # create the remote add message
-        obj_msg = RemoteAddMessage(
-            id_at_location=id_at_location,
-            num=num,
-            address=self.address,
-        )
-
-        self.send_immediate_msg_without_reply(msg=obj_msg)
-
-        return ptr
-
     @staticmethod
     def get_protobuf_schema() -> GeneratedProtocolMessageType:
         return Client_PB
@@ -447,6 +417,38 @@ class StoreClient:
             return self.store[key]
         else:
             traceback_and_raise(KeyError("Please pass in a string or int key"))
+
+    def add_remote(self, num: int) -> Pointer:
+
+        # create an Int pointer
+        sy_num = Int(num)
+        id_at_location = UID()
+        ptr_type = obj2pointer_type(obj=sy_num)
+        ptr = ptr_type(
+            client=self,
+            id_at_location=id_at_location,
+            tags=[],
+            description="",
+        )
+
+        pointable = True
+        ptr._pointable = pointable
+
+        if pointable:
+            ptr.gc_enabled = False
+        else:
+            ptr.gc_enabled = True
+
+        # create the remote add message
+        obj_msg = RemoteAddMessage(
+            id_at_location=id_at_location,
+            num=num,
+            address=self.address,
+        )
+
+        self.send_immediate_msg_without_reply(msg=obj_msg)
+
+        return ptr
 
     def __repr__(self) -> str:
         return repr(self.store)
