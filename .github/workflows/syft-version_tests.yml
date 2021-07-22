@@ -79,6 +79,17 @@ jobs:
           python scripts/parse_setup.py setup.cfg | xargs pip install --no-deps || true
           pip install "pillow<=8.2.0"
 
+      - name: Get datasets cache dir
+        id: datasets-cache
+        run: |
+          python -c "from pathlib import Path; print('::set-output name=dir::' + str(Path.home()) + '/.syft/data')"
+
+      - name: Cache datasets
+        uses: actions/cache@v2
+        with:
+          path: ${{ steps.datasets-cache.outputs.dir }}
+          key: pl-datasets-version-tests-${{ hashFiles('tests/conftest.py') }}
+
       - name: Scan for security issues
         run: |
           bandit -r src
@@ -147,6 +158,17 @@ jobs:
           python scripts/parse_setup.py setup.cfg | xargs pip install --no-deps || true
           pip install "pillow<=8.2.0"
 
+      - name: Get datasets cache dir
+        id: datasets-cache
+        run: |
+          python -c "from pathlib import Path; print('::set-output name=dir::' + str(Path.home()) + '/.syft/data')"
+
+      - name: Cache datasets
+        uses: actions/cache@v2
+        with:
+          path: ${{ steps.datasets-cache.outputs.dir }}
+          key: pl-datasets-version-tests-${{ hashFiles('tests/conftest.py') }}
+
       - name: Test PyGrid
         run: |
           pytest ../grid/apps/domain/tests
@@ -207,6 +229,17 @@ jobs:
           pip install -r requirements.unstable.txt
           pip install -e .[dev] -f https://download.pytorch.org/whl/torch_stable.html
           pip install "pillow<=8.2.0"
+
+      - name: Get datasets cache dir
+        id: datasets-cache
+        run: |
+          python -c "from pathlib import Path; print('::set-output name=dir::' + str(Path.home()) + '/.syft/data')"
+
+      - name: Cache datasets
+        uses: actions/cache@v2
+        with:
+          path: ${{ steps.datasets-cache.outputs.dir }}
+          key: pl-datasets-version-tests-${{ hashFiles('tests/conftest.py') }}
 
       - name: Check import works without dev packages
         run: |
