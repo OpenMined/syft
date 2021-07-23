@@ -9,6 +9,7 @@ import ascii_magic
 from .lib import asset_path
 
 
+
 def motorcycle():
     print(
         """
