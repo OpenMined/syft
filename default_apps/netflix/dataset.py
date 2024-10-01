@@ -2,7 +2,8 @@ import os
 
 import pandas as pd
 
-from syftbox.lib import ClientConfig, SyftVault, TabularDataset
+from syftbox.lib import SyftVault, TabularDataset
+from syftbox.lib.client_config import ClientConfig
 
 
 def run():

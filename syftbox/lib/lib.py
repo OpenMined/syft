@@ -2,21 +2,23 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import json
 import os
-import re
 import threading
 import zlib
-from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from threading import Lock
-from typing import Any
 
 import requests
 from typing_extensions import Self
+
+from syftbox.lib.client_config import ClientConfig
+from syftbox.lib.jsonable import Jsonable, pack
+from syftbox.lib.util import verify_tls
+
+from .link import SyftLink
 
 USER_GROUP_GLOBAL = "GLOBAL"
 
@@ -26,65 +28,6 @@ IGNORE_FILES = []
 
 def perm_file_path(path: str) -> str:
     return f"{path}/_.syftperm"
-
-
-def is_primitive_json_serializable(obj):
-    if isinstance(obj, (str, int, float, bool, type(None))):
-        return True
-    return False
-
-
-def pack(obj) -> Any:
-    if is_primitive_json_serializable(obj):
-        return obj
-
-    if hasattr(obj, "to_dict"):
-        return obj.to_dict()
-
-    if isinstance(obj, list):
-        return [pack(val) for val in obj]
-
-    if isinstance(obj, dict):
-        return {k: pack(v) for k, v in obj.items()}
-
-    raise Exception(f"Unable to pack type: {type(obj)} value: {obj}")
-
-
-class Jsonable:
-    def to_dict(self) -> dict:
-        output = {}
-        for k, v in self.__dict__.items():
-            if k.startswith("_"):
-                continue
-            output[k] = pack(v)
-        return output
-
-    def __iter__(self):
-        for key, val in self.to_dict().items():
-            if key.startswith("_"):
-                yield key, val
-
-    def __getitem__(self, key):
-        if key.startswith("_"):
-            return None
-        return self.to_dict()[key]
-
-    @classmethod
-    def load(cls, filepath: str) -> Self:
-        try:
-            with open(filepath) as f:
-                data = f.read()
-                d = json.loads(data)
-                return cls(**d)
-        except Exception as e:
-            raise e
-            print(f"Unable to load jsonable file: {filepath}. {e}")
-        return None
-
-    def save(self, filepath: str) -> None:
-        d = self.to_dict()
-        with open(filepath, "w") as f:
-            f.write(json.dumps(d))
 
 
 @dataclass
@@ -634,153 +577,9 @@ def download_file(url: str, full_path: str | Path) -> Path | None:
     return full_path
 
 
-def verify_tls() -> bool:
-    return not str_to_bool(str(os.environ.get("IGNORE_TLS_ERRORS", "0")))
-
-
 def str_to_bool(bool_str: str | None) -> bool:
     result = False
     bool_str = str(bool_str).lower()
     if bool_str == "true" or bool_str == "1":
         result = True
     return result
-
-
-def validate_email(email: str) -> bool:
-    # Define a regex pattern for a valid email
-    email_regex = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
-
-    # Use the match method to check if the email fits the pattern
-    if re.match(email_regex, email):
-        return True
-    return False
-
-
-@dataclass
-class ClientConfig(Jsonable):
-    config_path: Path
-    sync_folder: Path | None = None
-    port: int | None = None
-    email: str | None = None
-    token: int | None = None
-    server_url: str = "http://localhost:5001"
-    email_token: str | None = None
-
-    def save(self, path: str | None = None) -> None:
-        if path is None:
-            path = self.config_path
-        super().save(path)
-
-    @property
-    def datasite_path(self) -> Path:
-        return os.path.join(self.sync_folder, self.email)
-
-    @property
-    def manifest_path(self) -> Path:
-        return os.path.join(self.datasite_path, "public/manifest/manifest.json")
-
-    @property
-    def manifest(self) -> DatasiteManifest:
-        datasite_manifest = None
-        try:
-            datasite_manifest = DatasiteManifest.load(self.manifest_path)
-        except Exception:
-            datasite_manifest = DatasiteManifest.create_manifest(
-                path=self.manifest_path, email=self.email
-            )
-
-        return datasite_manifest
-
-    def get_datasites(self: str) -> list[str]:
-        datasites = []
-        folders = os.listdir(self.sync_folder)
-        for folder in folders:
-            if "@" in folder:
-                datasites.append(folder)
-        return datasites
-
-    def get_all_manifests(self):
-        manifests = {}
-        for datasite in get_datasites(self.sync_folder):
-            datasite_path = Path(self.sync_folder + "/" + datasite)
-            datasite_manifest = DatasiteManifest.load_from_datasite(datasite_path)
-            if datasite_manifest:
-                manifests[datasite] = datasite_manifest
-        return manifests
-
-    def get_datasets(self):
-        manifests = self.get_all_manifests()
-        datasets = []
-        for datasite, manifest in manifests.items():
-            for dataset_name, dataset_dict in manifest.datasets.items():
-                try:
-                    dataset = TabularDataset(**dataset_dict)
-                    dataset.syft_link = SyftLink(**dataset_dict["syft_link"])
-                    dataset.readme_link = SyftLink(**dataset_dict["readme_link"])
-                    dataset.loader_link = SyftLink(**dataset_dict["loader_link"])
-                    dataset._client_config = self
-                    datasets.append(dataset)
-                except Exception as e:
-                    print(f"Bad dataset format. {datasite} {e}")
-
-        return DatasetResults(datasets)
-
-    def get_code(self):
-        manifests = self.get_all_manifests()
-        all_code = []
-        for datasite, manifest in manifests.items():
-            for func_name, code_dict in manifest.code.items():
-                try:
-                    code = Code(**code_dict)
-                    code.syft_link = SyftLink(**code_dict["syft_link"])
-                    code.readme_link = SyftLink(**code_dict["readme_link"])
-                    code.requirements_link = SyftLink(**code_dict["requirements_link"])
-                    code._client_config = self
-                    all_code.append(code)
-                except Exception as e:
-                    print(f"Bad dataset format. {datasite} {e}")
-
-        return CodeResults(all_code)
-
-    def resolve_link(self, link: SyftLink | str) -> Path:
-        if isinstance(link, str):
-            link = SyftLink.from_url(link)
-        return Path(os.path.join(os.path.abspath(self.sync_folder), link.sync_path))
-
-    def use(self):
-        os.environ["SYFTBOX_CURRENT_CLIENT"] = self.config_path
-        os.environ["SYFTBOX_SYNC_DIR"] = self.sync_folder
-        print(f"> Setting Sync Dir to: {self.sync_folder}")
-
-    @classmethod
-    def create_manifest(cls, path: str, email: str):
-        # make a dir and set the permissions
-        manifest_dir = os.path.dirname(path)
-        os.makedirs(manifest_dir, exist_ok=True)
-
-        public_read = SyftPermission.mine_with_public_read(email=email)
-        public_read.save(manifest_dir)
-
-        datasite_manifest = DatasiteManifest(datasite=email, file_path=path)
-        datasite_manifest.save(path)
-        return datasite_manifest
-
-    def create_folder(self, path: str, permission: SyftPermission):
-        os.makedirs(path, exist_ok=True)
-        permission.save(path)
-
-    @property
-    def root_dir(self) -> Path:
-        root_dir = Path(os.path.abspath(os.path.dirname(self.file_path) + "/../"))
-        return root_dir
-
-    def create_public_folder(self, path: str):
-        full_path = self.root_dir / path
-        os.makedirs(str(full_path), exist_ok=True)
-        public_read = SyftPermission.mine_with_public_read(email=self.datasite)
-        public_read.save(full_path)
-        return Path(full_path)
-
-    def publish(self, item, overwrite: bool = False):
-        if isinstance(item, Callable):
-            syftbox_code(item).publish(self, overwrite=overwrite)

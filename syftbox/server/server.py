@@ -23,7 +23,6 @@ from typing_extensions import Any
 from syftbox.lib import (
     FileChange,
     FileChangeKind,
-    Jsonable,
     PermissionTree,
     bintostr,
     filter_read_state,
@@ -31,6 +30,7 @@ from syftbox.lib import (
     hash_dir,
     strtobin,
 )
+from syftbox.lib.jsonable import Jsonable
 
 current_dir = Path(__file__).parent
 

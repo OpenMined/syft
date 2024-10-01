@@ -1,7 +1,7 @@
 import json
 import os
 
-from syftbox.lib import ClientConfig
+from syftbox.lib.client_config import ClientConfig
 
 config_path = os.environ.get("SYFTBOX_CLIENT_CONFIG_PATH", None)
 client_config = ClientConfig.load(config_path)

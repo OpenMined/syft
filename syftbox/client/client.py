@@ -29,7 +29,9 @@ from pydantic import BaseModel
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
-from syftbox.lib import ClientConfig, SharedState, validate_email
+from syftbox.lib import SharedState
+from syftbox.lib.client_config import ClientConfig
+from syftbox.lib.util import validate_email
 
 current_dir = Path(__file__).parent
 # Initialize FastAPI app and scheduler
