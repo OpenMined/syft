@@ -1,0 +1,8 @@
+authlib
+fastapi
+httpx
+itsdangerous
+jinja2
+python-jose
+python-multipart
+uvicorn

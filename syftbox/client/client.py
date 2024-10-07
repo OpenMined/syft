@@ -409,8 +409,7 @@ async def lifespan(app: FastAPI):
         watchdog_thread.start()
         app.watchdog_thread = watchdog_thread
 
-    autorun_plugins = ["init", "create_datasite", "sync", "apps"]
-    # autorun_plugins = ["init", "create_datasite", "sync", "apps"]
+    autorun_plugins = ["init", "create_datasite", "sync", "apps", "servers"]
     for plugin in autorun_plugins:
         start_plugin(plugin)
 
