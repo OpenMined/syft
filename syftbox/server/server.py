@@ -193,7 +193,7 @@ async def get_ascii_art():
 
 
 @app.get("/wheel/{path:path}", response_class=HTMLResponse)
-async def browse_datasite(request: Request, path: str):
+async def get_wheel(request: Request, path: str):
     if path == "":  # Check if path is empty (meaning "/datasites/")
         return RedirectResponse(url="/")
 
@@ -222,7 +222,7 @@ def get_file_list(directory="."):
 
 
 @app.get("/datasites", response_class=HTMLResponse)
-async def browse_datasites(request: Request):
+async def list_datasites(request: Request):
     datasite_path = os.path.join(SNAPSHOT_FOLDER)
     files = get_file_list(datasite_path)
     template_path = current_dir / "templates" / "datasites.html"

@@ -3,6 +3,7 @@ import traceback
 from collections import defaultdict
 from datetime import datetime
 from threading import Event
+from typing import Tuple
 
 import requests
 from watchdog.events import DirModifiedEvent
@@ -24,6 +25,49 @@ CLIENT_CHANGELOG_FOLDER = "syft_changelog"
 CLIENT_APPS = "apps"
 STAGING = "staging"
 IGNORE_FOLDERS = [CLIENT_CHANGELOG_FOLDER, STAGING, CLIENT_APPS]
+
+
+def get_ignore_rules(dir_state: DirState) -> Tuple[str, str, str]:
+    # get the ignore files
+    syft_ignore_files = []
+    folder_path = dir_state.sync_folder + "/" + dir_state.sub_path
+    for afile, file_info in dir_state.tree.items():
+        full_path = folder_path + "/" + afile
+        sub_folder = os.path.dirname(full_path)
+
+        if afile.endswith(".syftignore") and os.path.isfile(full_path):
+            ignore_list = []
+            with open(full_path) as f:
+                ignore_list = f.readlines()
+            for ignore_rule in ignore_list:
+                ignore_rule = ignore_rule.strip()
+                rule_prefix = sub_folder + "/" + ignore_rule
+                syft_ignore_files.append((rule_prefix, sub_folder, afile))
+
+    return syft_ignore_files
+
+
+def filter_ignore_files(dir_state: DirState) -> DirState:
+    # get the ignore files
+    pruned_tree = dir_state.tree.copy()
+    folder_path = dir_state.sync_folder + "/" + dir_state.sub_path
+    syft_ignore_files = get_ignore_rules(dir_state)
+
+    for rule_prefix, ignore_folder, ignore_file_path in syft_ignore_files:
+        for afile, file_info in dir_state.tree.items():
+            full_path = folder_path + "/" + afile
+            if full_path.startswith(rule_prefix):
+                # print("> File ignored by .syftignore", afile, ignore_rule)
+                if afile in pruned_tree:
+                    del pruned_tree[afile]
+
+    now = datetime.now().timestamp()
+    return DirState(
+        tree=pruned_tree,
+        timestamp=now,
+        sync_folder=dir_state.sync_folder,
+        sub_path=dir_state.sub_path,
+    )
 
 
 # Recursive function to add folder structure
@@ -360,6 +404,20 @@ def handle_empty_folders(client_config, datasite):
     return changes
 
 
+def filter_changes_ignore(pre_filter_changes, syft_ignore_files):
+    filtered_changes = []
+    for change in pre_filter_changes:
+        keep = True
+        for syft_ignore in syft_ignore_files:
+            if change.full_path.startswith(syft_ignore[0]):
+                keep = False
+                break
+        if keep:
+            filtered_changes.append(change)
+
+    return filtered_changes
+
+
 def sync_up(client_config):
     # create a folder to store the change log
     change_log_folder = f"{client_config.sync_folder}/{CLIENT_CHANGELOG_FOLDER}"
@@ -399,15 +457,25 @@ def sync_up(client_config):
             )
 
         # get the new dir state
-        new_dir_state = hash_dir(client_config.sync_folder, datasite, IGNORE_FOLDERS)
-        changes = diff_dirstate(old_dir_state, new_dir_state)
+        unfiltered_new_dir_state = hash_dir(
+            client_config.sync_folder, datasite, IGNORE_FOLDERS
+        )
+
+        # ignore files
+        syft_ignore_files = get_ignore_rules(unfiltered_new_dir_state)
+        new_dir_state = filter_ignore_files(unfiltered_new_dir_state)
+
+        pre_filter_changes = diff_dirstate(old_dir_state, new_dir_state)
 
         # Add handling for empty folders
         empty_folder_changes = handle_empty_folders(client_config, datasite)
-        changes.extend(empty_folder_changes)
+        pre_filter_changes.extend(empty_folder_changes)
+
+        changes = filter_changes_ignore(pre_filter_changes, syft_ignore_files)
 
         if len(changes) == 0:
             continue
+
         val, val_files, inval = filter_changes(client_config.email, changes, perm_tree)
 
         # send val changes
@@ -466,17 +534,27 @@ def sync_down(client_config) -> int:
         # perm_tree = PermissionTree.from_path(datasite_path)
 
         # get the new dir state
-        new_dir_state = hash_dir(client_config.sync_folder, datasite, IGNORE_FOLDERS)
+
+        unfiltered_new_dir_state = hash_dir(
+            client_config.sync_folder, datasite, IGNORE_FOLDERS
+        )
+        syft_ignore_files = get_ignore_rules(unfiltered_new_dir_state)
+
+        # ignore files
+        new_dir_state = filter_ignore_files(unfiltered_new_dir_state)
+
         remote_dir_state = get_remote_state(client_config, datasite)
         if not remote_dir_state:
             # print(f"No remote state for dir: {datasite}")
             continue
 
-        changes = diff_dirstate(new_dir_state, remote_dir_state)
+        pre_filter_changes = diff_dirstate(new_dir_state, remote_dir_state)
 
         # Add handling for empty folders
         empty_folder_changes = handle_empty_folders(client_config, datasite)
-        changes.extend(empty_folder_changes)
+        pre_filter_changes.extend(empty_folder_changes)
+
+        changes = filter_changes_ignore(pre_filter_changes, syft_ignore_files)
 
         if len(changes) == 0:
             continue
@@ -527,11 +605,12 @@ def sync_down(client_config) -> int:
         synced_dir_state = prune_invalid_changes(new_dir_state, changed_files)
 
         # combine successfulc hanges qwith old dir state
-        combined_tree = new_dir_state.tree
+        # we use unfiltered so they keep being ignored but we could change these to another list?
+        combined_tree = unfiltered_new_dir_state.tree
         combined_tree.update(synced_dir_state.tree)
         synced_dir_state.tree = combined_tree
 
-        synced_dir_state = delete_files(new_dir_state, deleted_files)
+        synced_dir_state = delete_files(synced_dir_state, deleted_files)
 
         change_text = ""
         if len(changed_files):

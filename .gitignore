@@ -160,18 +160,19 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-
-.DS_Store
+# os garbage
 **/.DS_Store
+**/Thumbs.db
 
+# syft dirs
+data/
+users/
+.clients/
+keys/
+backup/
+netflix_data/
+notebooks/crypto
 
-data/**
-users/**
-dist
-syftbox.egg-info
-keys/**
+# syft files
 scheduler.lock
 jobs.sqlite
-notebooks/crypto
-netflix_data/*
-backup/*

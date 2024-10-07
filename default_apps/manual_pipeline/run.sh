@@ -1,1 +1,0 @@
-echo "Running Manual Pipeline"
