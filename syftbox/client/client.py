@@ -30,23 +30,18 @@ from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
 from syftbox.lib import ClientConfig, SharedState, validate_email
+from syftbox.lib.workspace import SyftWorkspace
+from config import parse_args, load_or_create_config
+from const import WATCHDOG_IGNORE
 
 current_dir = Path(__file__).parent
-# Initialize FastAPI app and scheduler
 
 templates = Jinja2Templates(directory="templates")
-
 
 PLUGINS_DIR = current_dir / "plugins"
 sys.path.insert(0, os.path.dirname(PLUGINS_DIR))
 
-DEFAULT_SYNC_FOLDER = os.path.expanduser("~/Desktop/SyftBox")
-DEFAULT_PORT = 8082
-DEFAULT_CONFIG_PATH = os.path.expanduser("~/.syftbox/client_config.json")
-ASSETS_FOLDER = current_dir.parent / "assets"
-ICON_FOLDER = ASSETS_FOLDER / "icon"
-
-WATCHDOG_IGNORE = ["apps"]
+syft_workspace = SyftWorkspace()
 
 
 @dataclass
@@ -55,128 +50,6 @@ class Plugin:
     module: types.ModuleType
     schedule: int
     description: str
-
-
-# if you knew the pain of this function
-def find_icon_file(src_folder: str) -> Path:
-    src_path = Path(src_folder)
-
-    # Function to search for Icon\r file
-    def search_icon_file():
-        if os.path.exists(src_folder):
-            for file_path in src_path.iterdir():
-                if "Icon" in file_path.name and "\r" in file_path.name:
-                    return file_path
-        return None
-
-    # First attempt to find the Icon\r file
-    icon_file = search_icon_file()
-    if icon_file:
-        return icon_file
-
-    # If Icon\r is not found, search for icon.zip and unzip it
-    zip_file = ASSETS_FOLDER / "icon.zip"
-
-    if zip_file.exists():
-        try:
-            # cant use other zip tools as they don't unpack it correctly
-            subprocess.run(
-                ["ditto", "-xk", str(zip_file), str(src_path.parent)],
-                check=True,
-            )
-
-            # Try to find the Icon\r file again after extraction
-            icon_file = search_icon_file()
-            if icon_file:
-                return icon_file
-        except subprocess.CalledProcessError:
-            raise RuntimeError("Failed to unzip icon.zip using macOS CLI tool.")
-
-    # If still not found, raise an error
-    raise FileNotFoundError(
-        "Icon file with a carriage return not found, and icon.zip did not contain it.",
-    )
-
-
-def copy_icon_file(icon_folder: str, dest_folder: str) -> None:
-    src_icon_path = find_icon_file(icon_folder)
-    if not os.path.isdir(dest_folder):
-        raise FileNotFoundError(f"Destination folder '{dest_folder}' does not exist.")
-
-    # shutil wont work with these special icon files
-    subprocess.run(["cp", "-p", src_icon_path, dest_folder], check=True)
-    subprocess.run(["SetFile", "-a", "C", dest_folder], check=True)
-
-
-def load_or_create_config(args) -> ClientConfig:
-    syft_config_dir = os.path.abspath(os.path.expanduser("~/.syftbox"))
-    os.makedirs(syft_config_dir, exist_ok=True)
-
-    client_config = None
-    try:
-        client_config = ClientConfig.load(args.config_path)
-    except Exception:
-        pass
-
-    if client_config is None and args.config_path:
-        config_path = os.path.abspath(os.path.expanduser(args.config_path))
-        client_config = ClientConfig(config_path=config_path)
-
-    if client_config is None:
-        # config_path = get_user_input("Path to config file?", DEFAULT_CONFIG_PATH)
-        config_path = os.path.abspath(os.path.expanduser(config_path))
-        client_config = ClientConfig(config_path=config_path)
-
-    if args.sync_folder:
-        sync_folder = os.path.abspath(os.path.expanduser(args.sync_folder))
-        client_config.sync_folder = sync_folder
-
-    if client_config.sync_folder is None:
-        sync_folder = get_user_input(
-            "Where do you want to Sync SyftBox to?",
-            DEFAULT_SYNC_FOLDER,
-        )
-        sync_folder = os.path.abspath(os.path.expanduser(sync_folder))
-        client_config.sync_folder = sync_folder
-
-    if args.server:
-        client_config.server_url = args.server
-
-    if not os.path.exists(client_config.sync_folder):
-        os.makedirs(client_config.sync_folder, exist_ok=True)
-
-    if platform.system() == "Darwin":
-        copy_icon_file(ICON_FOLDER, client_config.sync_folder)
-
-    if args.email:
-        client_config.email = args.email
-
-    if client_config.email is None:
-        email = get_user_input("What is your email address? ")
-        if not validate_email(email):
-            raise Exception(f"Invalid email: {email}")
-        client_config.email = email
-
-    if args.port:
-        client_config.port = args.port
-
-    if client_config.port is None:
-        port = int(get_user_input("Enter the port to use", DEFAULT_PORT))
-        client_config.port = port
-
-    email_token = os.environ.get("EMAIL_TOKEN", None)
-    if email_token:
-        client_config.email_token = email_token
-
-    client_config.save(args.config_path)
-    return client_config
-
-
-def get_user_input(prompt, default: Optional[str] = None):
-    if default:
-        prompt = f"{prompt} (default: {default}): "
-    user_input = input(prompt).strip()
-    return user_input if user_input else default
 
 
 def process_folder_input(user_input, default_path):
@@ -321,26 +194,6 @@ def start_plugin(plugin_name: str):
             status_code=500,
             detail=f"Failed to start plugin {plugin_name}: {e!s}",
         )
-
-
-# Parsing arguments and initializing shared state
-def parse_args():
-    parser = argparse.ArgumentParser(
-        description="Run the web application with plugins.",
-    )
-    parser.add_argument(
-        "--config_path", type=str, default=DEFAULT_CONFIG_PATH, help="config path"
-    )
-    parser.add_argument("--sync_folder", type=str, help="sync folder path")
-    parser.add_argument("--email", type=str, help="email")
-    parser.add_argument("--port", type=int, default=8080, help="Port number")
-    parser.add_argument(
-        "--server",
-        type=str,
-        default="http://20.168.10.234:8080",
-        help="Server",
-    )
-    return parser.parse_args()
 
 
 def start_watchdog(app):
@@ -594,6 +447,10 @@ def get_syftbox_src_path():
 def main() -> None:
     args = parse_args()
     client_config = load_or_create_config(args)
+    try:
+        syft_workspace.mkdirs()
+    except Exception as e:
+        raise Exception(f"Failed to create root directory for SyftBox client. Error:{e}")
 
     os.environ["SYFTBOX_DATASITE"] = client_config.email
     os.environ["SYFTBOX_CLIENT_CONFIG_PATH"] = client_config.config_path
