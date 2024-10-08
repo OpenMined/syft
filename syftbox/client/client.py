@@ -446,11 +446,12 @@ def get_syftbox_src_path():
 
 def main() -> None:
     args = parse_args()
-    client_config = load_or_create_config(args)
     try:
         syft_workspace.mkdirs()
     except Exception as e:
         raise Exception(f"Failed to create root directory for SyftBox client. Error:{e}")
+
+    client_config = load_or_create_config(args)
 
     os.environ["SYFTBOX_DATASITE"] = client_config.email
     os.environ["SYFTBOX_CLIENT_CONFIG_PATH"] = client_config.config_path

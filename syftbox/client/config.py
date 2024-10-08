@@ -39,14 +39,20 @@ def parse_args():
 
 
 def load_or_create_config(args) -> ClientConfig:
-    client_config = None
     try:
         config_path = Path(args.config_path).expanduser().resolve()
-        client_config = ClientConfig.load(config_path)
         print(f"Load and save configurations to {config_path}")
+        # Create an empty JSON file if it doesn't exist
+        if not config_path.exists():
+            config_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(config_path, 'w') as f:
+                f.write('{}')
+            print(f"Created empty JSON config file at {config_path}")
+        client_config = ClientConfig(config_path=str(config_path))
+        client_config = ClientConfig.load(str(config_path))
     except Exception as e:
-        print(f"Error loading config: {e}")
-        
+        print(f"Error: {e}")
+
     try:
         sync_folder = Path(args.sync_folder).expanduser().resolve()
         client_config.sync_folder = str(sync_folder)
