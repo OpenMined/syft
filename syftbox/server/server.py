@@ -1,4 +1,5 @@
 import argparse
+import contextlib
 import json
 import os
 import random
@@ -32,6 +33,9 @@ from syftbox.lib import (
     strtobin,
 )
 
+from .users.router import user_router
+from .users.user import UserManager
+
 current_dir = Path(__file__).parent
 
 
@@ -40,28 +44,6 @@ SNAPSHOT_FOLDER = f"{DATA_FOLDER}/snapshot"
 USER_FILE_PATH = f"{DATA_FOLDER}/users.json"
 
 FOLDERS = [DATA_FOLDER, SNAPSHOT_FOLDER]
-
-
-def load_list(cls, filepath: str) -> list[Any]:
-    try:
-        with open(filepath) as f:
-            data = f.read()
-            d = json.loads(data)
-            ds = []
-            for di in d:
-                ds.append(cls(**di))
-            return ds
-    except Exception as e:
-        print(f"Unable to load list file: {filepath}. {e}")
-    return None
-
-
-def save_list(obj: Any, filepath: str) -> None:
-    dicts = []
-    for d in obj:
-        dicts.append(d.to_dict())
-    with open(filepath, "w") as f:
-        f.write(json.dumps(dicts))
 
 
 def load_dict(cls, filepath: str) -> list[Any]:
@@ -147,6 +129,7 @@ def create_folders(folders: list[str]) -> None:
             os.makedirs(folder, exist_ok=True)
 
 
+@contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     print("> Starting Server")
@@ -155,12 +138,18 @@ async def lifespan(app: FastAPI):
     print("> Loading Users")
     print(USERS)
 
-    yield  # Run the application
+    state = {
+        "user_manager": UserManager(),
+    }
+
+    yield state
 
     print("> Shutting down server")
 
 
 app = FastAPI(lifespan=lifespan)
+
+app.include_router(user_router)
 
 # Define the ASCII art
 ascii_art = r"""
@@ -210,13 +199,9 @@ def get_file_list(directory="."):
         item_path = os.path.join(directory, item)
         is_dir = os.path.isdir(item_path)
         size = os.path.getsize(item_path) if not is_dir else "-"
-        mod_time = datetime.fromtimestamp(os.path.getmtime(item_path)).strftime(
-            "%Y-%m-%d %H:%M:%S"
-        )
+        mod_time = datetime.fromtimestamp(os.path.getmtime(item_path)).strftime("%Y-%m-%d %H:%M:%S")
 
-        file_list.append(
-            {"name": item, "is_dir": is_dir, "size": size, "mod_time": mod_time}
-        )
+        file_list.append({"name": item, "is_dir": is_dir, "size": size, "mod_time": mod_time})
 
     return sorted(file_list, key=lambda x: (not x["is_dir"], x["name"].lower()))
 
@@ -444,9 +429,7 @@ def main() -> None:
     args = parser.parse_args()
 
     uvicorn.run(
-        "syftbox.server.server:app"
-        if args.debug
-        else app,  # Use import string in debug mode
+        "syftbox.server.server:app" if args.debug else app,  # Use import string in debug mode
         host="0.0.0.0",
         port=args.port,
         log_level="debug" if args.debug else "info",

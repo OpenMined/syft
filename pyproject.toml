@@ -39,12 +39,27 @@ syftbox = "syftbox.main:main"
 pythonpath = ["."]
 
 [project.optional-dependencies]
-dev = ["pytest", "pytest-xdist[psutil]", "pytest-cov", "mypy", "uv", "ruff"]
+dev = [
+    "pytest",
+    "pytest-xdist[psutil]",
+    "pytest-cov",
+    "mypy",
+    "uv",
+    "ruff",
+    "httpx",
+]
 
 
 [tool.ruff]
-line-length = 88
-exclude = ["data", "users", "build", "dist", ".venv"]
+line-length = 120
+exclude = ["./data", "./users", "build", "dist", ".venv"]
 
 [tool.ruff.lint]
-extend-select = ["I"]
+select = ["E", "F", "B", "I"]
+ignore = [
+    "B904", # check for raise statements in exception handlers that lack a from clause
+    "B905", # zip() without an explicit strict= parameter
+]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query"]
