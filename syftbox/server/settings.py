@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from fastapi import Request
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,6 +18,10 @@ class SMTSettings(BaseSettings):
 
 class ServerSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="SYFTBOX_")
+
+    admin_username: SecretStr = "info@openmined.org"
+    admin_password: SecretStr = "changethis"
+    jwt_secret: SecretStr = "changethis"
 
     data_folder: Path = Path("data")
     snapshot_folder: Path = Path("data/snapshot")

@@ -21,6 +21,7 @@ dependencies = [
     "postmarker>=1.0",
     "watchdog>=5.0.2",
     "pydantic-settings>=2.5.2",
+    "pyjwt>=2.9.0",
 ]
 
 [project.optional-dependencies]
