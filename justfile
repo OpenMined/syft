@@ -76,29 +76,43 @@ build:
     rm -rf dist
     uv build
 
+[group('build')]
+fetch-syftbox-version version="latest":
+    #!/bin/bash
+    set -euo pipefail
+
+    # If version is latest, then fetch the latest version from PyPI
+    # else, check if the version exists on PyPI
+    if [ "{{ version }}" = "latest" ]; then
+        echo "Fetching the latest version of syftbox from PyPI..."
+        curl -sSf "https://pypi.org/pypi/syftbox/json" | jq -r ".info.version" || { echo "Failed to fetch the latest version." >&2; exit 1; }
+    else
+        echo "Checking if syftbox version {{ version }} exists on PyPI..."
+        if curl -sSf -o /dev/null "https://pypi.org/pypi/syftbox/{{ version }}/json"; then
+            echo "{{ version }}"
+        else
+            echo "syftbox version {{ version }} does not exist." >&2
+            exit 1
+        fi
+    fi
+
+
 # Build & Deploy syftbox to a remote server using SSH
 [group('build')]
-deploy keyfile remote="azureuser@20.168.10.234": build
+deploy keyfile version="latest" remote="azureuser@20.168.10.234":
     #!/bin/bash
     set -eou pipefail
-
-    # there will be only one wheel file in the dist directory, but you never know...
-    LOCAL_WHEEL=$(ls dist/*.whl | grep syftbox | head -n 1)
-
-    # Remote paths to copy the wheel to
-    REMOTE_DIR="~"
-    REMOTE_WHEEL="$REMOTE_DIR/$(basename $LOCAL_WHEEL)"
-
-    echo -e "Deploying {{ _cyan }}$LOCAL_WHEEL{{ _nc }} to {{ _green }}{{ remote }}:$REMOTE_WHEEL{{ _nc }}"
 
     # change permissions to comply with ssh/scp
     chmod 600 {{ keyfile }}
 
-    # Use scp to transfer the file to the remote server
-    scp -i {{ keyfile }} "$LOCAL_WHEEL" "{{ remote }}:$REMOTE_DIR"
+    # Sanity Check the syft box version
+    REMOTE_VERSION=$(just fetch-syftbox-version {{ version }} | tail -n 1)
+
+    echo -e "Deploying syftbox version $REMOTE_VERSION to {{ remote }}..."
 
     # install pip package
-    ssh -i {{ keyfile }} {{ remote }} "pip install --break-system-packages $REMOTE_WHEEL --force"
+    ssh -i {{ keyfile }} {{ remote }} "pip install syftbox==$REMOTE_VERSION --break-system-packages  --force"
 
     # restart service
     # TODO - syftbox service was created manually on 20.168.10.234
@@ -107,11 +121,39 @@ deploy keyfile remote="azureuser@20.168.10.234": build
 
     echo -e "{{ _green }}Deploy successful!{{ _nc }}"
 
+# Bump version, commit and tag
+[group('build')]
+bump-version level="patch":
+    #!/bin/bash
+    # We need to uv.lock before we can commit the whole thing in the repo.
+    # DO not bump the version on the uv.lock file, else other packages with same version might get updated
+
+    set -eou pipefail
+
+    # sync dev dependencies for bump2version
+    uv sync --frozen
+
+    # get the current and new version
+    BUMPVERS_CHANGES=$(uv run bump2version --dry-run --allow-dirty --list {{ level }})
+    CURRENT_VERSION=$(echo "$BUMPVERS_CHANGES" | grep current_version | cut -d'=' -f2)
+    NEW_VERSION=$(echo "$BUMPVERS_CHANGES" | grep new_version | cut -d'=' -f2)
+    echo "Bumping version from $CURRENT_VERSION to $NEW_VERSION"
+
+    # first bump version
+    uv run bump2version {{ level }}
+
+    # update uv.lock file to reflect new package version
+    uv lock
+
+    # commit the changes
+    git commit -am "Bump version $CURRENT_VERSION -> $NEW_VERSION"
+    git tag -a $NEW_VERSION -m "Release $NEW_VERSION"
+
 # ---------------------------------------------------------------------------------------------------------------------
 
 [group('utils')]
 ssh keyfile remote="azureuser@20.168.10.234":
-    ssh -i {{ keyfile }} remote
+    ssh -i {{ keyfile }} {{ remote }}    
 
 # remove all local files & directories
 [group('utils')]
@@ -121,7 +163,5 @@ reset:
 
 [group('utils')]
 run-jupyter jupyter_args="":
-    uv run \
-        --with "jupyterlab" \
-        --with-editable ".[dev]" \
-        jupyter lab --notebook-dir=./notebooks {{ jupyter_args }}
+    uv run --frozen --with "jupyterlab" \
+        jupyter lab {{ jupyter_args }}

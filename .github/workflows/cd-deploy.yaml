@@ -1,0 +1,37 @@
+name: CD - Deploy SyftBox Server
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "SyftBox Version to deploy"
+        type: string
+        default: latest
+
+# Prevents concurrent runs of the same workflow
+# while the previous run is still in progress
+concurrency:
+  group: "CD - Deploy SyftBox Server"
+  cancel-in-progress: false
+
+jobs:
+    
+  deploy-syftbox-server:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install Just
+        uses: extractions/setup-just@v2
+        with:
+          just-version: "1.36.0"
+
+      - name: Set up SSH
+        run: |
+            mkdir -p ~/.ssh
+            echo "${{ secrets.SYFTBOX_SERVER_PRIVATE_KEY }}" > ~/.ssh/syftbox.pem
+            chmod 600 ~/.ssh/syftbox.pem
+            ssh-keyscan -H "20.168.10.234" >> ~/.ssh/known_hosts
+
+      - name: Deploy SyftBox Server
+        run: |
+            just deploy ~/.ssh/syftbox.pem ${{ inputs.version }}

@@ -17,9 +17,9 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 uv venv .venv
 
-## install the wheel
+## Install Syftbox
 
-uv pip install http://20.168.10.234:8080/wheel/syftbox-0.1.0-py3-none-any.whl --reinstall
+uv pip install -U syftbox
 
 ## run the client
 
