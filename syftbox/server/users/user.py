@@ -10,6 +10,13 @@ class User(BaseModel):
     is_banned: bool = False
 
 
+class UserUpdate(BaseModel):
+    email: str | None = None
+    token: str | None = None
+    is_registered: bool | None = None
+    is_banned: bool | None = None
+
+
 class UserManager:
     def __init__(self):
         self.users: dict[str, User] = {}
@@ -38,20 +45,12 @@ class UserManager:
         user.is_registered = True
         return user
 
-    def ban_user(self, email: str) -> User:
-        user = self.get_user(email)
-        if user is None:
-            raise ValueError(f"User {email} not found")
+    def update_user(self, user: User) -> User:
+        existing_user = self.get_user(user.email)
+        if existing_user is None:
+            raise ValueError(f"User {user.email} not found")
 
-        user.is_banned = True
-        return user
-
-    def unban_user(self, email: str) -> User:
-        user = self.get_user(email)
-        if user is None:
-            raise ValueError(f"User {email} not found")
-
-        user.is_banned = False
+        self.users[user.email] = user
         return user
 
     def __repr__(self) -> str:

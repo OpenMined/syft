@@ -95,56 +95,39 @@ def test_register_tokens(client, admin_credentials):
         assert not user.is_banned and not user.is_registered  # not banned, not registered
 
 
-def test_ban_non_existing_user(client, admin_credentials):
+def test_update_nonexisting_user(client, admin_credentials):
     result = client.post(
-        "/users/ban",
+        "/users/update",
         params={"email": "doesnt_exist@openmined.org"},
+        json={"is_banned": True},
         auth=(admin_credentials.username, admin_credentials.password),
     )
     assert result.status_code == 404, result.json()
 
 
-def test_ban(client, admin_credentials, registered_user):
+def test_update_user(client, admin_credentials, registered_user):
     user_manager: UserManager = client.app_state["user_manager"]
-    user = user_manager.get_user(registered_user.email)
-    assert user.is_banned is False
+    assert not registered_user.is_banned
+    assert registered_user.is_registered
 
-    # require admin credentials
+    # auth is required
     result = client.post(
-        "/users/ban",
+        "/users/update",
         params={"email": registered_user.email},
+        json={"is_banned": True},
     )
     assert result.status_code == 401, result.json()
 
     result = client.post(
-        "/users/ban",
+        "/users/update",
         params={"email": registered_user.email},
+        json={"is_banned": True, "is_registered": False},
         auth=(admin_credentials.username, admin_credentials.password),
     )
     result.raise_for_status()
-    assert user_manager.get_user(registered_user.email).is_banned
-
-
-def test_unban(client, admin_credentials, registered_user):
-    user_manager: UserManager = client.app_state["user_manager"]
-    user_manager.ban_user(registered_user.email)
     user = user_manager.get_user(registered_user.email)
     assert user.is_banned
-
-    # require admin credentials
-    result = client.post(
-        "/users/unban",
-        params={"email": registered_user.email},
-    )
-    assert result.status_code == 401, result.json()
-
-    result = client.post(
-        "/users/unban",
-        params={"email": registered_user.email},
-        auth=(admin_credentials.username, admin_credentials.password),
-    )
-    result.raise_for_status()
-    assert not user_manager.get_user(registered_user.email).is_banned
+    assert not user.is_registered
 
 
 def test_register_user(client, user_with_token):

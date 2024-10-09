@@ -33,6 +33,7 @@ from syftbox.lib import (
     strtobin,
 )
 from syftbox.server.settings import ServerSettings, get_server_settings
+from syftbox.server.users.user import UserManager
 
 from .users.router import user_router
 
@@ -130,12 +131,16 @@ async def lifespan(app: FastAPI):
     create_folders(settings.folders)
 
     print("> Loading Users")
+    # TODO remove old users
     users = Users(path=settings.user_file_path)
     print(users)
+
+    user_manager = UserManager()
 
     yield {
         "server_settings": settings,
         "users": users,
+        "user_manager": user_manager,
     }
 
     print("> Shutting down server")

@@ -2,7 +2,7 @@ import fastapi
 from fastapi import Depends, HTTPException, Request
 
 from .auth import verify_admin_credentials
-from .user import User, UserManager
+from .user import User, UserManager, UserUpdate
 
 user_router = fastapi.APIRouter(
     prefix="/users",
@@ -16,6 +16,13 @@ def notify_user(user: User) -> None:
 
 def get_user_manager(request: Request) -> UserManager:
     return request.state.user_manager
+
+
+def get_user_by_email(email: str, user_manager: UserManager = Depends(get_user_manager)) -> User:
+    user = user_manager.get_user(email)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
 
 
 @user_router.post("/register_tokens")
@@ -47,30 +54,17 @@ async def register_tokens(
     return users
 
 
-@user_router.post("/ban")
-async def ban(
-    email: str,
+@user_router.post("/update")
+async def update(
+    user_update: UserUpdate,
+    user: User = Depends(get_user_by_email),
     is_admin: bool = Depends(verify_admin_credentials),
     user_manager: UserManager = Depends(get_user_manager),
 ) -> User:
-    try:
-        user = user_manager.ban_user(email)
-        return user
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-
-
-@user_router.post("/unban")
-async def unban(
-    email: str,
-    is_admin: bool = Depends(verify_admin_credentials),
-    user_manager: UserManager = Depends(get_user_manager),
-) -> User:
-    try:
-        user = user_manager.unban_user(email)
-        return user
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    user_update_dict = user_update.model_dump(exclude_unset=True)
+    updated_user = user.model_copy(update=user_update_dict)
+    result = user_manager.update_user(updated_user)
+    return result
 
 
 @user_router.post("/register")
