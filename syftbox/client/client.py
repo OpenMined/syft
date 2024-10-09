@@ -1,21 +1,18 @@
-import argparse
 import atexit
 import importlib
 import os
-import platform
-import subprocess
 import sys
-import threading
 import time
 import traceback
 import types
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 import uvicorn
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from apscheduler.schedulers.background import BackgroundScheduler
+from config import load_or_create_config, parse_args
+from const import WATCHDOG_IGNORE
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -26,17 +23,18 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
-from watchdog.events import FileSystemEvent, FileSystemEventHandler
-from watchdog.observers import Observer
 
-from syftbox.lib import ClientConfig, SharedState, validate_email
+from syftbox.client.fsevents import (
+    AnyFileSystemEventHandler,
+    FileSystemEvent,
+    FSWatchdog,
+)
+from syftbox.lib import ClientConfig, SharedState
 from syftbox.lib.workspace import SyftWorkspace
-from config import parse_args, load_or_create_config
-from const import WATCHDOG_IGNORE
 
 current_dir = Path(__file__).parent
 
-templates = Jinja2Templates(directory="templates")
+templates = Jinja2Templates(directory=str(current_dir / "templates"))
 
 PLUGINS_DIR = current_dir / "plugins"
 sys.path.insert(0, os.path.dirname(PLUGINS_DIR))
@@ -123,14 +121,6 @@ def is_valid_datasite_name(name):
     return name.isalnum() or all(c.isalnum() or c in ("-", "_") for c in name)
 
 
-@dataclass
-class Plugin:
-    name: str
-    module: types.ModuleType
-    schedule: int
-    description: str
-
-
 # API Models
 class PluginRequest(BaseModel):
     plugin_name: str
@@ -196,37 +186,19 @@ def start_plugin(plugin_name: str):
         )
 
 
-def start_watchdog(app):
-    shared_state = app.shared_state
-    sync_folder = shared_state.client_config.sync_folder
+def start_watchdog(app) -> FSWatchdog:
+    def sync_on_event(event: FileSystemEvent):
+        run_plugin("sync", event)
 
-    stop_event = threading.Event()
-    app.stop_event = stop_event
-
-    class AnyFileSystemEventHandler(FileSystemEventHandler):
-        def on_any_event(self, event: FileSystemEvent) -> None:
-            for ignore in WATCHDOG_IGNORE:
-                full_path = shared_state.client_config.sync_folder + "/" + ignore
-                if event.src_path.startswith(full_path):
-                    return
-            run_plugin("sync", event)
-
-    event_handler = AnyFileSystemEventHandler()
-    observer = Observer()
-    observer.schedule(event_handler, sync_folder, recursive=True)
-    observer.start()
-
-    # Run observer in a thread to keep the process alive
-    try:
-        while not stop_event.is_set():
-            time.sleep(1)
-    except KeyboardInterrupt:
-        print("> Watchdog received KeyboardInterrupt")
-    finally:
-        print("> Stopping Watchdog...")
-        observer.stop()
-        observer.join()
-        print("> Watchdog stopped")
+    watch_dir = Path(app.shared_state.client_config.sync_folder)
+    event_handler = AnyFileSystemEventHandler(
+        watch_dir,
+        callbacks=[sync_on_event],
+        ignored=WATCHDOG_IGNORE,
+    )
+    watchdog = FSWatchdog(watch_dir, event_handler)
+    watchdog.start()
+    return watchdog
 
 
 async def lifespan(app: FastAPI):
@@ -234,7 +206,7 @@ async def lifespan(app: FastAPI):
     print("> Starting Client")
     args = parse_args()
     client_config = load_or_create_config(args)
-    app.shared_state = initialize_shared_state(client_config)
+    app.shared_state = SharedState(client_config=client_config)
 
     # Clear the lock file on the first run if it exists
     job_file = client_config.config_path.replace(".json", ".sql")
@@ -247,20 +219,12 @@ async def lifespan(app: FastAPI):
     jobstores = {"default": SQLAlchemyJobStore(url=f"sqlite:///{job_file}")}
     scheduler = BackgroundScheduler(jobstores=jobstores)
     scheduler.start()
-    app.scheduler = scheduler
     atexit.register(stop_scheduler)
 
+    app.scheduler = scheduler
     app.running_plugins = {}
     app.loaded_plugins = load_plugins(client_config)
-
-    # Start the watchdog observer in a thread
-    if not hasattr(app, "watchdog_thread") or not app.watchdog_thread.is_alive():
-        print("> Starting Watchdog Thread")
-        watchdog_thread = threading.Thread(
-            target=start_watchdog, args=(app,), daemon=True
-        )
-        watchdog_thread.start()
-        app.watchdog_thread = watchdog_thread
+    app.watchdog = start_watchdog(app)
 
     autorun_plugins = ["init", "create_datasite", "sync", "apps"]
     # autorun_plugins = ["init", "create_datasite", "sync", "apps"]
@@ -271,10 +235,7 @@ async def lifespan(app: FastAPI):
 
     print("> Shutting down...")
     scheduler.shutdown()
-
-    if app.watchdog_thread.is_alive():
-        app.stop_event.set()
-        app.watchdog_thread.join()
+    app.watchdog.stop()
 
 
 def stop_scheduler():
@@ -449,7 +410,9 @@ def main() -> None:
     try:
         syft_workspace.mkdirs()
     except Exception as e:
-        raise Exception(f"Failed to create root directory for SyftBox client. Error:{e}")
+        raise Exception(
+            f"Failed to create root directory for SyftBox client. Error:{e}"
+        )
 
     client_config = load_or_create_config(args)
 

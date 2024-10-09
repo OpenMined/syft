@@ -6,6 +6,7 @@ repos:
         always_run: true
       - id: trailing-whitespace
         always_run: true
+        exclude: .bumpversion.cfg
       - id: check-docstring-first
         always_run: true
       - id: check-json
