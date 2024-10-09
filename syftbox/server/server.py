@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Optional
 
 import uvicorn
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
@@ -32,18 +32,11 @@ from syftbox.lib import (
     hash_dir,
     strtobin,
 )
+from syftbox.server.settings import ServerSettings, get_server_settings
 
 from .users.router import user_router
-from .users.user import UserManager
 
 current_dir = Path(__file__).parent
-
-
-DATA_FOLDER = "data"
-SNAPSHOT_FOLDER = f"{DATA_FOLDER}/snapshot"
-USER_FILE_PATH = f"{DATA_FOLDER}/users.json"
-
-FOLDERS = [DATA_FOLDER, SNAPSHOT_FOLDER]
 
 
 def load_dict(cls, filepath: str) -> list[Any]:
@@ -76,20 +69,21 @@ class User(Jsonable):
 
 
 class Users:
-    def __init__(self) -> None:
+    def __init__(self, path: Path) -> None:
+        self.path = path
         self.users = {}
         self.load()
 
     def load(self):
-        if os.path.exists(USER_FILE_PATH):
-            users = load_dict(User, USER_FILE_PATH)
+        if os.path.exists(str(self.path)):
+            users = load_dict(User, str(self.path))
         else:
             users = None
         if users:
             self.users = users
 
     def save(self):
-        save_dict(self.users, USER_FILE_PATH)
+        save_dict(self.users, str(self.path))
 
     def get_user(self, email: str) -> Optional[User]:
         if email not in self.users:
@@ -113,14 +107,9 @@ class Users:
             string += f"{email}: {user}"
         return string
 
-    # def key_for_email(self, email: str) -> int | None:
-    #     user = self.get_user(email)
-    #     if user:
-    #         return user.public_key
-    #     return None
 
-
-USERS = Users()
+def get_users(request: Request) -> Users:
+    return request.state.users
 
 
 def create_folders(folders: list[str]) -> None:
@@ -133,16 +122,21 @@ def create_folders(folders: list[str]) -> None:
 async def lifespan(app: FastAPI):
     # Startup
     print("> Starting Server")
+    settings = ServerSettings()
+    print(settings)
+
     print("> Creating Folders")
-    create_folders(FOLDERS)
+
+    create_folders(settings.folders)
+
     print("> Loading Users")
-    print(USERS)
+    users = Users(path=settings.user_file_path)
+    print(users)
 
-    state = {
-        "user_manager": UserManager(),
+    yield {
+        "server_settings": settings,
+        "users": users,
     }
-
-    yield state
 
     print("> Shutting down server")
 
@@ -193,7 +187,10 @@ async def get_wheel(request: Request, path: str):
     return filename
 
 
-def get_file_list(directory="."):
+def get_file_list(directory: str | Path = ".") -> list[dict[str, Any]]:
+    # TODO rewrite with pathlib
+    directory = str(directory)
+
     file_list = []
     for item in os.listdir(directory):
         item_path = os.path.join(directory, item)
@@ -207,9 +204,8 @@ def get_file_list(directory="."):
 
 
 @app.get("/datasites", response_class=HTMLResponse)
-async def list_datasites(request: Request):
-    datasite_path = os.path.join(SNAPSHOT_FOLDER)
-    files = get_file_list(datasite_path)
+async def list_datasites(request: Request, server_settings: ServerSettings = Depends(get_server_settings)):
+    files = get_file_list(server_settings.snapshot_folder)
     template_path = current_dir / "templates" / "datasites.html"
     html = ""
     with open(template_path) as f:
@@ -227,17 +223,22 @@ async def list_datasites(request: Request):
 
 
 @app.get("/datasites/{path:path}", response_class=HTMLResponse)
-async def browse_datasite(request: Request, path: str):
+async def browse_datasite(
+    request: Request,
+    path: str,
+    server_settings: ServerSettings = Depends(get_server_settings),
+):
     if path == "":  # Check if path is empty (meaning "/datasites/")
         return RedirectResponse(url="/datasites")
 
+    snapshot_folder = str(server_settings.snapshot_folder)
     datasite_part = path.split("/")[0]
-    datasites = get_datasites(SNAPSHOT_FOLDER)
+    datasites = get_datasites(snapshot_folder)
     if datasite_part in datasites:
         slug = path[len(datasite_part) :]
         if slug == "":
             slug = "/"
-        datasite_path = os.path.join(SNAPSHOT_FOLDER, datasite_part)
+        datasite_path = os.path.join(snapshot_folder, datasite_part)
         datasite_public = datasite_path + "/public"
         if not os.path.exists(datasite_public):
             return "No public datasite"
@@ -286,16 +287,16 @@ async def browse_datasite(request: Request, path: str):
 
 
 @app.post("/register")
-async def register(request: Request):
+async def register(request: Request, users: Users = Depends(get_users)):
     data = await request.json()
     email = data["email"]
-    token = USERS.create_user(email)
+    token = users.create_user(email)
     print(f"> {email} registering: {token}")
     return JSONResponse({"status": "success", "token": token}, status_code=200)
 
 
 @app.post("/write")
-async def write(request: Request):
+async def write(request: Request, server_settings: ServerSettings = Depends(get_server_settings)):
     try:
         data = await request.json()
         email = data["email"]
@@ -303,7 +304,7 @@ async def write(request: Request):
         change_dict["kind"] = FileChangeKind(change_dict["kind"])
         change = FileChange(**change_dict)
 
-        change.sync_folder = os.path.abspath(SNAPSHOT_FOLDER)
+        change.sync_folder = os.path.abspath(str(server_settings.snapshot_folder))
         result = True
         accepted = True
         if change.newer():
@@ -351,13 +352,13 @@ async def write(request: Request):
 
 
 @app.post("/read")
-async def read(request: Request):
+async def read(request: Request, server_settings: ServerSettings = Depends(get_server_settings)):
     data = await request.json()
     email = data["email"]
     change_dict = data["change"]
     change_dict["kind"] = FileChangeKind(change_dict["kind"])
     change = FileChange(**change_dict)
-    change.sync_folder = os.path.abspath(SNAPSHOT_FOLDER)
+    change.sync_folder = os.path.abspath(str(server_settings.snapshot_folder))
 
     json_dict = {"change": change.to_dict()}
 
@@ -380,13 +381,14 @@ async def read(request: Request):
 
 
 @app.post("/dir_state")
-async def dir_state(request: Request):
+async def dir_state(request: Request, server_settings: ServerSettings = Depends(get_server_settings)):
     try:
         data = await request.json()
         email = data["email"]
         sub_path = data["sub_path"]
-        full_path = os.path.join(SNAPSHOT_FOLDER, sub_path)
-        remote_dir_state = hash_dir(SNAPSHOT_FOLDER, sub_path)
+        snapshot_folder = str(server_settings.snapshot_folder)
+        full_path = os.path.join(snapshot_folder, sub_path)
+        remote_dir_state = hash_dir(snapshot_folder, sub_path)
 
         # get the top level perm file
         perm_tree = PermissionTree.from_path(full_path)
@@ -404,8 +406,8 @@ async def dir_state(request: Request):
 
 
 @app.get("/list_datasites")
-async def datasites(request: Request):
-    datasites = get_datasites(SNAPSHOT_FOLDER)
+async def datasites(request: Request, server_settings: ServerSettings = Depends(get_server_settings)):
+    datasites = get_datasites(server_settings.snapshot_folder)
     response_json = {"datasites": datasites}
     if datasites:
         return JSONResponse({"status": "success"} | response_json, status_code=200)
