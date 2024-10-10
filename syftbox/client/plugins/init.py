@@ -1,15 +1,14 @@
 from threading import Event
 
-import requests
-
 stop_event = Event()
 
 
 def register(client_config):
-    response = requests.post(
-        f"{client_config.server_url}/register",
+    response = client_config.server_client.post(
+        "/register",
         json={"email": client_config.email},
     )
+
     j = response.json()
     if "token" in j:
         client_config.token = j["token"]

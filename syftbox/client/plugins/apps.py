@@ -53,7 +53,6 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_SCHEDULE = 10000
 DESCRIPTION = "Runs Apps"
-
 DEFAULT_APPS_PATH = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "..", "..", "default_apps")
 )

@@ -1,4 +1,5 @@
 import argparse
+import contextlib
 import json
 import os
 import random
@@ -143,10 +144,12 @@ def create_folders(folders: list[str]) -> None:
             os.makedirs(folder, exist_ok=True)
 
 
-async def lifespan(app: FastAPI):
+@contextlib.asynccontextmanager
+async def lifespan(app: FastAPI, settings: ServerSettings | None = None):
     # Startup
     print("> Starting Server")
-    settings = ServerSettings()
+    if settings is None:
+        settings = ServerSettings()
     print(settings)
 
     print("> Creating Folders")
@@ -386,7 +389,7 @@ async def read(
     change = FileChange(**change_dict)
     change.sync_folder = os.path.abspath(str(server_settings.snapshot_folder))
 
-    json_dict = {"change": change.model_dump()}
+    json_dict = {"change": change.model_dump(mode="json")}
 
     if change.kind_write:
         if os.path.isdir(change.full_path):

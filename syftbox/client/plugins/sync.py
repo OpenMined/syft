@@ -5,7 +5,6 @@ from datetime import datetime
 from threading import Event
 from typing import Tuple
 
-import requests
 from watchdog.events import DirModifiedEvent
 
 from syftbox.lib import (
@@ -244,7 +243,7 @@ def push_changes(client_config: ClientConfig, changes: list[FileChange]):
         try:
             data = {
                 "email": client_config.email,
-                "change": change.model_dump(),
+                "change": change.model_dump(mode="json"),
             }
             if change.kind_write:
                 if os.path.isdir(change.full_path):
@@ -257,8 +256,8 @@ def push_changes(client_config: ClientConfig, changes: list[FileChange]):
                 # no data for delete operations
                 pass
 
-            response = requests.post(
-                f"{client_config.server_url}/write",
+            response = client_config.server_client.post(
+                "/write",
                 json=data,
             )
             write_response = response.json()
@@ -288,10 +287,10 @@ def pull_changes(client_config, changes: list[FileChange]):
         try:
             data = {
                 "email": client_config.email,
-                "change": change.model_dump(),
+                "change": change.model_dump(mode="json"),
             }
-            response = requests.post(
-                f"{client_config.server_url}/read",
+            response = client_config.server_client.post(
+                "/read",
                 json=data,
             )
             read_response = response.json()
@@ -318,11 +317,11 @@ def pull_changes(client_config, changes: list[FileChange]):
     return remote_changes
 
 
-def list_datasites(client_config):
+def list_datasites(client_config: ClientConfig):
     datasites = []
     try:
-        response = requests.get(
-            f"{client_config.server_url}/list_datasites",
+        response = client_config.server_client.get(
+            "/list_datasites",
         )
         read_response = response.json()
         remote_datasites = read_response["datasites"]
@@ -336,15 +335,15 @@ def list_datasites(client_config):
     return datasites
 
 
-def get_remote_state(client_config, sub_path: str):
+def get_remote_state(client_config: ClientConfig, sub_path: str):
     try:
         data = {
             "email": client_config.email,
             "sub_path": sub_path,
         }
 
-        response = requests.post(
-            f"{client_config.server_url}/dir_state",
+        response = client_config.server_client.post(
+            "/dir_state",
             json=data,
         )
         state_response = response.json()
