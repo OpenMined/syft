@@ -348,12 +348,19 @@ def get_remote_state(client_config: ClientConfig, sub_path: str):
         )
         state_response = response.json()
         if response.status_code == 200:
-            dir_state = DirState(**state_response["dir_state"])
-            fix_tree = {}
-            for key, value in dir_state.tree.items():
-                fix_tree[key] = FileInfo(**value)
-            dir_state.tree = fix_tree
-            return dir_state
+            if isinstance(state_response, dict) and "dir_state" in state_response:
+                dir_state = DirState(**state_response["dir_state"])
+                fix_tree = {}
+                for key, value in dir_state.tree.items():
+                    fix_tree[key] = FileInfo(**value)
+                dir_state.tree = fix_tree
+                return dir_state
+            else:
+                print(
+                    "/dir_state returned a bad result",
+                    type(state_response),
+                    state_response,
+                )
         print(f"> {client_config.email} FAILED /dir_state: {sub_path}")
         return None
     except Exception as e:

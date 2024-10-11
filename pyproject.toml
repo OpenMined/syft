@@ -21,6 +21,8 @@ dependencies = [
     "pydantic-settings>=2.5.2",
     "pytest>=8.3.3",
     "httpx>=0.27.2",
+    "pyyaml>=6.0.2",
+    "psutil>=6.0.0",
 ]
 
 [project.optional-dependencies]

@@ -9,19 +9,25 @@
 
 # Quickstart User Installation
 
-## install uv
+## SyftBox 1 liner
+
+curl -LsSf https://syftbox.openmined.org/install.sh | sh -s -- run
+
+## Manual install
+
+### install uv
 
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-## create a virtualenv somewhere
+### create a virtualenv somewhere
 
 uv venv .venv
 
-## Install Syftbox
+### Install Syftbox
 
 uv pip install -U syftbox
 
-## run the client
+### run the client
 
 uv run syftbox client
 
@@ -66,13 +72,17 @@ uv run syftbox/client/client.py
 ### Run Client
 
 ```
-syftbox client --config_path=./config.json --sync_folder=~/Desktop/SyftBox --email=your@email.org --port=8082  --server=http://20.168.10.234:8080
+syftbox client --config_path=./config.json --sync_folder=~/Desktop/SyftBox --email=your@email.org --port=8082  --server=https://syftbox.openmined.org
 ```
+
+### Staging Server
+
+If you have issues or want to use a bleeding edge server try --server=https://syftboxstage.openmined.org
 
 ### Deploy
 
 This builds the latest source to a wheel and deploys and restarts the server:
-http://20.168.10.234:8080
+https://syftbox.openmined.org
 
 ```
 ./scripts/deploy.sh

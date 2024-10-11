@@ -69,11 +69,55 @@ run-client name port="auto" server="http://localhost:5001":
 
 # ---------------------------------------------------------------------------------------------------------------------
 
+[group('client')]
+run-live-client server="https://syftbox.openmined.org/":
+    #!/bin/bash
+    set -eou pipefail
+
+    # Working directory for client is .clients/<email>
+    CONFIG_DIR=~/.syftbox
+    mkdir -p $CONFIG_DIR
+
+    echo -e "Config Dir : $CONFIG_DIR"
+
+    uv run syftbox/client/client.py --config_path=$CONFIG_DIR/client_config.json --server={{ server }}
+
+# ---------------------------------------------------------------------------------------------------------------------
+
+# Run a local syftbox app command
+[group('app')]
+run-app name command subcommand="":
+    #!/bin/bash
+    set -eou pipefail
+
+    # generate a local email from name, but if it looks like an email, then use it as is
+    EMAIL="{{ name }}@openmined.org"
+    if [[ "{{ name }}" == *@*.* ]]; then EMAIL="{{ name }}"; fi
+
+    # Working directory for client is .clients/<email>
+    CONFIG_DIR=.clients/$EMAIL/config
+    SYNC_DIR=.clients/$EMAIL/sync
+    mkdir -p $CONFIG_DIR $SYNC_DIR
+
+    echo -e "Config Dir : $CONFIG_DIR"
+
+    uv run syftbox/main.py app {{ command }} {{ subcommand }} --config_path=$CONFIG_DIR/config.json
+
+# ---------------------------------------------------------------------------------------------------------------------
+
 # Build syftbox wheel
 [group('build')]
 build:
     rm -rf dist
     uv build
+
+
+# Build syftbox wheel
+[group('install')]
+install:
+    rm -rf dist
+    uv build
+    uv tool install $(ls /Users/madhavajay/dev/syft/dist/*.whl) --reinstall
 
 # Bump version, commit and tag
 [group('build')]

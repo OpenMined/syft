@@ -3,7 +3,6 @@ import atexit
 import contextlib
 import importlib
 import os
-import platform
 import sys
 import time
 import traceback
@@ -11,7 +10,7 @@ import types
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import uvicorn
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
@@ -32,8 +31,12 @@ from syftbox.client.fsevents import (
     FileSystemEvent,
     FSWatchdog,
 )
-from syftbox.client.utils import macos
-from syftbox.lib import ClientConfig, SharedState, validate_email
+from syftbox.lib import (
+    DEFAULT_CONFIG_PATH,
+    ClientConfig,
+    SharedState,
+    load_or_create_config,
+)
 
 
 class CustomFastAPI(FastAPI):
@@ -56,8 +59,8 @@ PLUGINS_DIR = current_dir / "plugins"
 sys.path.insert(0, os.path.dirname(PLUGINS_DIR))
 
 DEFAULT_SYNC_FOLDER = os.path.expanduser("~/Desktop/SyftBox")
-DEFAULT_PORT = 8082
-DEFAULT_CONFIG_PATH = os.path.expanduser("~/.syftbox/client_config.json")
+
+
 ASSETS_FOLDER = current_dir.parent / "assets"
 ICON_FOLDER = ASSETS_FOLDER / "icon"
 
@@ -70,77 +73,6 @@ class Plugin:
     module: types.ModuleType
     schedule: int
     description: str
-
-
-def load_or_create_config(args) -> ClientConfig:
-    syft_config_dir = os.path.abspath(os.path.expanduser("~/.syftbox"))
-    os.makedirs(syft_config_dir, exist_ok=True)
-
-    client_config = None
-    try:
-        client_config = ClientConfig.load(args.config_path)
-    except Exception:
-        pass
-
-    if client_config is None and args.config_path:
-        config_path = os.path.abspath(os.path.expanduser(args.config_path))
-        client_config = ClientConfig(config_path=config_path)
-
-    if client_config is None:
-        # config_path = get_user_input("Path to config file?", DEFAULT_CONFIG_PATH)
-        config_path = os.path.abspath(os.path.expanduser(config_path))
-        client_config = ClientConfig(config_path=config_path)
-
-    if args.sync_folder:
-        sync_folder = os.path.abspath(os.path.expanduser(args.sync_folder))
-        client_config.sync_folder = sync_folder
-
-    if client_config.sync_folder is None:
-        sync_folder = get_user_input(
-            "Where do you want to Sync SyftBox to?",
-            DEFAULT_SYNC_FOLDER,
-        )
-        sync_folder = os.path.abspath(os.path.expanduser(sync_folder))
-        client_config.sync_folder = sync_folder
-
-    if args.server:
-        client_config.server_url = args.server
-
-    if not os.path.exists(client_config.sync_folder):
-        os.makedirs(client_config.sync_folder, exist_ok=True)
-
-    if platform.system() == "Darwin":
-        macos.copy_icon_file(ICON_FOLDER, client_config.sync_folder)
-
-    if args.email:
-        client_config.email = args.email
-
-    if client_config.email is None:
-        email = get_user_input("What is your email address? ")
-        if not validate_email(email):
-            raise Exception(f"Invalid email: {email}")
-        client_config.email = email
-
-    if args.port:
-        client_config.port = args.port
-
-    if client_config.port is None:
-        port = int(get_user_input("Enter the port to use", DEFAULT_PORT))
-        client_config.port = port
-
-    email_token = os.environ.get("EMAIL_TOKEN", None)
-    if email_token:
-        client_config.email_token = email_token
-
-    client_config.save(args.config_path)
-    return client_config
-
-
-def get_user_input(prompt, default: Optional[str] = None):
-    if default:
-        prompt = f"{prompt} (default: {default}): "
-    user_input = input(prompt).strip()
-    return user_input if user_input else default
 
 
 def process_folder_input(user_input, default_path):
@@ -293,7 +225,7 @@ def parse_args():
     parser.add_argument(
         "--server",
         type=str,
-        default="http://20.168.10.234:8080",
+        default="https://syftbox.openmined.org",
         help="Server",
     )
     return parser.parse_args()
@@ -344,9 +276,10 @@ async def lifespan(app: CustomFastAPI, client_config: ClientConfig | None = None
     app.scheduler = scheduler
     app.running_plugins = {}
     app.loaded_plugins = load_plugins(client_config)
-    print("> Loaded plugins:", list(app.loaded_plugins.keys()))
+    print("> Loaded plugins:", sorted(list(app.loaded_plugins.keys())))
     app.watchdog = start_watchdog(app)
 
+    print("> Starting autorun plugins:", sorted(client_config.autorun_plugins))
     for plugin in client_config.autorun_plugins:
         start_plugin(app, plugin)
 
@@ -537,16 +470,27 @@ def main() -> None:
     print("Wheel: ", os.environ.get("SYFTBOX_WHEEL"))
 
     debug = True
-    uvicorn.run(
-        "syftbox.client.client:app"
-        if debug
-        else app,  # Use import string in debug mode
-        host="0.0.0.0",
-        port=client_config.port,
-        log_level="debug" if debug else "info",
-        reload=debug,  # Enable hot reloading only in debug mode
-        reload_dirs="./syftbox",
-    )
+    port = client_config.port
+    max_attempts = 10  # Maximum number of port attempts
+
+    for attempt in range(max_attempts):
+        try:
+            uvicorn.run(
+                "syftbox.client.client:app" if debug else app,
+                host="0.0.0.0",
+                port=port,
+                log_level="debug" if debug else "info",
+                reload=debug,
+                reload_dirs="./syftbox",
+            )
+            return  # If successful, exit the loop
+        except SystemExit as e:
+            if e.code != 1:  # If it's not the "Address already in use" error
+                raise
+            print(f"Failed to start server on port {port}. Trying next port.")
+            port = 0
+    print(f"Unable to find an available port after {max_attempts} attempts.")
+    sys.exit(1)
 
 
 if __name__ == "__main__":
