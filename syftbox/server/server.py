@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 import random
+import re
 import sys
 from dataclasses import dataclass
 from datetime import datetime
@@ -9,7 +10,7 @@ from pathlib import Path
 from typing import Optional
 
 import uvicorn
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Query
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
@@ -298,6 +299,51 @@ async def browse_datasite(request: Request, path: str):
             return f"Bad Slug {slug}"
 
     return f"No Datasite {datasite_part} exists"
+
+
+def search_files(folder_path, query, use_regex=False):
+    """
+    Recursively search for files containing the query string in their name.
+    If use_regex is True, treat query as a regex pattern.
+    """
+    # Convert '*' to '.*' for simple wildcard matching
+    if use_regex:
+        query = query.replace("*", ".*")
+
+    results = []
+    for root, _, files in os.walk(folder_path):
+        for file in files:
+            if use_regex:
+                # Check if the file name matches the regex pattern
+                if re.search(query, file, re.IGNORECASE):
+                    results.append(os.path.join(root, file))
+            else:
+                # Simple substring match (case-insensitive)
+                if query.lower() in file.lower():
+                    results.append(os.path.join(root, file))
+    return results
+
+
+@app.get("/search", response_class=JSONResponse)
+async def search_files_endpoint(query: str = Query(...)):
+    """
+    Endpoint to search files across all datasites for a specific query.
+    """
+    # Perform search on the SNAPSHOT_FOLDER recursively
+    all_results = {}
+    datasites = get_datasites(SNAPSHOT_FOLDER)
+    for datasite in datasites:
+        datasite_path = os.path.join(SNAPSHOT_FOLDER, datasite, "public")
+        if os.path.exists(datasite_path):
+            results = search_files(datasite_path, query, use_regex=True)
+            if results:
+                all_results[datasite] = results
+
+    if not all_results:
+        return JSONResponse({"message": "No matching files found."}, status_code=404)
+    
+    # Return results as a JSON response
+    return JSONResponse({"results": all_results})
 
 
 @app.post("/register")
