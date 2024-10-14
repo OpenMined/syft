@@ -35,6 +35,7 @@ from syftbox.client.fsevents import (
     FSWatchdog,
 )
 from syftbox.client.utils.error_reporting import make_error_report
+from syftbox.client.workspace import SyftWorkspace
 from syftbox.lib import (
     DEFAULT_CONFIG_PATH,
     ClientConfig,
@@ -42,7 +43,6 @@ from syftbox.lib import (
     load_or_create_config,
 )
 from syftbox.lib.logger import zip_logs
-from syftbox.lib.workspace import SyftWorkspace
 
 
 class CustomFastAPI(FastAPI):
@@ -472,7 +472,7 @@ def get_syftbox_src_path():
 
 def main() -> None:
     args = parse_args()
-    syft_workspace = SyftWorkspace()
+    syft_workspace = SyftWorkspace(args.sync_folder)
     try:
         syft_workspace.mkdirs()
     except Exception as e:
