@@ -57,7 +57,6 @@ class CustomFastAPI(FastAPI):
 
 
 current_dir = Path(__file__).parent
-syft_workspace = SyftWorkspace()
 # Initialize FastAPI app and scheduler
 templates = Jinja2Templates(directory=str(current_dir / "templates"))
 PLUGINS_DIR = current_dir / "plugins"
@@ -272,7 +271,6 @@ async def lifespan(app: CustomFastAPI, client_config: ClientConfig | None = None
         client_config = load_or_create_config(args, syft_workspace)
         close_client_config = True
     app.shared_state = SharedState(client_config=client_config)
-
     # Clear the lock file on the first run if it exists
     job_file = client_config.config_path.replace(".json", ".sql")
     app.job_file = job_file
@@ -474,7 +472,7 @@ def get_syftbox_src_path():
 
 def main() -> None:
     args = parse_args()
-    syft_workspace = SyftWorkspace(root_dir=args.sync_folder)
+    syft_workspace = SyftWorkspace(args.sync_folder)
     syft_workspace.mkdirs()
     client_config = load_or_create_config(args, syft_workspace)
     error_config = make_error_report(client_config)

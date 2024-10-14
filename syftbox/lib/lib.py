@@ -17,7 +17,7 @@ from threading import Lock
 import httpx
 import requests
 from loguru import logger
-from typing_extensions import Any, Optional, Self
+from typing_extensions import Any, Self
 
 from syftbox.client.const import DEFAULT_PORT, SYFTBOX_SERVER_URL
 from syftbox.client.utils import macos
@@ -525,8 +525,8 @@ def validate_email(email: str) -> bool:
 
 @dataclass
 class ClientConfig(Jsonable):
-    config_path: Path
-    sync_folder: Path | None = None
+    config_path: str
+    sync_folder: str | None = None
     port: int | None = None
     email: str | None = None
     token: int | None = None
@@ -597,7 +597,7 @@ class ClientConfig(Jsonable):
         return Path(full_path)
 
 
-def get_user_input(prompt, default: Optional[str] = None):
+def get_user_input(prompt, default: str | None = None):
     if default:
         prompt = f"{prompt} (default: {default}): "
     user_input = input(prompt).strip()
@@ -615,27 +615,27 @@ def load_or_create_config(
 
     if client_config is None and args.config_path:
         config_path = Path(args.config_path).expanduser().resolve()
-        client_config = ClientConfig(config_path=config_path)
+        client_config = ClientConfig(config_path=str(config_path))
 
     if client_config is None:
         # config_path = get_user_input("Path to config file?", DEFAULT_CONFIG_PATH)
         config_path = Path(args.config_path).expanduser().resolve()
-        client_config = ClientConfig(config_path=config_path)
+        client_config = ClientConfig(config_path=str(config_path))
 
     if args.sync_folder:
         sync_folder = Path(args.sync_folder).expanduser().resolve()
-        client_config.sync_folder = sync_folder
+        client_config.sync_folder = str(sync_folder)
 
     if client_config.sync_folder is None:
         sync_folder = get_user_input(
             "Where do you want to Sync SyftBox to?",
             syft_workspace.root_dir,
         )
-        sync_folder = Path(args.sync_folder).expanduser().resolve()
-        client_config.sync_folder = sync_folder
+        sync_folder = Path(sync_folder).expanduser().resolve()
+        client_config.sync_folder = str(sync_folder)
 
-    if not client_config.sync_folder.exists():
-        client_config.sync_folder.mkdir(parents=True, exist_ok=True)
+    if not Path(client_config.sync_folder).exists():
+        Path(client_config.sync_folder).mkdir(parents=True, exist_ok=True)
 
     if args.server:
         client_config.server_url = args.server

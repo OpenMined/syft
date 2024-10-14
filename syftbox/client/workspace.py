@@ -23,8 +23,10 @@ class SyftWorkspace:
             └── bob@acme.org
     """
 
-    def __init__(self, root_dir: Path | str = DEFAULT_WORKSPACE_DIR):
-        self.root_dir = root_dir
+    def __init__(self, root_dir: Path | str | None = None):
+        if root_dir is None:
+            root_dir = DEFAULT_WORKSPACE_DIR
+        self.root_dir = Path(root_dir).expanduser()
 
         # config dir
         self.config_dir = self.root_dir / "config"
