@@ -1,7 +1,8 @@
-from pathlib import Path
 import os
+from pathlib import Path
 
 from const import ASSETS_FOLDER
+
 
 def find_icon_file(src_folder: str) -> Path:
     """

@@ -1,5 +1,6 @@
 # Handle configuratoin loading and management
 import argparse
+import logging
 import os
 import platform
 from dataclasses import dataclass, field
@@ -16,6 +17,8 @@ from const import (
 )
 
 from syftbox.lib import Jsonable, SyftPermission, validate_email
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
