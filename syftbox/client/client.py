@@ -42,6 +42,7 @@ from syftbox.lib import (
     load_or_create_config,
 )
 from syftbox.lib.logger import zip_logs
+from syftbox.lib.workspace import SyftWorkspace
 
 
 class CustomFastAPI(FastAPI):
@@ -55,20 +56,14 @@ class CustomFastAPI(FastAPI):
 
 
 current_dir = Path(__file__).parent
+syft_workspace = SyftWorkspace()
 # Initialize FastAPI app and scheduler
-
 templates = Jinja2Templates(directory=str(current_dir / "templates"))
-
-
 PLUGINS_DIR = current_dir / "plugins"
 sys.path.insert(0, os.path.dirname(PLUGINS_DIR))
-
 DEFAULT_SYNC_FOLDER = os.path.expanduser("~/Desktop/SyftBox")
-
-
 ASSETS_FOLDER = current_dir.parent / "assets"
 ICON_FOLDER = ASSETS_FOLDER / "icon"
-
 WATCHDOG_IGNORE = ["apps"]
 
 
@@ -477,6 +472,13 @@ def get_syftbox_src_path():
 
 def main() -> None:
     args = parse_args()
+    syft_workspace = SyftWorkspace()
+    try:
+        syft_workspace.mkdirs()
+    except Exception as e:
+        raise Exception(
+            f"Failed to create root directory for SyftBox client {args.email}. Error:{e}"
+        )
     client_config = load_or_create_config(args)
     error_config = make_error_report(client_config)
 
