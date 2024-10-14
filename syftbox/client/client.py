@@ -472,7 +472,7 @@ def get_syftbox_src_path():
 
 def main() -> None:
     args = parse_args()
-    syft_workspace = SyftWorkspace(args.sync_folder)
+    syft_workspace = SyftWorkspace(root_dir=args.sync_folder)
     try:
         syft_workspace.mkdirs()
     except Exception as e:

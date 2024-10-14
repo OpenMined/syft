@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from const import DEFAULT_WORKSPACE_DIR
+from syftbox.client.const import DEFAULT_WORKSPACE_DIR
 
 
 class SyftWorkspace:
