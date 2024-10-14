@@ -2,11 +2,94 @@
 import argparse
 import os
 import platform
+from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
-from syftbox.lib import ClientConfig, validate_email
-from icon import copy_icon_file
-from const import DEFAULT_CONFIG_PATH, DEFAULT_SYNC_FOLDER, ICON_FOLDER, DEFAULT_PORT, DEFAULT_SERVER_URL
+import httpx
+from const import (
+    DEFAULT_CONFIG_PATH,
+    DEFAULT_PORT,
+    DEFAULT_SERVER_URL,
+    DEFAULT_SYNC_FOLDER,
+    ICON_FOLDER,
+)
+
+from syftbox.lib import Jsonable, SyftPermission, validate_email
+
+
+@dataclass
+class ClientConfig(Jsonable):
+    config_path: Path
+    sync_folder: Path | None = None
+    port: int | None = None
+    email: str | None = None
+    token: int | None = None
+    server_url: str = "http://localhost:5001"
+    email_token: str | None = None
+    autorun_plugins: list[str] | None = field(
+        default_factory=lambda: ["init", "create_datasite", "sync", "apps"]
+    )
+    _server_client: httpx.Client | None = None
+
+    @property
+    def is_registered(self) -> bool:
+        return self.token is not None
+
+    @property
+    def server_client(self) -> httpx.Client:
+        if self._server_client is None:
+            self._server_client = httpx.Client(
+                base_url=self.server_url,
+                follow_redirects=True,
+            )
+        return self._server_client
+
+    def close(self):
+        if self._server_client:
+            self._server_client.close()
+
+    def save(self, path: str | None = None) -> None:
+        if path is None:
+            path = self.config_path
+        super().save(path)
+
+    @property
+    def datasite_path(self) -> Path:
+        return Path(self.sync_folder) / self.email
+
+    @property
+    def manifest_path(self) -> Path:
+        return self.datasite_path / "public" / "manifest" / "manifest.json"
+
+    def get_datasites(self: str) -> list[str]:
+        datasites = []
+        folders = Path(self.sync_folder).iterdir()
+        for folder in folders:
+            if "@" in folder:
+                datasites.append(folder)
+        return datasites
+
+    def use(self):
+        os.environ["SYFTBOX_CURRENT_CLIENT"] = self.config_path
+        os.environ["SYFTBOX_SYNC_DIR"] = self.sync_folder
+        logger.info(f"> Setting Sync Dir to: {self.sync_folder}")
+
+    def create_folder(self, path: str, permission: SyftPermission):
+        os.makedirs(path, exist_ok=True)
+        permission.save(path)
+
+    @property
+    def root_dir(self) -> Path:
+        root_dir = Path(os.path.abspath(os.path.dirname(self.file_path) + "/../"))
+        return root_dir
+
+    def create_public_folder(self, path: str):
+        full_path = self.root_dir / path
+        os.makedirs(str(full_path), exist_ok=True)
+        public_read = SyftPermission.mine_with_public_read(email=self.datasite)
+        public_read.save(full_path)
+        return Path(full_path)
 
 
 def get_user_input(prompt: str, default: str | None = None) -> str:
@@ -35,36 +118,57 @@ def parse_args():
         default=DEFAULT_SERVER_URL,
         help="Server",
     )
+    subparsers = parser.add_subparsers(dest="command", help="Sub-command help")
+    start_parser = subparsers.add_parser("report", help="Generate an error report")
+    start_parser.add_argument(
+        "--path",
+        type=str,
+        help="Path to the error report file",
+        default=f"./syftbox_logs_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}",
+    )
+
     return parser.parse_args()
 
 
 def load_or_create_config(args) -> ClientConfig:
-    try:
-        config_path = Path(args.config_path).expanduser().resolve()
-        print(f"Load and save configurations to {config_path}")
-        # Create an empty JSON file if it doesn't exist
-        if not config_path.exists():
-            config_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(config_path, 'w') as f:
-                f.write('{}')
-            print(f"Created empty JSON config file at {config_path}")
-        client_config = ClientConfig(config_path=str(config_path))
-        client_config = ClientConfig.load(str(config_path))
-    except Exception as e:
-        print(f"Error: {e}")
+    syft_config_dir = os.path.abspath(os.path.expanduser("~/.syftbox"))
+    os.makedirs(syft_config_dir, exist_ok=True)
 
+    client_config = None
     try:
-        sync_folder = Path(args.sync_folder).expanduser().resolve()
-        client_config.sync_folder = str(sync_folder)
-        print(f"Sync folder: {sync_folder}")
-    except Exception as e:
-        raise Exception(f"Error constructing sync folder: {e}")
+        client_config = ClientConfig.load(args.config_path)
+    except Exception:
+        pass
 
-    client_config.server_url = args.server
-    print(f"Server: {client_config.server_url}")
+    if client_config is None and args.config_path:
+        config_path = os.path.abspath(os.path.expanduser(args.config_path))
+        client_config = ClientConfig(config_path=config_path)
+
+    if client_config is None:
+        # config_path = get_user_input("Path to config file?", DEFAULT_CONFIG_PATH)
+        config_path = os.path.abspath(os.path.expanduser(config_path))
+        client_config = ClientConfig(config_path=config_path)
+
+    if args.sync_folder:
+        sync_folder = os.path.abspath(os.path.expanduser(args.sync_folder))
+        client_config.sync_folder = sync_folder
+
+    if client_config.sync_folder is None:
+        sync_folder = get_user_input(
+            "Where do you want to Sync SyftBox to?",
+            DEFAULT_SYNC_FOLDER,
+        )
+        sync_folder = os.path.abspath(os.path.expanduser(sync_folder))
+        client_config.sync_folder = sync_folder
+
+    if args.server:
+        client_config.server_url = args.server
+
+    if not os.path.exists(client_config.sync_folder):
+        os.makedirs(client_config.sync_folder, exist_ok=True)
 
     if platform.system() == "Darwin":
-        copy_icon_file(ICON_FOLDER, client_config.sync_folder)
+        macos.copy_icon_file(ICON_FOLDER, client_config.sync_folder)
 
     if args.email:
         client_config.email = args.email
@@ -75,11 +179,20 @@ def load_or_create_config(args) -> ClientConfig:
             raise Exception(f"Invalid email: {email}")
         client_config.email = email
 
-    client_config.port = args.port
+    if args.port:
+        client_config.port = args.port
+
+    if client_config.port is None:
+        port = int(get_user_input("Enter the port to use", DEFAULT_PORT))
+        client_config.port = port
 
     email_token = os.environ.get("EMAIL_TOKEN", None)
     if email_token:
         client_config.email_token = email_token
-    client_config.save(str(config_path))
-    print(f"Save configurations to {config_path}")
+
+    # Migrate Old Server URL to HTTPS
+    if client_config.server_url == "http://20.168.10.234:8080":
+        client_config.server_url = "https://syftbox.openmined.org"
+
+    client_config.save(args.config_path)
     return client_config

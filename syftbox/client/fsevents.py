@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Callable
+from typing import Callable, TypeAlias
 
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
@@ -11,7 +11,7 @@ __all__ = [
     "FileSystemEvent",
 ]
 
-type FSEventCallbacks = list[Callable[[FileSystemEvent], None]]
+FSEventCallbacks: TypeAlias = list[Callable[[FileSystemEvent], None]]
 
 
 class FSWatchdog:

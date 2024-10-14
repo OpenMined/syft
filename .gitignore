@@ -176,3 +176,6 @@ notebooks/crypto
 # syft files
 scheduler.lock
 jobs.sqlite
+
+.vscode
+experimental/

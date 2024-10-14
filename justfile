@@ -25,7 +25,6 @@ alias rs := run-server
 alias rc := run-client
 alias rj := run-jupyter
 alias b := build
-alias d := deploy
 
 # ---------------------------------------------------------------------------------------------------------------------
 
@@ -70,42 +69,55 @@ run-client name port="auto" server="http://localhost:5001":
 
 # ---------------------------------------------------------------------------------------------------------------------
 
+[group('client')]
+run-live-client server="https://syftbox.openmined.org/":
+    #!/bin/bash
+    set -eou pipefail
+
+    # Working directory for client is .clients/<email>
+    CONFIG_DIR=~/.syftbox
+    mkdir -p $CONFIG_DIR
+
+    echo -e "Config Dir : $CONFIG_DIR"
+
+    uv run syftbox/client/client.py --config_path=$CONFIG_DIR/client_config.json --server={{ server }}
+
+# ---------------------------------------------------------------------------------------------------------------------
+
+# Run a local syftbox app command
+[group('app')]
+run-app name command subcommand="":
+    #!/bin/bash
+    set -eou pipefail
+
+    # generate a local email from name, but if it looks like an email, then use it as is
+    EMAIL="{{ name }}@openmined.org"
+    if [[ "{{ name }}" == *@*.* ]]; then EMAIL="{{ name }}"; fi
+
+    # Working directory for client is .clients/<email>
+    CONFIG_DIR=.clients/$EMAIL/config
+    SYNC_DIR=.clients/$EMAIL/sync
+    mkdir -p $CONFIG_DIR $SYNC_DIR
+
+    echo -e "Config Dir : $CONFIG_DIR"
+
+    uv run syftbox/main.py app {{ command }} {{ subcommand }} --config_path=$CONFIG_DIR/config.json
+
+# ---------------------------------------------------------------------------------------------------------------------
+
 # Build syftbox wheel
 [group('build')]
 build:
     rm -rf dist
     uv build
 
-# Build & Deploy syftbox to a remote server using SSH
-[group('build')]
-deploy keyfile remote="azureuser@20.168.10.234": build
-    #!/bin/bash
-    set -eou pipefail
 
-    # there will be only one wheel file in the dist directory, but you never know...
-    LOCAL_WHEEL=$(ls dist/*.whl | grep syftbox | head -n 1)
-
-    # Remote paths to copy the wheel to
-    REMOTE_DIR="~"
-    REMOTE_WHEEL="$REMOTE_DIR/$(basename $LOCAL_WHEEL)"
-
-    echo -e "Deploying {{ _cyan }}$LOCAL_WHEEL{{ _nc }} to {{ _green }}{{ remote }}:$REMOTE_WHEEL{{ _nc }}"
-
-    # change permissions to comply with ssh/scp
-    chmod 600 {{ keyfile }}
-
-    # Use scp to transfer the file to the remote server
-    scp -i {{ keyfile }} "$LOCAL_WHEEL" "{{ remote }}:$REMOTE_DIR"
-
-    # install pip package
-    ssh -i {{ keyfile }} {{ remote }} "pip install --break-system-packages $REMOTE_WHEEL --force"
-
-    # restart service
-    # TODO - syftbox service was created manually on 20.168.10.234
-    ssh -i {{ keyfile }} {{ remote }} "sudo systemctl daemon-reload"
-    ssh -i {{ keyfile }} {{ remote }} "sudo systemctl restart syftbox"
-
-    echo -e "{{ _green }}Deploy successful!{{ _nc }}"
+# Build syftbox wheel
+[group('install')]
+install:
+    rm -rf dist
+    uv build
+    uv tool install $(ls /Users/madhavajay/dev/syft/dist/*.whl) --reinstall
 
 # Bump version, commit and tag
 [group('build')]
@@ -137,9 +149,59 @@ bump-version level="patch":
 
 # ---------------------------------------------------------------------------------------------------------------------
 
+# Build & Deploy syftbox to a remote server using SSH
+[group('deploy')]
+upload-dev keyfile remote="user@0.0.0.0": build
+    #!/bin/bash
+    set -eou pipefail
+
+    # there will be only one wheel file in the dist directory, but you never know...
+    LOCAL_WHEEL=$(ls dist/*.whl | grep syftbox | head -n 1)
+
+    # Remote paths to copy the wheel to
+    REMOTE_DIR="~"
+    REMOTE_WHEEL="$REMOTE_DIR/$(basename $LOCAL_WHEEL)"
+
+    echo -e "Deploying {{ _cyan }}$LOCAL_WHEEL{{ _nc }} to {{ _green }}{{ remote }}:$REMOTE_WHEEL{{ _nc }}"
+
+    # change permissions to comply with ssh/scp
+    chmod 600 {{ keyfile }}
+
+    # Use scp to transfer the file to the remote server
+    scp -i {{ keyfile }} "$LOCAL_WHEEL" "{{ remote }}:$REMOTE_DIR"
+
+    # install pip package
+    ssh -i {{ keyfile }} {{ remote }} "uv venv && uv pip install $REMOTE_WHEEL"
+
+    # restart service
+    # NOTE - syftbox service is created manually on the remote server
+    ssh -i {{ keyfile }} {{ remote }} "sudo systemctl daemon-reload && sudo systemctl restart syftbox"
+    echo -e "{{ _green }}Deployed SyftBox local wheel to {{ remote }}{{ _nc }}"
+
+# Deploy syftbox from pypi to a remote server using SSH
+[group('deploy')]
+upload-pip version keyfile remote="user@0.0.0.0":
+    #!/bin/bash
+    set -eou pipefail
+
+    # change permissions to comply with ssh/scp
+    chmod 600 {{ keyfile }}
+
+    echo -e "Deploying syftbox version {{ version }} to {{ remote }}..."
+
+    # install pip package
+    ssh -i {{ keyfile }} {{ remote }} "uv venv && uv pip install syftbox=={{ version }}"
+
+    # restart service
+    ssh -i {{ keyfile }} {{ remote }} "sudo systemctl daemon-reload && sudo systemctl restart syftbox"
+
+    echo -e "{{ _green }}Deployed SyftBox {{ version }} to {{ remote }}{{ _nc }}"
+
+# ---------------------------------------------------------------------------------------------------------------------
+
 [group('utils')]
-ssh keyfile remote="azureuser@20.168.10.234":
-    ssh -i {{ keyfile }} remote
+ssh keyfile remote="user@0.0.0.0":
+    ssh -i {{ keyfile }} {{ remote }}
 
 # remove all local files & directories
 [group('utils')]

@@ -17,6 +17,15 @@ on:
         type: boolean
         default: false
 
+      skip_tests:
+        description: "If true, skip pre-release tests"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
 # Prevents concurrent runs of the same workflow
 # while the previous run is still in progress
 concurrency:
@@ -24,10 +33,22 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  call-pr-tests:
+    if: ${{ inputs.skip_tests == 'false' }}
+    uses: ./.github/workflows/pr-tests.yaml
+
   deploy-syftbox:
-    runs-on: ubuntu-latest
+    needs: [call-pr-tests]
+    # runs-on: ubuntu-latest
+    runs-on: syftbox-sh-linux-x64
 
     steps:
+      - name: Install Git
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install git -y
+
       - name: Checkout SyftBox repo with github token
         uses: actions/checkout@v4
         with:
@@ -70,4 +91,4 @@ jobs:
       - name: Push changes to SyftBox repo
         if: ${{ inputs.test_bump == false }}
         run: |
-          git push origin main
+          git push origin

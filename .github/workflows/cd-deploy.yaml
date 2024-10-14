@@ -1,0 +1,46 @@
+name: CD - Deploy SyftBox Server
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "SyftBox Version to deploy"
+        type: string
+        default: 0.1.4
+
+# Prevents concurrent runs of the same workflow
+# while the previous run is still in progress
+concurrency:
+  group: "CD - Deploy SyftBox Server"
+  cancel-in-progress: false
+
+jobs:
+  deploy-syftbox-server:
+    # runs-on: ubuntu-latest
+    runs-on: syftbox-sh-linux-x64
+
+    steps:
+      - name: Install Git
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install git -y
+
+      - name: Checkout SyftBox repo
+        uses: actions/checkout@v4
+
+      - name: Install Just
+        uses: extractions/setup-just@v2
+        with:
+          just-version: "1.36.0"
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SYFTBOX_SERVER_PRIVATE_KEY }}" > ~/.ssh/syftbox.pem
+          chmod 600 ~/.ssh/syftbox.pem
+          ssh-keyscan -H "172.210.40.183" >> ~/.ssh/known_hosts
+
+      - name: Deploy SyftBox Server
+        run: |
+          just upload-pip ${{ inputs.version }} ~/.ssh/syftbox.pem azureuser@172.210.40.183

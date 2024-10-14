@@ -1,7 +1,12 @@
+import json
 import logging
 import os
 import shutil
 import subprocess
+import threading
+from types import SimpleNamespace
+
+from typing_extensions import Any
 
 from syftbox.lib import (
     SyftPermission,
@@ -41,10 +46,10 @@ def find_and_run_script(task_path, extra_args):
                 env=env,
             )
 
-            # print("✅ Script run.sh executed successfully.")
+            # logger.info("✅ Script run.sh executed successfully.")
             return result
         except Exception as e:
-            print("Error running shell script", e)
+            logger.info("Error running shell script", e)
     else:
         raise FileNotFoundError(f"run.sh not found in {task_path}")
 
@@ -53,7 +58,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_SCHEDULE = 10000
 DESCRIPTION = "Runs Apps"
-
+RUNNING_APPS = {}
 DEFAULT_APPS_PATH = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "..", "..", "default_apps")
 )
@@ -61,7 +66,7 @@ DEFAULT_APPS_PATH = os.path.abspath(
 
 def copy_default_apps(apps_path):
     if not os.path.exists(DEFAULT_APPS_PATH):
-        print(f"Default apps directory not found: {DEFAULT_APPS_PATH}")
+        logger.info(f"Default apps directory not found: {DEFAULT_APPS_PATH}")
         return
 
     for app in os.listdir(DEFAULT_APPS_PATH):
@@ -70,11 +75,31 @@ def copy_default_apps(apps_path):
 
         if os.path.isdir(src_app_path):
             if os.path.exists(dst_app_path):
-                print(f"App already installed at: {dst_app_path}")
+                logger.info(f"App already installed at: {dst_app_path}")
                 # shutil.rmtree(dst_app_path)
             else:
                 shutil.copytree(src_app_path, dst_app_path)
-            print(f"Copied default app: {app}")
+            logger.info(f"Copied default app: {app}")
+
+
+def dict_to_namespace(data) -> SimpleNamespace | list | Any:
+    if isinstance(data, dict):
+        return SimpleNamespace(
+            **{key: dict_to_namespace(value) for key, value in data.items()}
+        )
+    elif isinstance(data, list):
+        return [dict_to_namespace(item) for item in data]
+    else:
+        return data
+
+
+def load_config(path: str) -> None | SimpleNamespace:
+    try:
+        with open(path, "r") as f:
+            data = json.load(f)
+        return dict_to_namespace(data)
+    except Exception:
+        return None
 
 
 def run_apps(client_config):
@@ -90,18 +115,29 @@ def run_apps(client_config):
     if os.path.exists(file_path):
         perm_file = SyftPermission.load(file_path)
     else:
-        print(f"> {client_config.email} Creating Apps Permfile")
+        logger.info(f"> {client_config.email} Creating Apps Permfile")
         try:
             perm_file = SyftPermission.datasite_default(client_config.email)
             perm_file.save(file_path)
         except Exception as e:
-            print("Failed to create perm file", e)
+            logger.error("Failed to create perm file")
+            logger.exception(e)
 
     apps = os.listdir(apps_path)
     for app in apps:
         app_path = os.path.abspath(apps_path + "/" + app)
         if os.path.isdir(app_path):
-            run_app(client_config, app_path)
+            app_config = load_config(app_path + "/" + "config.json")
+            if app_config is None:
+                run_app(client_config, app_path)
+            elif RUNNING_APPS.get(app, None) is None:
+                logger.info("⏱  Scheduling a  new app run.")
+                thread = threading.Thread(
+                    target=run_custom_app_config,
+                    args=(client_config, app_config, app_path),
+                )
+                thread.start()
+                RUNNING_APPS[app] = thread
 
 
 def output_published(app_output, published_output) -> bool:
@@ -112,27 +148,51 @@ def output_published(app_output, published_output) -> bool:
     )
 
 
+def run_custom_app_config(client_config, app_config, path):
+    import time
+
+    env = os.environ.copy()  # Copy the current environment
+    app_name = os.path.basename(path)
+
+    app_envs = getattr(app_config.app, "env", {})
+    if not isinstance(app_envs, dict):
+        app_envs = vars(app_envs)
+
+    env.update(app_envs)
+    while True:
+        logger.info(f"👟 Running {app_name}")
+        _ = subprocess.run(
+            app_config.app.run.command,
+            cwd=path,
+            check=True,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        time.sleep(int(app_config.app.run.interval))
+
+
 def run_app(client_config, path):
     app_name = os.path.basename(path)
 
     extra_args = []
     try:
-        print(f"👟 Running {app_name} app", end="")
+        logger.info(f"👟 Running {app_name} app", end="")
         result = find_and_run_script(path, extra_args)
         if hasattr(result, "returncode"):
             if "Already generated" not in str(result.stdout):
-                print("\n")
-                print(result.stdout)
+                logger.info("\n")
+                logger.info(result.stdout)
             else:
-                print(" - no change")
+                logger.info(" - no change")
             exit_code = result.returncode
             if exit_code != 0:
-                print(f"Error running: {app_name}", result.stdout, result.stderr)
+                logger.info(f"Error running: {app_name}", result.stdout, result.stderr)
     except Exception as e:
-        print(f"Failed to run. {e}")
+        logger.info(f"Failed to run. {e}")
 
 
 def run(shared_state):
-    # print("> Running Apps")
+    # logger.info("> Running Apps")
     client_config = shared_state.client_config
     run_apps(client_config)

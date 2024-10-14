@@ -27,6 +27,7 @@ class SyftWorkspace:
 
         # config dir
         self.config_dir = self.root_dir / "config"
+        self.logs_dir = self.config_dir / "logs"
 
         # plugins dir
         self.plugins_dir = self.root_dir / "plugins"
@@ -38,6 +39,7 @@ class SyftWorkspace:
 
     def mkdirs(self):
         self.config_dir.mkdir(parents=True, exist_ok=True)
+        self.logs_dir.mkdir(parents=True, exist_ok=True)
         self.sync_dir.mkdir(parents=True, exist_ok=True)
         self.datasites_dir.mkdir(parents=True, exist_ok=True)
         self.plugins_dir.mkdir(parents=True, exist_ok=True)

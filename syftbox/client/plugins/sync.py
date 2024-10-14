@@ -1,18 +1,14 @@
 import os
-import traceback
 from collections import defaultdict
 from datetime import datetime
 from threading import Event
-from typing import Tuple
 
-import requests
+from loguru import logger
 from watchdog.events import DirModifiedEvent
 
+from syftbox.client.config import ClientConfig
 from syftbox.lib import (
     DirState,
-    FileChange,
-    FileChangeKind,
-    FileInfo,
     PermissionTree,
     ResettableTimer,
     bintostr,
@@ -20,6 +16,7 @@ from syftbox.lib import (
     hash_dir,
     strtobin,
 )
+from syftbox.server.models import FileChange, FileChangeKind
 
 CLIENT_CHANGELOG_FOLDER = "syft_changelog"
 CLIENT_APPS = "apps"
@@ -27,7 +24,7 @@ STAGING = "staging"
 IGNORE_FOLDERS = [CLIENT_CHANGELOG_FOLDER, STAGING, CLIENT_APPS]
 
 
-def get_ignore_rules(dir_state: DirState) -> Tuple[str, str, str]:
+def get_ignore_rules(dir_state: DirState) -> list[str, str, str]:
     # get the ignore files
     syft_ignore_files = []
     folder_path = dir_state.sync_folder + "/" + dir_state.sub_path
@@ -57,7 +54,7 @@ def filter_ignore_files(dir_state: DirState) -> DirState:
         for afile, file_info in dir_state.tree.items():
             full_path = folder_path + "/" + afile
             if full_path.startswith(rule_prefix):
-                # print("> File ignored by .syftignore", afile, ignore_rule)
+                # logger.info("> File ignored by .syftignore", afile, ignore_rule)
                 if afile in pruned_tree:
                     del pruned_tree[afile]
 
@@ -100,7 +97,7 @@ def remove_empty_folders(leaf, current_path, root_dir):
 
 
 # write operations
-def diff_dirstate(old, new):
+def diff_dirstate(old: DirState, new: DirState):
     sync_folder = old.sync_folder
     old_sub_path = old.sub_path
     try:
@@ -117,7 +114,7 @@ def diff_dirstate(old, new):
                     kind = FileChangeKind.WRITE
                 else:
                     pass
-                    # print(
+                    # logger.info(
                     #     old_sub_path,
                     #     afile,
                     #     f"> 🔥 File hash eq=={old_file_info.file_hash == file_info.file_hash} "
@@ -157,12 +154,12 @@ def diff_dirstate(old, new):
                     )
                     changes.append(change)
                 else:
-                    print(
+                    logger.info(
                         f"🔥 Skipping delete {file_info}. File change is < 3 seconds ago"
                     )
         return changes
     except Exception as e:
-        print("Error in diff_dirstate", str(e))
+        logger.info("Error in diff_dirstate", str(e))
         raise e
 
 
@@ -238,13 +235,15 @@ def filter_changes(
     return valid_changes, valid_change_files, invalid_changes
 
 
-def push_changes(client_config, changes):
+def push_changes(
+    client_config: ClientConfig, changes: list[FileChange]
+) -> list[FileChange]:
     written_changes = []
     for change in changes:
         try:
             data = {
                 "email": client_config.email,
-                "change": change.to_dict(),
+                "change": change.model_dump(mode="json"),
             }
             if change.kind_write:
                 if os.path.isdir(change.full_path):
@@ -257,8 +256,8 @@ def push_changes(client_config, changes):
                 # no data for delete operations
                 pass
 
-            response = requests.post(
-                f"{client_config.server_url}/write",
+            response = client_config.server_client.post(
+                "/write",
                 json=data,
             )
             write_response = response.json()
@@ -269,29 +268,29 @@ def push_changes(client_config, changes):
                 if "accepted" in write_response and write_response["accepted"]:
                     written_changes.append(ok_change)
                 else:
-                    print("> 🔥 Rejected change", ok_change)
+                    logger.info("> 🔥 Rejected change", ok_change)
             else:
-                print(
+                logger.info(
                     f"> {client_config.email} FAILED /write {change.kind} {change.internal_path}",
                 )
         except Exception as e:
-            print(
+            logger.info(
                 f"Failed to call /write on the server for {change.internal_path}",
                 str(e),
             )
     return written_changes
 
 
-def pull_changes(client_config, changes):
+def pull_changes(client_config, changes: list[FileChange]):
     remote_changes = []
     for change in changes:
         try:
             data = {
                 "email": client_config.email,
-                "change": change.to_dict(),
+                "change": change.model_dump(mode="json"),
             }
-            response = requests.post(
-                f"{client_config.server_url}/read",
+            response = client_config.server_client.post(
+                "/read",
                 json=data,
             )
             read_response = response.json()
@@ -310,19 +309,20 @@ def pull_changes(client_config, changes):
             if response.status_code == 200:
                 remote_changes.append((ok_change, data))
             else:
-                print(
+                logger.info(
                     f"> {client_config.email} FAILED /read {change.kind} {change.internal_path}",
                 )
         except Exception as e:
-            print("Failed to call /read on the server", str(e))
+            logger.error("Failed to call /read on the server")
+            logger.exception(e)
     return remote_changes
 
 
-def list_datasites(client_config):
+def list_datasites(client_config: ClientConfig):
     datasites = []
     try:
-        response = requests.get(
-            f"{client_config.server_url}/list_datasites",
+        response = client_config.server_client.get(
+            "/list_datasites",
         )
         read_response = response.json()
         remote_datasites = read_response["datasites"]
@@ -330,35 +330,44 @@ def list_datasites(client_config):
         if response.status_code == 200:
             datasites = remote_datasites
         else:
-            print(f"> {client_config.email} FAILED /list_datasites")
+            logger.info(f"> {client_config.email} FAILED /list_datasites")
     except Exception as e:
-        print("Failed to call /list_datasites on the server", str(e))
+        logger.error("Failed to call /list_datasites on the server")
+        logger.exception(e)
     return datasites
 
 
-def get_remote_state(client_config, sub_path: str):
+def get_remote_state(client_config: ClientConfig, sub_path: str):
     try:
         data = {
             "email": client_config.email,
             "sub_path": sub_path,
         }
 
-        response = requests.post(
-            f"{client_config.server_url}/dir_state",
+        response = client_config.server_client.post(
+            "/dir_state",
             json=data,
         )
         state_response = response.json()
         if response.status_code == 200:
-            dir_state = DirState(**state_response["dir_state"])
-            fix_tree = {}
-            for key, value in dir_state.tree.items():
-                fix_tree[key] = FileInfo(**value)
-            dir_state.tree = fix_tree
-            return dir_state
-        print(f"> {client_config.email} FAILED /dir_state: {sub_path}")
+            if isinstance(state_response, dict) and "dir_state" in state_response:
+                dir_state = DirState(**state_response["dir_state"])
+                fix_tree = {}
+                for key, value in dir_state.tree.items():
+                    fix_tree[key] = value
+                dir_state.tree = fix_tree
+                return dir_state
+            else:
+                logger.info(
+                    "/dir_state returned a bad result",
+                    type(state_response),
+                    state_response,
+                )
+        logger.info(f"> {client_config.email} FAILED /dir_state: {sub_path}")
         return None
     except Exception as e:
-        print("Failed to call /dir_state on the server", str(e))
+        logger.error("Failed to call /dir_state on the server")
+        logger.exception(e)
 
 
 def create_datasites(client_config):
@@ -404,7 +413,9 @@ def handle_empty_folders(client_config, datasite):
     return changes
 
 
-def filter_changes_ignore(pre_filter_changes, syft_ignore_files):
+def filter_changes_ignore(
+    pre_filter_changes: list[FileChange], syft_ignore_files
+) -> list[FileChange]:
     filtered_changes = []
     for change in pre_filter_changes:
         keep = True
@@ -418,7 +429,7 @@ def filter_changes_ignore(pre_filter_changes, syft_ignore_files):
     return filtered_changes
 
 
-def sync_up(client_config):
+def sync_up(client_config: ClientConfig):
     # create a folder to store the change log
     change_log_folder = f"{client_config.sync_folder}/{CLIENT_CHANGELOG_FOLDER}"
     os.makedirs(change_log_folder, exist_ok=True)
@@ -443,7 +454,7 @@ def sync_up(client_config):
             old_dir_state = DirState.load(dir_filename)
             fix_tree = {}
             for key, value in old_dir_state.tree.items():
-                fix_tree[key] = FileInfo(**value)
+                fix_tree[key] = value
             old_dir_state.tree = fix_tree
         except Exception:
             pass
@@ -545,7 +556,7 @@ def sync_down(client_config) -> int:
 
         remote_dir_state = get_remote_state(client_config, datasite)
         if not remote_dir_state:
-            # print(f"No remote state for dir: {datasite}")
+            # logger.info(f"No remote state for dir: {datasite}")
             continue
 
         pre_filter_changes = diff_dirstate(new_dir_state, remote_dir_state)
@@ -621,7 +632,7 @@ def sync_down(client_config) -> int:
             change_text += ascii_for_change(deleted_files)
 
         if len(change_text) > 0:
-            print(change_text)
+            logger.info(change_text)
 
         synced_dir_state.save(dir_filename)
         n_changes += len(changed_files) + len(deleted_files)
@@ -643,33 +654,34 @@ def do_sync(shared_state):
                 try:
                     create_datasites(shared_state.client_config)
                 except Exception as e:
-                    traceback.print_exc()
-                    print("failed to get_datasites", e)
+                    logger.error("failed to get_datasites", e)
+                    logger.exception(e)
 
                 try:
                     if SYNC_UP_ENABLED:
                         num_changes += sync_up(shared_state.client_config)
                     else:
-                        print("❌ Sync Up Disabled")
+                        logger.info("❌ Sync Up Disabled")
                 except Exception as e:
-                    traceback.print_exc()
-                    print("failed to sync up", e)
+                    logger.error("failed to sync up", e)
+                    logger.exception(e)
 
                 try:
                     if SYNC_DOWN_ENABLED:
                         num_changes += sync_down(shared_state.client_config)
                     else:
-                        print("❌ Sync Down Disabled")
+                        logger.info("❌ Sync Down Disabled")
                 except Exception as e:
-                    traceback.print_exc()
-                    print("failed to sync down", e)
+                    logger.error("failed to sync down", e)
+                    logger.exception(e)
             if num_changes == 0:
                 if event_length:
-                    print(f"✅ Synced {event_length} File Events")
+                    logger.info(f"✅ Synced {event_length} File Events")
                 else:
-                    print("✅ Synced due to Timer")
+                    logger.info("✅ Synced due to Timer")
     except Exception as e:
-        print("Failed to run plugin", e)
+        logger.error("Failed to run plugin")
+        logger.exception(e)
 
 
 FLUSH_SYNC_TIMEOUT = 0.5

@@ -2,13 +2,25 @@ import json
 import os
 from pathlib import Path
 
-from syftbox.lib import ClientConfig
+from syftbox.client.config import ClientConfig
 
 config_path = os.environ.get("SYFTBOX_CLIENT_CONFIG_PATH", None)
 client_config = ClientConfig.load(config_path)
 
-input_folder = Path(client_config.sync_folder) / client_config.email / "app_pipelines" / "adder" / "inputs"
-output_folder = Path(client_config.sync_folder) / client_config.email / "app_pipelines" / "adder" / "done"
+input_folder = (
+    Path(client_config.sync_folder)
+    / client_config.email
+    / "app_pipelines"
+    / "adder"
+    / "inputs"
+)
+output_folder = (
+    Path(client_config.sync_folder)
+    / client_config.email
+    / "app_pipelines"
+    / "adder"
+    / "done"
+)
 input_folder.mkdir(parents=True, exist_ok=True)
 output_folder.mkdir(parents=True, exist_ok=True)
 

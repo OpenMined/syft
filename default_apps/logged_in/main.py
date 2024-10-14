@@ -2,7 +2,7 @@ import json
 import os
 from datetime import datetime
 
-from syftbox.lib import ClientConfig
+from syftbox.client.config import ClientConfig
 
 
 def main():
