@@ -24,7 +24,7 @@ class SyftWorkspace:
     """
 
     def __init__(self, root_dir: Path | str = DEFAULT_WORKSPACE_DIR):
-        self.root_dir = Path(root_dir).expanduser()
+        self.root_dir = root_dir
 
         # config dir
         self.config_dir = self.root_dir / "config"

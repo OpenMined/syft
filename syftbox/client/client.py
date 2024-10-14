@@ -61,7 +61,6 @@ syft_workspace = SyftWorkspace()
 templates = Jinja2Templates(directory=str(current_dir / "templates"))
 PLUGINS_DIR = current_dir / "plugins"
 sys.path.insert(0, os.path.dirname(PLUGINS_DIR))
-DEFAULT_SYNC_FOLDER = os.path.expanduser("~/Desktop/SyftBox")
 ASSETS_FOLDER = current_dir.parent / "assets"
 ICON_FOLDER = ASSETS_FOLDER / "icon"
 WATCHDOG_IGNORE = ["apps"]
@@ -267,7 +266,9 @@ async def lifespan(app: CustomFastAPI, client_config: ClientConfig | None = None
     close_client_config: bool = False
     if client_config is None:
         args = parse_args()
-        client_config = load_or_create_config(args)
+        syft_workspace = SyftWorkspace(root_dir=args.sync_folder)
+        syft_workspace.mkdirs()
+        client_config = load_or_create_config(args, syft_workspace)
         close_client_config = True
     app.shared_state = SharedState(client_config=client_config)
 
@@ -473,13 +474,8 @@ def get_syftbox_src_path():
 def main() -> None:
     args = parse_args()
     syft_workspace = SyftWorkspace(root_dir=args.sync_folder)
-    try:
-        syft_workspace.mkdirs()
-    except Exception as e:
-        raise Exception(
-            f"Failed to create root directory for SyftBox client {args.email}. Error:{e}"
-        )
-    client_config = load_or_create_config(args)
+    syft_workspace.mkdirs()
+    client_config = load_or_create_config(args, syft_workspace)
     error_config = make_error_report(client_config)
 
     if args.command == "report":

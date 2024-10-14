@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import base64
 import hashlib
 import json
@@ -18,7 +19,9 @@ import requests
 from loguru import logger
 from typing_extensions import Any, Optional, Self
 
+from syftbox.client.const import DEFAULT_PORT
 from syftbox.client.utils import macos
+from syftbox.client.workspace import SyftWorkspace
 from syftbox.server.models import (
     DirState,
     FileInfo,
@@ -28,9 +31,7 @@ from syftbox.server.models import (
 
 current_dir = Path(__file__).parent
 ASSETS_FOLDER = current_dir.parent / "assets"
-DEFAULT_PORT = 8082
 ICON_FOLDER = ASSETS_FOLDER / "icon"
-DEFAULT_SYNC_FOLDER = os.path.expanduser("~/Desktop/SyftBox")
 DEFAULT_CONFIG_FOLDER = os.path.expanduser("~/.syftbox")
 DEFAULT_CONFIG_PATH = os.path.join(DEFAULT_CONFIG_FOLDER, "client_config.json")
 DEFAULT_LOGS_PATH = os.path.join(DEFAULT_CONFIG_FOLDER, "logs", "syftbox.log")
@@ -603,10 +604,9 @@ def get_user_input(prompt, default: Optional[str] = None):
     return user_input if user_input else default
 
 
-def load_or_create_config(args) -> ClientConfig:
-    syft_config_dir = os.path.abspath(os.path.expanduser("~/.syftbox"))
-    os.makedirs(syft_config_dir, exist_ok=True)
-
+def load_or_create_config(
+    args: argparse.Namespace, syft_workspace: SyftWorkspace
+) -> ClientConfig:
     client_config = None
     try:
         client_config = ClientConfig.load(args.config_path)
@@ -629,7 +629,7 @@ def load_or_create_config(args) -> ClientConfig:
     if client_config.sync_folder is None:
         sync_folder = get_user_input(
             "Where do you want to Sync SyftBox to?",
-            DEFAULT_SYNC_FOLDER,
+            syft_workspace.config_dir,
         )
         sync_folder = os.path.abspath(os.path.expanduser(sync_folder))
         client_config.sync_folder = sync_folder
