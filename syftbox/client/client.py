@@ -29,6 +29,7 @@ from pydantic import BaseModel
 from typing_extensions import Any
 
 from syftbox import __version__
+from syftbox.client.const import DEFAULT_PORT, SYFTBOX_SERVER_URL
 from syftbox.client.fsevents import (
     AnyFileSystemEventHandler,
     FileSystemEvent,
@@ -219,11 +220,11 @@ def parse_args():
     )
     parser.add_argument("--sync_folder", type=str, help="sync folder path")
     parser.add_argument("--email", type=str, help="email")
-    parser.add_argument("--port", type=int, default=8080, help="Port number")
+    parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="Port number")
     parser.add_argument(
         "--server",
         type=str,
-        default="https://syftbox.openmined.org",
+        default=SYFTBOX_SERVER_URL,
         help="Server",
     )
     subparsers = parser.add_subparsers(dest="command", help="Sub-command help")
