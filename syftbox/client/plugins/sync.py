@@ -445,8 +445,8 @@ def filter_changes_ignore(
 
 def sync_up(client_config: ClientConfig):
     # create a folder to store the change log
-    change_log_folder = f"{client_config.sync_folder}/{CLIENT_CHANGELOG_FOLDER}"
-    os.makedirs(change_log_folder, exist_ok=True)
+    change_log_folder = f"{client_config._workspace.root_dir}/{CLIENT_CHANGELOG_FOLDER}"
+    Path(change_log_folder).mkdir(parents=True, exist_ok=True)
 
     # get all the datasites
     datasites = get_datasites(client_config._workspace.datasites_dir)
@@ -542,7 +542,7 @@ def sync_up(client_config: ClientConfig):
 
 def sync_down(client_config: ClientConfig) -> int:
     # create a folder to store the change log
-    change_log_folder = f"{client_config.sync_folder}/{CLIENT_CHANGELOG_FOLDER}"
+    change_log_folder = f"{client_config._workspace.root_dir}/{CLIENT_CHANGELOG_FOLDER}"
     Path(change_log_folder).mkdir(parents=True, exist_ok=True)
 
     n_changes = 0
@@ -589,14 +589,13 @@ def sync_down(client_config: ClientConfig) -> int:
                 fetch_files.append(change)
 
         results = pull_changes(client_config, fetch_files)
-
         # make writes
         changed_files = []
         for change, data in results:
-            change.sync_folder = client_config.sync_folder
+            change.sync_folder = str(client_config._workspace.datasites_dir)
             if change.kind_write:
                 if data is None:  # This is an empty directory
-                    os.makedirs(change.full_path, exist_ok=True)
+                    Path(change.full_path).mkdir(parents=True, exist_ok=True)
                     changed_files.append(change.internal_path)
                 else:
                     result = change.write(data)
@@ -606,7 +605,7 @@ def sync_down(client_config: ClientConfig) -> int:
         # delete local files dont need the server
         deleted_files = []
         for change in changes:
-            change.sync_folder = client_config.sync_folder
+            change.sync_folder = str(client_config._workspace.datasites_dir)
             if change.kind_delete:
                 # perm_file_at_path = perm_tree.permission_for_path(change.sub_path)
                 # if client_config.email in perm_file_at_path.admin:
@@ -623,7 +622,9 @@ def sync_down(client_config: ClientConfig) -> int:
             add_to_folder_tree(folder_tree, folders)
 
         # Remove empty folders, starting from the root directory
-        remove_empty_folders(folder_tree, "/", root_dir=client_config.sync_folder)
+        remove_empty_folders(
+            folder_tree, "/", root_dir=client_config._workspace.datasites_dir
+        )
 
         synced_dir_state = prune_invalid_changes(new_dir_state, changed_files)
 

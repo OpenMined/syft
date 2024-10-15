@@ -1,6 +1,7 @@
 import hashlib
 import os
 from enum import Enum
+from pathlib import Path
 
 from loguru import logger
 from pydantic import BaseModel
@@ -50,11 +51,11 @@ class FileChange(SyftBaseModel):
 
     @property
     def full_path(self) -> str:
-        return self.sync_folder + "/" + self.parent_path + "/" + self.sub_path
+        return str(Path(self.sync_folder) / self.parent_path / self.sub_path)
 
     @property
     def internal_path(self) -> str:
-        return self.parent_path + "/" + self.sub_path
+        return str(Path(self.parent_path) / self.sub_path)
 
     def hash_equal_or_none(self) -> bool:
         if not os.path.exists(self.full_path):
@@ -124,8 +125,8 @@ class FileChange(SyftBaseModel):
         return False
 
     def write_to(self, data: bytes, path: str) -> bool:
-        base_dir = os.path.dirname(path)
-        os.makedirs(base_dir, exist_ok=True)
+        base_dir = Path(path).parent
+        base_dir.mkdir(parents=True, exist_ok=True)
         try:
             with open(path, "wb") as f:
                 f.write(data)
