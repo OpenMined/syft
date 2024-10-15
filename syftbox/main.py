@@ -1,5 +1,7 @@
 import argparse
+import os
 import sys
+from pathlib import Path
 
 from loguru import logger
 
@@ -95,6 +97,10 @@ def main():
         "debug", help="Show SyftBox debug info", description="Shows the debug info"
     )
 
+    app_parser = subparsers.add_parser(
+        "path", help="Get Syftbox Import Path", description="Prints the python path"
+    )
+
     args, remaining_args = parser.parse_known_args()
 
     if args.command == "client":
@@ -112,6 +118,9 @@ def main():
         print(__version__)
     elif args.command == "debug":
         logger.info_debug()
+    elif args.command == "path":
+        current_dir = Path(__file__).parent.parent
+        print(os.path.abspath(current_dir))
     else:
         parser.print_help()
 

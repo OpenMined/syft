@@ -268,7 +268,7 @@ def push_changes(
                 if "accepted" in write_response and write_response["accepted"]:
                     written_changes.append(ok_change)
                 else:
-                    logger.info("> 🔥 Rejected change", ok_change)
+                    logger.info(f"> 🔥 Rejected change: {change.full_path}", ok_change)
             else:
                 logger.info(
                     f"> {client_config.email} FAILED /write {change.kind} {change.internal_path}",
@@ -348,7 +348,12 @@ def get_remote_state(client_config: ClientConfig, sub_path: str):
             "/dir_state",
             json=data,
         )
-        state_response = response.json()
+        try:
+            state_response = response.json()
+        except Exception as e:
+            print("/dir_state response Not JSON:", response.text)
+            raise e
+
         if response.status_code == 200:
             if isinstance(state_response, dict) and "dir_state" in state_response:
                 dir_state = DirState(**state_response["dir_state"])

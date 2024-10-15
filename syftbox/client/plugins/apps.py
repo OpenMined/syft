@@ -1,11 +1,11 @@
 import json
-import logging
 import os
 import shutil
 import subprocess
 import threading
 from types import SimpleNamespace
 
+from loguru import logger
 from typing_extensions import Any
 
 from syftbox.lib import (
@@ -53,8 +53,6 @@ def find_and_run_script(task_path, extra_args):
     else:
         raise FileNotFoundError(f"run.sh not found in {task_path}")
 
-
-logger = logging.getLogger(__name__)
 
 DEFAULT_SCHEDULE = 10000
 DESCRIPTION = "Runs Apps"

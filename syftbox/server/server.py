@@ -334,6 +334,7 @@ async def write(
     try:
         email = request.email
         change = request.change
+        reason = "ok"
 
         change.sync_folder = os.path.abspath(str(server_settings.snapshot_folder))
         result = True
@@ -351,14 +352,14 @@ async def write(
                 if change.hash_equal_or_none():
                     result = change.delete()
                 else:
-                    logger.info(
-                        f"> 🔥 {change.kind} hash doesnt match so ignore {change}"
-                    )
+                    reason = f"> 🔥 {change.kind} hash doesnt match so ignore {change}"
+                    logger.info(reason)
                     accepted = False
             else:
                 raise Exception(f"Unknown type of change kind. {change.kind}")
         else:
-            logger.info(f"> 🔥 {change.kind} is older so ignore {change}")
+            reason = f"> 🔥 {change.kind} is older so ignore {change}"
+            logger.info(reason)
             accepted = False
 
         if result:
@@ -367,11 +368,13 @@ async def write(
                 status="success",
                 change=change,
                 accepted=accepted,
+                reason=reason,
             )
         return WriteResponse(
             status="error",
             change=change,
             accepted=accepted,
+            reason=reason,
         ), 400
     except Exception as e:
         logger.info("Exception writing", e)
@@ -414,7 +417,11 @@ async def dir_state(
         remote_dir_state = hash_dir(snapshot_folder, sub_path)
 
         # get the top level perm file
-        perm_tree = PermissionTree.from_path(full_path)
+        try:
+            perm_tree = PermissionTree.from_path(full_path)
+        except Exception as e:
+            print(f"Failed to parse permission tree: {full_path}")
+            raise e
 
         # filter the read state for this user by the perm tree
         read_state = filter_read_state(email, remote_dir_state, perm_tree)
