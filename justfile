@@ -56,7 +56,7 @@ run-client name port="auto" server="http://localhost:5001":
 
     # Working directory for client is .clients/<email>
     CONFIG_DIR=.clients/$EMAIL/config
-    SYNC_DIR=.clients/$EMAIL/sync
+    SYNC_DIR=.clients/$EMAIL/
     mkdir -p $CONFIG_DIR $SYNC_DIR
 
     echo -e "Email      : {{ _green }}$EMAIL{{ _nc }}"

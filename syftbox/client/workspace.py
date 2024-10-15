@@ -7,6 +7,7 @@ class SyftWorkspace:
     """
     A Syft workspace is a directory structure for everything stored by the client.
     Each workspace is expected to be unique for a client.
+    Note that from user's perspective, the sync folder is SyftWorkspace.root_dir.
 
     syft_root_dir/
     ├── config/                      <-- syft client configuration

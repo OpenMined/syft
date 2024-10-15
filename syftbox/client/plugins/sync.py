@@ -1,6 +1,7 @@
 import os
 from collections import defaultdict
 from datetime import datetime
+from pathlib import Path
 from threading import Event
 
 from loguru import logger
@@ -319,6 +320,10 @@ def pull_changes(client_config, changes: list[FileChange]):
 
 
 def list_datasites(client_config: ClientConfig):
+    """
+    Retrieve a list of datasites from the server by sending a GET request to
+    the /list_datasites endpoint.
+    """
     datasites = []
     try:
         response = client_config.server_client.get(
@@ -375,11 +380,15 @@ def get_remote_state(client_config: ClientConfig, sub_path: str):
         logger.exception(e)
 
 
-def create_datasites(client_config):
+def create_datasites(client_config: ClientConfig):
     datasites = list_datasites(client_config)
+    logger.info(
+        f"> Synced datasites will be synced to {client_config._workspace.datasites_dir} "
+    )
     for datasite in datasites:
         # get the top level perm file
-        os.makedirs(os.path.join(client_config.sync_folder, datasite), exist_ok=True)
+        synced_datasite = client_config._workspace.datasites_dir / datasite
+        synced_datasite.mkdir(parents=True, exist_ok=True)
 
 
 def ascii_for_change(changes) -> str:
@@ -440,7 +449,7 @@ def sync_up(client_config: ClientConfig):
     os.makedirs(change_log_folder, exist_ok=True)
 
     # get all the datasites
-    datasites = get_datasites(client_config.sync_folder)
+    datasites = get_datasites(client_config._workspace.datasites_dir)
 
     n_changes = 0
 
@@ -531,18 +540,17 @@ def sync_up(client_config: ClientConfig):
     return n_changes
 
 
-def sync_down(client_config) -> int:
+def sync_down(client_config: ClientConfig) -> int:
     # create a folder to store the change log
     change_log_folder = f"{client_config.sync_folder}/{CLIENT_CHANGELOG_FOLDER}"
-    os.makedirs(change_log_folder, exist_ok=True)
+    Path(change_log_folder).mkdir(parents=True, exist_ok=True)
 
     n_changes = 0
 
     # get all the datasites
-    datasites = get_datasites(client_config.sync_folder)
+    datasites = get_datasites(client_config._workspace.datasites_dir)
     for datasite in datasites:
         # get the top level perm file
-
         dir_filename = f"{change_log_folder}/{datasite}.json"
 
         # datasite_path = os.path.join(client_config.sync_folder, datasite)
@@ -550,7 +558,6 @@ def sync_down(client_config) -> int:
         # perm_tree = PermissionTree.from_path(datasite_path)
 
         # get the new dir state
-
         unfiltered_new_dir_state = hash_dir(
             client_config.sync_folder, datasite, IGNORE_FOLDERS
         )

@@ -541,6 +541,7 @@ class Client(Jsonable):
         default_factory=lambda: ["init", "create_datasite", "sync", "apps"]
     )
     _server_client: httpx.Client | None = None
+    _workspace: SyftWorkspace | None = None
 
     @property
     def is_registered(self) -> bool:
@@ -629,9 +630,7 @@ def get_user_input(prompt, default: str | None = None):
     return user_input if user_input else default
 
 
-def load_or_create_config(
-    args: argparse.Namespace, syft_workspace: SyftWorkspace
-) -> ClientConfig:
+def load_or_create_config(args: argparse.Namespace) -> ClientConfig:
     client_config = None
     try:
         client_config = ClientConfig.load(args.config_path)
@@ -654,13 +653,16 @@ def load_or_create_config(
     if client_config.sync_folder is None:
         sync_folder = get_user_input(
             "Where do you want to Sync SyftBox to?",
-            syft_workspace.root_dir,
+            client_config._workspace.root_dir,
         )
         sync_folder = Path(sync_folder).expanduser().resolve()
         client_config.sync_folder = str(sync_folder)
 
-    if not Path(client_config.sync_folder).exists():
-        Path(client_config.sync_folder).mkdir(parents=True, exist_ok=True)
+    client_config._workspace = SyftWorkspace(client_config.sync_folder)
+    client_config._workspace.mkdirs()
+    logger.info(
+        f"SyftBox Workspace: {client_config._workspace.root_dir}. Synced folder: {client_config._workspace.sync_dir}"
+    )
 
     if args.server:
         client_config.server_url = args.server

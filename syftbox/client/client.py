@@ -36,7 +36,6 @@ from syftbox.client.fsevents import (
     FSWatchdog,
 )
 from syftbox.client.utils.error_reporting import make_error_report
-from syftbox.client.workspace import SyftWorkspace
 from syftbox.lib import (
     DEFAULT_CONFIG_PATH,
     ClientConfig,
@@ -266,9 +265,7 @@ async def lifespan(app: CustomFastAPI, client_config: ClientConfig | None = None
     close_client_config: bool = False
     if client_config is None:
         args = parse_args()
-        syft_workspace = SyftWorkspace(root_dir=args.sync_folder)
-        syft_workspace.mkdirs()
-        client_config = load_or_create_config(args, syft_workspace)
+        client_config = load_or_create_config(args)
         close_client_config = True
     app.shared_state = SharedState(client_config=client_config)
     # Clear the lock file on the first run if it exists
@@ -287,10 +284,10 @@ async def lifespan(app: CustomFastAPI, client_config: ClientConfig | None = None
     app.scheduler = scheduler
     app.running_plugins = {}
     app.loaded_plugins = load_plugins(client_config)
-    logger.info("> Loaded plugins:", sorted(list(app.loaded_plugins.keys())))
+    logger.info(f"> Loaded plugins: {sorted(list(app.loaded_plugins.keys()))}")
     app.watchdog = start_watchdog(app)
 
-    logger.info("> Starting autorun plugins:", sorted(client_config.autorun_plugins))
+    logger.info(f"> Starting autorun plugins: {sorted(client_config.autorun_plugins)}")
     for plugin in client_config.autorun_plugins:
         start_plugin(app, plugin)
 
@@ -472,9 +469,7 @@ def get_syftbox_src_path():
 
 def main() -> None:
     args = parse_args()
-    syft_workspace = SyftWorkspace(args.sync_folder)
-    syft_workspace.mkdirs()
-    client_config = load_or_create_config(args, syft_workspace)
+    client_config = load_or_create_config(args)
     error_config = make_error_report(client_config)
 
     if args.command == "report":
