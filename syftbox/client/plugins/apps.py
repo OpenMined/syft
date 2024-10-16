@@ -100,9 +100,9 @@ def load_config(path: str) -> None | SimpleNamespace:
         return None
 
 
-def run_apps(client_config):
+def run_apps(client):
     # create the directory
-    apps_path = client_config.sync_folder + "/" + "apps"
+    apps_path = client.sync_folder + "/" + "apps"
     os.makedirs(apps_path, exist_ok=True)
 
     # Copy default apps if they don't exist
@@ -113,9 +113,9 @@ def run_apps(client_config):
     if os.path.exists(file_path):
         perm_file = SyftPermission.load(file_path)
     else:
-        logger.info(f"> {client_config.email} Creating Apps Permfile")
+        logger.info(f"> {client.email} Creating Apps Permfile")
         try:
-            perm_file = SyftPermission.datasite_default(client_config.email)
+            perm_file = SyftPermission.datasite_default(client.email)
             perm_file.save(file_path)
         except Exception as e:
             logger.error("Failed to create perm file")
@@ -127,12 +127,12 @@ def run_apps(client_config):
         if os.path.isdir(app_path):
             app_config = load_config(app_path + "/" + "config.json")
             if app_config is None:
-                run_app(client_config, app_path)
+                run_app(client, app_path)
             elif RUNNING_APPS.get(app, None) is None:
                 logger.info("⏱  Scheduling a  new app run.")
                 thread = threading.Thread(
                     target=run_custom_app_config,
-                    args=(client_config, app_config, app_path),
+                    args=(client, app_config, app_path),
                 )
                 thread.start()
                 RUNNING_APPS[app] = thread
@@ -146,7 +146,7 @@ def output_published(app_output, published_output) -> bool:
     )
 
 
-def run_custom_app_config(client_config, app_config, path):
+def run_custom_app_config(client, app_config, path):
     import time
 
     env = os.environ.copy()  # Copy the current environment
@@ -170,7 +170,7 @@ def run_custom_app_config(client_config, app_config, path):
         time.sleep(int(app_config.app.run.interval))
 
 
-def run_app(client_config, path):
+def run_app(client, path):
     app_name = os.path.basename(path)
 
     extra_args = []
@@ -192,5 +192,5 @@ def run_app(client_config, path):
 
 def run(shared_state):
     # logger.info("> Running Apps")
-    client_config = shared_state.client_config
-    run_apps(client_config)
+    client = shared_state.client
+    run_apps(client)

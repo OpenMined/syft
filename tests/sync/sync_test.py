@@ -65,7 +65,7 @@ def setup_datasite(
     client_path.unlink(missing_ok=True)
     client_path.mkdir(parents=True)
 
-    client_config = Client(
+    client = Client(
         config_path=str(client_path / "client_config.json"),
         sync_folder=str(client_path / "sync"),
         email=email,
@@ -73,13 +73,13 @@ def setup_datasite(
         autorun_plugins=[],
     )
 
-    client_config._server_client = server_client
+    client._server_client = server_client
 
-    shared_state = SharedState(client_config=client_config)
+    shared_state = SharedState(client=client)
     run_init_plugin(shared_state)
     run_create_datasite_plugin(shared_state)
-    wait_for_datasite_setup(client_config)
-    return client_config
+    wait_for_datasite_setup(client)
+    return client
 
 
 @pytest.fixture(scope="function")
@@ -102,15 +102,15 @@ def http_server_client():
         yield client
 
 
-def wait_for_datasite_setup(client_config: Client, timeout=5):
+def wait_for_datasite_setup(client: Client, timeout=5):
     print("waiting for datasite setup...")
 
-    perm_file = perm_file_path(str(client_config.datasite_path))
+    perm_file = perm_file_path(str(client.datasite_path))
 
     t0 = time.time()
     while time.time() - t0 < timeout:
         perm_file_exists = Path(perm_file).exists()
-        is_registered = client_config.is_registered
+        is_registered = client.is_registered
         if perm_file_exists and is_registered:
             print("Datasite setup complete")
             return
@@ -119,13 +119,13 @@ def wait_for_datasite_setup(client_config: Client, timeout=5):
     raise TimeoutError("Datasite setup took too long")
 
 
-def create_random_file(client_config: Client, sub_path: str = "") -> Path:
+def create_random_file(client: Client, sub_path: str = "") -> Path:
     relative_path = Path(sub_path) / fake.file_name(extension="json")
-    file_path = client_config.datasite_path / relative_path
+    file_path = client.datasite_path / relative_path
     content = {"body": fake.text()}
     file_path.write_text(json.dumps(content))
 
-    path_in_datasite = file_path.relative_to(client_config.sync_folder)
+    path_in_datasite = file_path.relative_to(client.sync_folder)
     return path_in_datasite
 
 
@@ -169,8 +169,8 @@ def test_create_public_file(
 ):
     # Two datasites create and sync a random file each
 
-    datasite_1_shared_state = SharedState(client_config=datasite_1)
-    datasite_2_shared_state = SharedState(client_config=datasite_2)
+    datasite_1_shared_state = SharedState(client=datasite_1)
+    datasite_2_shared_state = SharedState(client=datasite_2)
 
     file_path_1 = create_random_file(datasite_1, "public")
     file_path_2 = create_random_file(datasite_2, "public")
@@ -199,8 +199,8 @@ def test_modify_public_file(
 ):
     # Two datasites create and sync a random file each
 
-    datasite_1_shared_state = SharedState(client_config=datasite_1)
-    datasite_2_shared_state = SharedState(client_config=datasite_2)
+    datasite_1_shared_state = SharedState(client=datasite_1)
+    datasite_2_shared_state = SharedState(client=datasite_2)
 
     file_path_1 = create_random_file(datasite_1, "public")
     assert_files_on_datasite(datasite_1, [file_path_1])
@@ -226,8 +226,8 @@ def test_delete_public_file(
     server_client: TestClient, datasite_1: Client, datasite_2: Client
 ):
     # Two datasites create and sync a random file each
-    datasite_1_shared_state = SharedState(client_config=datasite_1)
-    datasite_2_shared_state = SharedState(client_config=datasite_2)
+    datasite_1_shared_state = SharedState(client=datasite_1)
+    datasite_2_shared_state = SharedState(client=datasite_2)
 
     file_path_1 = create_random_file(datasite_1, "public")
     assert_files_on_datasite(datasite_1, [file_path_1])
@@ -258,8 +258,8 @@ def test_delete_public_file(
 def test_move_file(
     server_client: TestClient, datasite_1: Client, datasite_2: Client
 ):
-    datasite_1_shared_state = SharedState(client_config=datasite_1)
-    datasite_2_shared_state = SharedState(client_config=datasite_2)
+    datasite_1_shared_state = SharedState(client=datasite_1)
+    datasite_2_shared_state = SharedState(client=datasite_2)
 
     tree = {
         "folder1": {
@@ -306,8 +306,8 @@ def test_sync_with_permissions(
     server_client: TestClient, datasite_1: Client, datasite_2: Client
 ):
     # TODO split in multiple tests
-    datasite_1_shared_state = SharedState(client_config=datasite_1)
-    datasite_2_shared_state = SharedState(client_config=datasite_2)
+    datasite_1_shared_state = SharedState(client=datasite_1)
+    datasite_2_shared_state = SharedState(client=datasite_2)
 
     snapshot_folder = server_client.app_state["server_settings"].snapshot_folder
     snapshot_datasite_1 = snapshot_folder / datasite_1.email
@@ -396,8 +396,8 @@ def test_sync_with_permissions(
 def test_corrupted_permissions(
     server_client: TestClient, datasite_1: Client, datasite_2: Client
 ):
-    datasite_1_shared_state = SharedState(client_config=datasite_1)
-    datasite_2_shared_state = SharedState(client_config=datasite_2)
+    datasite_1_shared_state = SharedState(client=datasite_1)
+    datasite_2_shared_state = SharedState(client=datasite_2)
 
     do_sync(datasite_1_shared_state)
     do_sync(datasite_2_shared_state)

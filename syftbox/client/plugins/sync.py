@@ -240,13 +240,13 @@ def filter_changes(
 
 
 def push_changes(
-    client_config: Client, changes: list[FileChange]
+    client: Client, changes: list[FileChange]
 ) -> list[FileChange]:
     written_changes = []
     for change in changes:
         try:
             data = {
-                "email": client_config.email,
+                "email": client.email,
                 "change": change.model_dump(mode="json"),
             }
             if change.kind_write:
@@ -260,7 +260,7 @@ def push_changes(
                 # no data for delete operations
                 pass
 
-            response = client_config.server_client.post(
+            response = client.server_client.post(
                 "/write",
                 json=data,
             )
@@ -275,7 +275,7 @@ def push_changes(
                     logger.info(f"> 🔥 Rejected change: {change.full_path}", ok_change)
             else:
                 logger.info(
-                    f"> {client_config.email} FAILED /write {change.kind} {change.internal_path}",
+                    f"> {client.email} FAILED /write {change.kind} {change.internal_path}",
                 )
         except Exception as e:
             logger.info(
@@ -285,15 +285,15 @@ def push_changes(
     return written_changes
 
 
-def pull_changes(client_config, changes: list[FileChange]):
+def pull_changes(client, changes: list[FileChange]):
     remote_changes = []
     for change in changes:
         try:
             data = {
-                "email": client_config.email,
+                "email": client.email,
                 "change": change.model_dump(mode="json"),
             }
-            response = client_config.server_client.post(
+            response = client.server_client.post(
                 "/read",
                 json=data,
             )
@@ -314,7 +314,7 @@ def pull_changes(client_config, changes: list[FileChange]):
                 remote_changes.append((ok_change, data))
             else:
                 logger.info(
-                    f"> {client_config.email} FAILED /read {change.kind} {change.internal_path}",
+                    f"> {client.email} FAILED /read {change.kind} {change.internal_path}",
                 )
         except Exception as e:
             logger.error("Failed to call /read on the server")
@@ -322,10 +322,10 @@ def pull_changes(client_config, changes: list[FileChange]):
     return remote_changes
 
 
-def list_datasites(client_config: Client):
+def list_datasites(client: Client):
     datasites = []
     try:
-        response = client_config.server_client.get(
+        response = client.server_client.get(
             "/list_datasites",
         )
         read_response = response.json()
@@ -334,21 +334,21 @@ def list_datasites(client_config: Client):
         if response.status_code == 200:
             datasites = remote_datasites
         else:
-            logger.info(f"> {client_config.email} FAILED /list_datasites")
+            logger.info(f"> {client.email} FAILED /list_datasites")
     except Exception as e:
         logger.error("Failed to call /list_datasites on the server")
         logger.exception(e)
     return datasites
 
 
-def get_remote_state(client_config: Client, sub_path: str):
+def get_remote_state(client: Client, sub_path: str):
     try:
         data = {
-            "email": client_config.email,
+            "email": client.email,
             "sub_path": sub_path,
         }
 
-        response = client_config.server_client.post(
+        response = client.server_client.post(
             "/dir_state",
             json=data,
         )
@@ -372,18 +372,18 @@ def get_remote_state(client_config: Client, sub_path: str):
                     type(state_response),
                     state_response,
                 )
-        logger.info(f"> {client_config.email} FAILED /dir_state: {sub_path}")
+        logger.info(f"> {client.email} FAILED /dir_state: {sub_path}")
         return None
     except Exception as e:
         logger.error("Failed to call /dir_state on the server")
         logger.exception(e)
 
 
-def create_datasites(client_config):
-    datasites = list_datasites(client_config)
+def create_datasites(client):
+    datasites = list_datasites(client)
     for datasite in datasites:
         # get the top level perm file
-        os.makedirs(os.path.join(client_config.sync_folder, datasite), exist_ok=True)
+        os.makedirs(os.path.join(client.sync_folder, datasite), exist_ok=True)
 
 
 def ascii_for_change(changes) -> str:
@@ -398,9 +398,9 @@ def ascii_for_change(changes) -> str:
     return change_text
 
 
-def handle_empty_folders(client_config, datasite):
+def handle_empty_folders(client, datasite):
     changes = []
-    datasite_path = os.path.join(client_config.sync_folder, datasite)
+    datasite_path = os.path.join(client.sync_folder, datasite)
 
     for root, dirs, files in os.walk(datasite_path):
         if not files and not dirs:
@@ -415,7 +415,7 @@ def handle_empty_folders(client_config, datasite):
                 sub_path=relative_path,
                 file_hash="",  # Empty folders don't have a hash
                 last_modified=os.path.getmtime(root),
-                sync_folder=client_config.sync_folder,
+                sync_folder=client.sync_folder,
             )
             changes.append(change)
 
@@ -438,19 +438,19 @@ def filter_changes_ignore(
     return filtered_changes
 
 
-def sync_up(client_config: Client):
+def sync_up(client: Client):
     # create a folder to store the change log
-    change_log_folder = f"{client_config.sync_folder}/{CLIENT_CHANGELOG_FOLDER}"
+    change_log_folder = f"{client.sync_folder}/{CLIENT_CHANGELOG_FOLDER}"
     os.makedirs(change_log_folder, exist_ok=True)
 
     # get all the datasites
-    datasites = get_datasites(client_config.sync_folder)
+    datasites = get_datasites(client.sync_folder)
 
     n_changes = 0
 
     for datasite in datasites:
         # get the top level perm file
-        datasite_path = os.path.join(client_config.sync_folder, datasite)
+        datasite_path = os.path.join(client.sync_folder, datasite)
 
         perm_tree = PermissionTree.from_path(datasite_path)
 
@@ -472,13 +472,13 @@ def sync_up(client_config: Client):
             old_dir_state = DirState(
                 tree={},
                 timestamp=0,
-                sync_folder=client_config.sync_folder,
+                sync_folder=client.sync_folder,
                 sub_path=datasite,
             )
 
         # get the new dir state
         unfiltered_new_dir_state = hash_dir(
-            client_config.sync_folder, datasite, IGNORE_FOLDERS
+            client.sync_folder, datasite, IGNORE_FOLDERS
         )
 
         # ignore files
@@ -488,7 +488,7 @@ def sync_up(client_config: Client):
         pre_filter_changes = diff_dirstate(old_dir_state, new_dir_state)
 
         # Add handling for empty folders
-        empty_folder_changes = handle_empty_folders(client_config, datasite)
+        empty_folder_changes = handle_empty_folders(client, datasite)
         pre_filter_changes.extend(empty_folder_changes)
 
         changes = filter_changes_ignore(pre_filter_changes, syft_ignore_files)
@@ -497,7 +497,7 @@ def sync_up(client_config: Client):
             continue
 
         val, val_files, inval_changes, inval_permissions = filter_changes(
-            client_config.email, changes, perm_tree
+            client.email, changes, perm_tree
         )
         if len(inval_permissions) > 0:
             logger.warning(
@@ -511,7 +511,7 @@ def sync_up(client_config: Client):
             )
 
         # send val changes
-        results = push_changes(client_config, val)
+        results = push_changes(client, val)
 
         deleted_files = []
         changed_files = []
@@ -547,35 +547,35 @@ def sync_up(client_config: Client):
     return n_changes
 
 
-def sync_down(client_config) -> int:
+def sync_down(client) -> int:
     # create a folder to store the change log
-    change_log_folder = f"{client_config.sync_folder}/{CLIENT_CHANGELOG_FOLDER}"
+    change_log_folder = f"{client.sync_folder}/{CLIENT_CHANGELOG_FOLDER}"
     os.makedirs(change_log_folder, exist_ok=True)
 
     n_changes = 0
 
     # get all the datasites
-    datasites = get_datasites(client_config.sync_folder)
+    datasites = get_datasites(client.sync_folder)
     for datasite in datasites:
         # get the top level perm file
 
         dir_filename = f"{change_log_folder}/{datasite}.json"
 
-        # datasite_path = os.path.join(client_config.sync_folder, datasite)
+        # datasite_path = os.path.join(client.sync_folder, datasite)
 
         # perm_tree = PermissionTree.from_path(datasite_path)
 
         # get the new dir state
 
         unfiltered_new_dir_state = hash_dir(
-            client_config.sync_folder, datasite, IGNORE_FOLDERS
+            client.sync_folder, datasite, IGNORE_FOLDERS
         )
         syft_ignore_files = get_ignore_rules(unfiltered_new_dir_state)
 
         # ignore files
         new_dir_state = filter_ignore_files(unfiltered_new_dir_state)
 
-        remote_dir_state = get_remote_state(client_config, datasite)
+        remote_dir_state = get_remote_state(client, datasite)
         if not remote_dir_state:
             # logger.info(f"No remote state for dir: {datasite}")
             continue
@@ -583,7 +583,7 @@ def sync_down(client_config) -> int:
         pre_filter_changes = diff_dirstate(new_dir_state, remote_dir_state)
 
         # Add handling for empty folders
-        empty_folder_changes = handle_empty_folders(client_config, datasite)
+        empty_folder_changes = handle_empty_folders(client, datasite)
         pre_filter_changes.extend(empty_folder_changes)
 
         changes = filter_changes_ignore(pre_filter_changes, syft_ignore_files)
@@ -597,12 +597,12 @@ def sync_down(client_config) -> int:
             if change.kind_write:
                 fetch_files.append(change)
 
-        results = pull_changes(client_config, fetch_files)
+        results = pull_changes(client, fetch_files)
 
         # make writes
         changed_files = []
         for change, data in results:
-            change.sync_folder = client_config.sync_folder
+            change.sync_folder = client.sync_folder
             if change.kind_write:
                 if data is None:  # This is an empty directory
                     os.makedirs(change.full_path, exist_ok=True)
@@ -615,10 +615,10 @@ def sync_down(client_config) -> int:
         # delete local files dont need the server
         deleted_files = []
         for change in changes:
-            change.sync_folder = client_config.sync_folder
+            change.sync_folder = client.sync_folder
             if change.kind_delete:
                 # perm_file_at_path = perm_tree.permission_for_path(change.sub_path)
-                # if client_config.email in perm_file_at_path.admin:
+                # if client.email in perm_file_at_path.admin:
                 #     continue
                 result = change.delete()
                 if result:
@@ -632,7 +632,7 @@ def sync_down(client_config) -> int:
             add_to_folder_tree(folder_tree, folders)
 
         # Remove empty folders, starting from the root directory
-        remove_empty_folders(folder_tree, "/", root_dir=client_config.sync_folder)
+        remove_empty_folders(folder_tree, "/", root_dir=client.sync_folder)
 
         synced_dir_state = prune_invalid_changes(new_dir_state, changed_files)
 
@@ -671,16 +671,16 @@ def do_sync(shared_state):
     try:
         if not stop_event.is_set():
             num_changes = 0
-            if shared_state.client_config.token:
+            if shared_state.client.token:
                 try:
-                    create_datasites(shared_state.client_config)
+                    create_datasites(shared_state.client)
                 except Exception as e:
                     logger.error("failed to get_datasites", e)
                     logger.exception(e)
 
                 try:
                     if SYNC_UP_ENABLED:
-                        num_changes += sync_up(shared_state.client_config)
+                        num_changes += sync_up(shared_state.client)
                     else:
                         logger.info("❌ Sync Up Disabled")
                 except Exception as e:
@@ -689,7 +689,7 @@ def do_sync(shared_state):
 
                 try:
                     if SYNC_DOWN_ENABLED:
-                        num_changes += sync_down(shared_state.client_config)
+                        num_changes += sync_down(shared_state.client)
                     else:
                         logger.info("❌ Sync Down Disabled")
                 except Exception as e:

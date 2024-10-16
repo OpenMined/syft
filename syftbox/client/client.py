@@ -90,12 +90,12 @@ def process_folder_input(user_input, default_path):
     return os.path.expanduser(user_input)
 
 
-def initialize_shared_state(client_config: Client) -> SharedState:
-    shared_state = SharedState(client_config=client_config)
+def initialize_shared_state(client: Client) -> SharedState:
+    shared_state = SharedState(client=client)
     return shared_state
 
 
-def load_plugins(client_config: Client) -> dict[str, Plugin]:
+def load_plugins(client: Client) -> dict[str, Plugin]:
     loaded_plugins = {}
     if os.path.exists(PLUGINS_DIR) and os.path.isdir(PLUGINS_DIR):
         for item in os.listdir(PLUGINS_DIR):
@@ -248,7 +248,7 @@ def start_watchdog(app) -> FSWatchdog:
     def sync_on_event(event: FileSystemEvent):
         run_plugin("sync", event)
 
-    watch_dir = Path(app.shared_state.client_config.sync_folder)
+    watch_dir = Path(app.shared_state.client.sync_folder)
     watch_dir.mkdir(parents=True, exist_ok=True)
     event_handler = AnyFileSystemEventHandler(
         watch_dir,
@@ -261,23 +261,23 @@ def start_watchdog(app) -> FSWatchdog:
 
 
 @contextlib.asynccontextmanager
-async def lifespan(app: CustomFastAPI, client_config: Client | None = None):
+async def lifespan(app: CustomFastAPI, client: Client | None = None):
     # Startup
     logger.info(
         f"> Starting SyftBox Client: {__version__} Python {platform.python_version()}"
     )
 
-    # client_config needs to be closed if it was created in this context
+    # client needs to be closed if it was created in this context
     # if it is passed as lifespan arg (eg for testing) it should be managed by the caller instead.
-    close_client_config: bool = False
-    if client_config is None:
+    close_client: bool = False
+    if client is None:
         args = parse_args()
-        client_config = load_or_create_config(args)
-        close_client_config = True
-    app.shared_state = SharedState(client_config=client_config)
+        client = load_or_create_config(args)
+        close_client = True
+    app.shared_state = SharedState(client=client)
 
     # Clear the lock file on the first run if it exists
-    job_file = client_config.config_path.replace(".json", ".sql")
+    job_file = client.config_path.replace(".json", ".sql")
     app.job_file = job_file
     if os.path.exists(job_file):
         os.remove(job_file)
@@ -291,12 +291,12 @@ async def lifespan(app: CustomFastAPI, client_config: Client | None = None):
 
     app.scheduler = scheduler
     app.running_plugins = {}
-    app.loaded_plugins = load_plugins(client_config)
+    app.loaded_plugins = load_plugins(client)
     logger.info("> Loaded plugins:", sorted(list(app.loaded_plugins.keys())))
     app.watchdog = start_watchdog(app)
 
-    logger.info("> Starting autorun plugins:", sorted(client_config.autorun_plugins))
-    for plugin in client_config.autorun_plugins:
+    logger.info("> Starting autorun plugins:", sorted(client.autorun_plugins))
+    for plugin in client.autorun_plugins:
         start_plugin(app, plugin)
 
     yield  # This yields control to run the application
@@ -304,8 +304,8 @@ async def lifespan(app: CustomFastAPI, client_config: Client | None = None):
     logger.info("> Shutting down...")
     scheduler.shutdown()
     app.watchdog.stop()
-    if close_client_config:
-        client_config.close()
+    if close_client:
+        client.close()
 
 
 def stop_scheduler(app: FastAPI):
@@ -339,7 +339,7 @@ async def plugin_manager(request: Request):
 @app.get("/client_email")
 def get_client_email():
     try:
-        email = app.shared_state.client_config.email
+        email = app.shared_state.client.email
         return JSONResponse(content={"email": email})
     except AttributeError as e:
         raise HTTPException(
@@ -423,11 +423,11 @@ async def file_operation(
     file_path: str = Body(...),
     content: str = Body(None),
 ):
-    full_path = Path(app.shared_state.client_config.sync_folder) / file_path
+    full_path = Path(app.shared_state.client.sync_folder) / file_path
 
     # Ensure the path is within the SyftBox directory
     if not full_path.resolve().is_relative_to(
-        Path(app.shared_state.client_config.sync_folder),
+        Path(app.shared_state.client.sync_folder),
     ):
         raise HTTPException(
             status_code=403,
@@ -477,8 +477,8 @@ def get_syftbox_src_path():
 
 def main() -> None:
     args = parse_args()
-    client_config = load_or_create_config(args)
-    error_config = make_error_report(client_config)
+    client = load_or_create_client(args)
+    error_config = make_error_report(client)
 
     if args.command == "report":
         output_path = Path(args.path).resolve()
@@ -489,14 +489,14 @@ def main() -> None:
 
     logger.info(f"Client metadata: {error_config.model_dump_json(indent=2)}")
 
-    os.environ["SYFTBOX_DATASITE"] = client_config.email
-    os.environ["SYFTBOX_CLIENT_CONFIG_PATH"] = client_config.config_path
+    os.environ["SYFTBOX_DATASITE"] = client.email
+    os.environ["SYFTBOX_CLIENT_CONFIG_PATH"] = client.config_path
 
     logger.info("Dev Mode: ", os.environ.get("SYFTBOX_DEV"))
     logger.info("Wheel: ", os.environ.get("SYFTBOX_WHEEL"))
 
     debug = True
-    port = client_config.port
+    port = client.port
     max_attempts = 10  # Maximum number of port attempts
 
     for attempt in range(max_attempts):

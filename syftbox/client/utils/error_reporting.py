@@ -10,7 +10,7 @@ from syftbox import Client
 
 
 class ErrorReport(BaseModel):
-    client_config: dict
+    client: dict
     server_syftbox_version: str | None = None
     client_syftbox_version: str = syftbox.__version__
     python_version: str = sys.version
@@ -20,16 +20,16 @@ class ErrorReport(BaseModel):
     )
 
     @classmethod
-    def from_client_config(cls, client_config: Client):
-        client_config.token = None
+    def from_client(cls, client: Client):
+        client.token = None
         return cls(
-            client_config=client_config.to_dict(),
-            server_version=try_get_server_version(client_config.server_url),
+            client=client.to_dict(),
+            server_version=try_get_server_version(client.server_url),
         )
 
 
-def make_error_report(client_config: Client):
-    return ErrorReport.from_client_config(client_config)
+def make_error_report(client: Client):
+    return ErrorReport.from_client(client)
 
 
 def try_get_server_version(server_url):

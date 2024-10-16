@@ -461,16 +461,16 @@ class ResettableTimer:
 
 
 class SharedState:
-    def __init__(self, client_config: Client):
+    def __init__(self, client: Client):
         self.data = {}
         self.lock = Lock()
-        self.client_config = client_config
+        self.client = client
         self.timers: dict[str:ResettableTimer] = {}
         self.fs_events = []
 
     @property
     def sync_folder(self) -> str:
-        return self.client_config.sync_folder
+        return self.client.sync_folder
 
     def get(self, key, default=None):
         with self.lock:
@@ -483,7 +483,7 @@ class SharedState:
             self.data[key] = value
 
     def _get_datasites(self):
-        syft_folder = self.data.get(self.client_config.sync_folder)
+        syft_folder = self.data.get(self.client.sync_folder)
         if not syft_folder or not os.path.exists(syft_folder):
             return []
 
@@ -659,65 +659,65 @@ def load_or_create_config(args) -> Client:
     syft_config_dir = os.path.abspath(os.path.expanduser("~/.syftbox"))
     os.makedirs(syft_config_dir, exist_ok=True)
 
-    client_config = None
+    client = None
     try:
-        client_config = Client.load(args.config_path)
+        client = Client.load(args.config_path)
     except Exception:
         pass
 
-    if client_config is None and args.config_path:
+    if client is None and args.config_path:
         config_path = os.path.abspath(os.path.expanduser(args.config_path))
-        client_config = Client(config_path=config_path)
+        client = Client(config_path=config_path)
 
-    if client_config is None:
+    if client is None:
         # config_path = get_user_input("Path to config file?", DEFAULT_CONFIG_PATH)
         config_path = os.path.abspath(os.path.expanduser(config_path))
-        client_config = Client(config_path=config_path)
+        client = Client(config_path=config_path)
 
     if args.sync_folder:
         sync_folder = os.path.abspath(os.path.expanduser(args.sync_folder))
-        client_config.sync_folder = sync_folder
+        client.sync_folder = sync_folder
 
-    if client_config.sync_folder is None:
+    if client.sync_folder is None:
         sync_folder = get_user_input(
             "Where do you want to Sync SyftBox to?",
             DEFAULT_SYNC_FOLDER,
         )
         sync_folder = os.path.abspath(os.path.expanduser(sync_folder))
-        client_config.sync_folder = sync_folder
+        client.sync_folder = sync_folder
 
     if args.server:
-        client_config.server_url = args.server
+        client.server_url = args.server
 
-    if not os.path.exists(client_config.sync_folder):
-        os.makedirs(client_config.sync_folder, exist_ok=True)
+    if not os.path.exists(client.sync_folder):
+        os.makedirs(client.sync_folder, exist_ok=True)
 
     if platform.system() == "Darwin":
-        macos.copy_icon_file(ICON_FOLDER, client_config.sync_folder)
+        macos.copy_icon_file(ICON_FOLDER, client.sync_folder)
 
     if args.email:
-        client_config.email = args.email
+        client.email = args.email
 
-    if client_config.email is None:
+    if client.email is None:
         email = get_user_input("What is your email address? ")
         if not validate_email(email):
             raise Exception(f"Invalid email: {email}")
-        client_config.email = email
+        client.email = email
 
     if args.port:
-        client_config.port = args.port
+        client.port = args.port
 
-    if client_config.port is None:
+    if client.port is None:
         port = int(get_user_input("Enter the port to use", DEFAULT_PORT))
-        client_config.port = port
+        client.port = port
 
     email_token = os.environ.get("EMAIL_TOKEN", None)
     if email_token:
-        client_config.email_token = email_token
+        client.email_token = email_token
 
     # Migrate Old Server URL to HTTPS
-    if client_config.server_url == "http://20.168.10.234:8080":
-        client_config.server_url = "https://syftbox.openmined.org"
+    if client.server_url == "http://20.168.10.234:8080":
+        client.server_url = "https://syftbox.openmined.org"
 
-    client_config.save(args.config_path)
-    return client_config
+    client.save(args.config_path)
+    return client
