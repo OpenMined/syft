@@ -559,8 +559,8 @@ def validate_email(email: str) -> bool:
 
 @dataclass
 class Client(Jsonable):
-    config_path: Path
-    sync_folder: Path | None = None
+    config_path: str
+    sync_folder: str | None = None
     port: int | None = None
     email: str | None = None
     token: int | None = None
