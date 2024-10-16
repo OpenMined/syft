@@ -571,7 +571,7 @@ class Client(Jsonable):
         default_factory=lambda: ["init", "create_datasite", "sync", "apps"]
     )
     _server_client: httpx.Client | None = None
-    _workspace: SyftWorkspace | None = None
+    _workspace: SyftWorkspace | None = SyftWorkspace()
 
     @property
     def is_registered(self) -> bool:
@@ -667,17 +667,10 @@ def load_or_create_config(args: argparse.Namespace) -> ClientConfig:
     except Exception:
         pass
 
-    if client_config is None and args.config_path:
-        config_path = Path(args.config_path).expanduser().resolve()
-        client_config = ClientConfig(config_path=str(config_path))
-
     if client_config is None:
         # config_path = get_user_input("Path to config file?", DEFAULT_CONFIG_PATH)
         config_path = Path(args.config_path).expanduser().resolve()
         client_config = ClientConfig(config_path=str(config_path))
-
-    workspace = SyftWorkspace()
-    client_config._workspace = workspace
 
     if args.sync_folder:
         sync_folder = Path(args.sync_folder).expanduser().resolve()
