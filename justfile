@@ -40,6 +40,21 @@ run-server port="5001" uvicorn_args="":
 
 # ---------------------------------------------------------------------------------------------------------------------
 
+# Kill the syftbox server running on a specific port
+[group('server')]
+purge-server port="5001":
+    #!/bin/bash
+
+    lsof -ti :{{ port }} | xargs kill -9
+
+    # Data Directory
+    DATA_DIR=./data
+
+    # remove the data directory
+    rm -rf $DATA_DIR
+
+# ---------------------------------------------------------------------------------------------------------------------
+
 # Run a local syftbox client on any available port between 8080-9000
 [group('client')]
 run-client name port="auto" server="http://localhost:5001":
@@ -68,6 +83,34 @@ run-client name port="auto" server="http://localhost:5001":
     uv run syftbox/client/client.py --config_path=$CONFIG_DIR/config.json --sync_folder=$SYNC_DIR --email=$EMAIL --port=$PORT --server={{ server }}
 
 # ---------------------------------------------------------------------------------------------------------------------
+
+# Kill the syftbox client running on a specific port and remove config and sync directories
+# TODO: we could get the port from the config file and omit the port argument
+[group('client')]
+purge-client name:
+    #!/bin/bash
+
+    # generate a local email from name, but if it looks like an email, then use it as is
+    EMAIL="{{ name }}@openmined.org"
+    if [[ "{{ name }}" == *@*.* ]]; then EMAIL="{{ name }}"; fi
+
+    # Get the port from the config file in .clients/<email>/config/config.json
+    PORT=$(cat .clients/$EMAIL/config/config.json | jq -r '.port')
+
+    # Working directory for client is .clients/<email>
+    CONFIG_DIR=.clients/$EMAIL/config
+    SYNC_DIR=.clients/$EMAIL/sync
+
+    echo -e "Purging client {{ _green }}$EMAIL{{ _nc }} running on port {{ _cyan }} $PORT {{ _nc }}"
+
+    # kill the process running on the port
+    lsof -ti :$PORT | xargs kill -9
+
+    # remove the config and sync directories
+    rm -rf $CONFIG_DIR $SYNC_DIR
+
+# ---------------------------------------------------------------------------------------------------------------------
+
 
 [group('client')]
 run-live-client server="https://syftbox.openmined.org/":
