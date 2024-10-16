@@ -29,7 +29,7 @@ from pydantic import BaseModel
 from typing_extensions import Any
 
 from syftbox import __version__
-from syftbox.client.const import DEFAULT_PORT, SYFTBOX_SERVER_URL
+from syftbox.client.const import DEFAULT_CONFIG_PATH, DEFAULT_PORT, SYFTBOX_SERVER_URL
 from syftbox.client.fsevents import (
     AnyFileSystemEventHandler,
     FileSystemEvent,
@@ -37,7 +37,6 @@ from syftbox.client.fsevents import (
 )
 from syftbox.client.utils.error_reporting import make_error_report
 from syftbox.lib import (
-    DEFAULT_CONFIG_PATH,
     ClientConfig,
     SharedState,
     load_or_create_config,
@@ -474,7 +473,9 @@ def main() -> None:
 
     if args.command == "report":
         output_path = Path(args.path).resolve()
-        output_path_with_extension = zip_logs(output_path)
+        output_path_with_extension = zip_logs(
+            output_path, client_config._workspace.logs_dir
+        )
         logger.info(f"Logs saved to: {output_path_with_extension}.")
         logger.info("Please share your bug report together with the zipped logs")
         return

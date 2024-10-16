@@ -676,9 +676,13 @@ def load_or_create_config(args: argparse.Namespace) -> ClientConfig:
         config_path = Path(args.config_path).expanduser().resolve()
         client_config = ClientConfig(config_path=str(config_path))
 
+    workspace = SyftWorkspace()
+    client_config._workspace = workspace
+
     if args.sync_folder:
         sync_folder = Path(args.sync_folder).expanduser().resolve()
         client_config.sync_folder = str(sync_folder)
+        client_config._workspace.root_dir = sync_folder
 
     if client_config.sync_folder is None:
         sync_folder = get_user_input(
@@ -687,8 +691,8 @@ def load_or_create_config(args: argparse.Namespace) -> ClientConfig:
         )
         sync_folder = Path(sync_folder).expanduser().resolve()
         client_config.sync_folder = str(sync_folder)
+        client_config._workspace.root_dir = sync_folder
 
-    client_config._workspace = SyftWorkspace(client_config.sync_folder)
     client_config._workspace.mkdirs()
     logger.info(
         f"SyftBox Workspace: {client_config._workspace.root_dir}. Synced folder: {client_config._workspace.sync_dir}"

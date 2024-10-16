@@ -6,68 +6,9 @@ from pathlib import Path
 from loguru import logger
 
 from syftbox import __version__
-from syftbox.app.manager import list_app
 from syftbox.app.manager import main as app_manager_main
 from syftbox.client.client import main as client_main
 from syftbox.server.server import main as server_main
-
-
-def print_debug():
-    try:
-        import os
-        import platform
-        import shutil
-
-        import psutil
-        import yaml
-
-        from syftbox.lib import DEFAULT_CONFIG_PATH, ClientConfig
-
-        config_path = os.environ.get("SYFTBOX_CLIENT_CONFIG_PATH", DEFAULT_CONFIG_PATH)
-        client_config = None
-        apps = []
-        try:
-            client_config = ClientConfig.load(config_path)
-            apps = list_app(client_config, silent=True)
-            client_config = client_config.to_dict()
-        except Exception:
-            pass
-
-        syftbox_path = shutil.which("syftbox")
-
-        debug_info = {
-            "system": {
-                "resources": {
-                    "cpus": psutil.cpu_count(logical=True),
-                    "architecture": platform.machine(),
-                    "ram": f"{psutil.virtual_memory().total / (1024**3):.2f} GB",
-                },
-                "operating_system": {
-                    "name": "macOS"
-                    if platform.system() == "Darwin"
-                    else platform.system(),
-                    "version": platform.release(),
-                },
-                "python": {
-                    "version": platform.python_version(),
-                    "binary_location": sys.executable,
-                },
-            },
-            "syftbox": {
-                "command": syftbox_path or "syftbox executable not found in PATH",
-                "apps": apps,
-                "client_config_path": config_path,
-                "client_config": client_config,
-            },
-            "syftbox_env": {
-                key: value
-                for key, value in os.environ.items()
-                if key.startswith("SYFT")
-            },
-        }
-        logger.info(yaml.dump(debug_info, default_flow_style=False))
-    except Exception as e:
-        logger.info(e)
 
 
 def main():
