@@ -451,7 +451,6 @@ def sync_up(client_config: ClientConfig):
     # create a folder to store the change log
     change_log_folder = f"{client_config._workspace.root_dir}/{CLIENT_CHANGELOG_FOLDER}"
     Path(change_log_folder).mkdir(parents=True, exist_ok=True)
-
     # get all the datasites
     datasites = get_datasites(client_config._workspace.datasites_dir)
 

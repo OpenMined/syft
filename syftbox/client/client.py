@@ -268,10 +268,10 @@ async def lifespan(app: CustomFastAPI, client_config: ClientConfig | None = None
         close_client_config = True
     app.shared_state = SharedState(client_config=client_config)
     # Clear the lock file on the first run if it exists
-    job_file = client_config.config_path.replace(".json", ".sql")
-    app.job_file = job_file
-    if os.path.exists(job_file):
-        os.remove(job_file)
+    job_file = Path(client_config.config_path).with_suffix(".sql")
+    app.job_file = str(job_file)
+    if job_file.exists():
+        job_file.unlink()
         logger.info(f"> Cleared existing job file: {job_file}")
 
     # Start the scheduler

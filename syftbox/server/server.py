@@ -143,8 +143,7 @@ def get_users(request: Request) -> Users:
 
 def create_folders(folders: list[str]) -> None:
     for folder in folders:
-        if not os.path.exists(folder):
-            os.makedirs(folder, exist_ok=True)
+        Path(folder).mkdir(parents=True, exist_ok=True)
 
 
 @contextlib.asynccontextmanager
