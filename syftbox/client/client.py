@@ -39,7 +39,7 @@ from syftbox.lib import (
     DEFAULT_CONFIG_PATH,
     Client,
     SharedState,
-    load_or_create_config,
+    load_or_create_client,
 )
 from syftbox.lib.logger import zip_logs
 
@@ -272,7 +272,7 @@ async def lifespan(app: CustomFastAPI, client: Client | None = None):
     close_client: bool = False
     if client is None:
         args = parse_args()
-        client = load_or_create_config(args)
+        client = load_or_create_client(args)
         close_client = True
     app.shared_state = SharedState(client=client)
 

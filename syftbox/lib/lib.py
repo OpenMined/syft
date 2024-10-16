@@ -655,7 +655,7 @@ def get_user_input(prompt, default: Optional[str] = None):
     return user_input if user_input else default
 
 
-def load_or_create_config(args) -> Client:
+def load_or_create_client(args) -> Client:
     syft_config_dir = os.path.abspath(os.path.expanduser("~/.syftbox"))
     os.makedirs(syft_config_dir, exist_ok=True)
 
