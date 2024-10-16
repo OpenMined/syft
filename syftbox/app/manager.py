@@ -94,9 +94,21 @@ def parse_args():
 
 
 def main(parser, args_list) -> None:
+    # Color codes for Error prompts
+    RED = "\033[38;5;210m"
+    RESET = "\033[0m"
+    YELLOW_PASTEL = "\033[38;5;229m"
     args, remaining_args = parse_args()
-    client_config = ClientConfig.load(args.config_path)
-
+    try:
+        client_config = ClientConfig.load(args.config_path)
+    except Exception:
+        print(
+            f"\n{RED}Error:{RESET} Couldn't find the proper client_config.json in: {YELLOW_PASTEL}{args.config_path}{RESET}.\n\n"
+            + "Please ensure that:\n"
+            + "\t- The configuration file exists at the specified path.\n"
+            + f"\t- Provide the proper path by adding the {YELLOW_PASTEL}--config_path /path/to/client_config.json{RESET}"
+        )
+        return
     commands = make_commands()
     # Handle the subcommands as needed
     if args.command:

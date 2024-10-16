@@ -418,7 +418,9 @@ async def dir_state(
 
         # get the top level perm file
         try:
-            perm_tree = PermissionTree.from_path(full_path)
+            perm_tree = PermissionTree.from_path(
+                full_path, raise_on_corrupted_files=True
+            )
         except Exception as e:
             print(f"Failed to parse permission tree: {full_path}")
             raise e
@@ -443,7 +445,7 @@ async def datasites(
     server_settings: ServerSettings = Depends(get_server_settings),
 ) -> ListDatasitesResponse:
     datasites = get_datasites(server_settings.snapshot_folder)
-    if datasites:
+    if isinstance(datasites, list):
         return ListDatasitesResponse(
             datasites=datasites,
             status="success",

@@ -449,7 +449,7 @@ def run_pre_install(app_config: SimpleNamespace):
     )
 
 
-def run_post_install(app_config: SimpleNamespace):
+def run_post_install(app_config: SimpleNamespace, app_path: str):
     """
     Runs post-installation commands specified in the application configuration.
 
@@ -479,12 +479,11 @@ def run_post_install(app_config: SimpleNamespace):
         return
 
     subprocess.run(
-        app_config.app.post_install,
-        check=True,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
+            app_config.app.post_install,
+            cwd=app_path,
+            check=True,
+            text=True,
+        )
 
 
 def check_os_compatibility(app_config) -> None:
@@ -760,7 +759,7 @@ def install(client_config: ClientConfig) -> None | Tuple[str, Exception]:
         # Handles: Exceptions from post-install command execution
         if app_config:
             step = "Running post-install commands"
-            run_post_install(app_config)
+            run_post_install(app_config, app_config_path)
 
         # NOTE:
         # Updates the apps.json file

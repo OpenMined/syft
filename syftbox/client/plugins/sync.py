@@ -156,7 +156,7 @@ def diff_dirstate(old: DirState, new: DirState):
                     changes.append(change)
                 else:
                     logger.info(
-                        f"🔥 Skipping delete {file_info}. File change is < 3 seconds ago"
+                        f"🔥 Skipping delete {afile} {file_info}. File change is < {SECS_SINCE_CHANGE} seconds ago"
                     )
         return changes
     except Exception as e:
@@ -210,8 +210,11 @@ def filter_changes(
     valid_changes = []
     valid_change_files = []
     invalid_changes = []
+    invalid_permissions = []
     for change in changes:
-        if change.kind in [
+        if perm_tree.has_corrupted_permission(change.full_path):
+            invalid_permissions.append(change)
+        elif change.kind in [
             FileChangeKind.WRITE,
             FileChangeKind.CREATE,
             FileChangeKind.DELETE,
@@ -232,8 +235,9 @@ def filter_changes(
             #         valid_change_files.append(change.sub_path)
             #         continue
 
-        invalid_changes.append(change)
-    return valid_changes, valid_change_files, invalid_changes
+        else:
+            invalid_changes.append(change)
+    return valid_changes, valid_change_files, invalid_changes, invalid_permissions
 
 
 def push_changes(
@@ -501,7 +505,19 @@ def sync_up(client_config: ClientConfig):
         if len(changes) == 0:
             continue
 
-        val, val_files, inval = filter_changes(client_config.email, changes, perm_tree)
+        val, val_files, inval_changes, inval_permissions = filter_changes(
+            client_config.email, changes, perm_tree
+        )
+        if len(inval_permissions) > 0:
+            logger.warning(
+                f"Filtered {len(inval_permissions)} changes with corrupted permissions"
+            )
+            inval_permission_files = [
+                change.internal_path for change in inval_permissions
+            ]
+            logger.debug(
+                f"Filtered changes with corrupted permissions: {inval_permission_files}"
+            )
 
         # send val changes
         results = push_changes(client_config, val)

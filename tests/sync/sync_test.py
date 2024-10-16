@@ -1,33 +1,9 @@
 """
-TODO:
-
-# Testing
-- Easy way to setup one server with two clients
-    - replace sync server calls with httpx client so we can use fastapi test client
-- Declarative way to set up a client, with files and permissions
-
-- test ignore files
-- test sync files
-    - create
-    - modify
-    - delete
-- test sync folders
-    - create/delete empty folder
-    - create/delete folder with files
-- test permissions
-
-Case 1: unit
-- we only have 1 client, fire some events and check if the resulting sync is correct
-- we can do this later
-
-Case 2: integration
-- we have 2 clients, change some state and check if both clients have consistent state
-- we start here
-
-# Rewrite sync prototype
-- Prototype we have now is hard to extend
-- add httpx client
-- we want to swap out pieces independent of eachother
+edge cases:
+- if i locally modify something I dont have write access to, should sync revert my changes?
+    - currently: it won't sync the changes to server, but it won't revert local changes
+- why does delete take 5 seconds?
+- what do we do when a permission file is corrupted?
 """
 
 import json
@@ -35,6 +11,7 @@ import time
 from collections.abc import Generator
 from functools import partial
 from pathlib import Path
+from typing import Mapping, Union
 
 import faker
 import httpx
@@ -44,12 +21,28 @@ from fastapi.testclient import TestClient
 from syftbox.client.plugins.create_datasite import run as run_create_datasite_plugin
 from syftbox.client.plugins.init import run as run_init_plugin
 from syftbox.client.plugins.sync import do_sync
-from syftbox.lib.lib import ClientConfig, SharedState, perm_file_path
+from syftbox.lib.lib import ClientConfig, SharedState, SyftPermission, perm_file_path
 from syftbox.server.server import app as server_app
 from syftbox.server.server import lifespan as server_lifespan
 from syftbox.server.settings import ServerSettings
 
 fake = faker.Faker()
+
+DirTree = Mapping[str, Union[str, "DirTree"]]
+
+
+def create_local_tree(base_path: Path, tree: DirTree) -> None:
+    print(f"creating tree at {base_path}, {type(base_path)}")
+    for name, content in tree.items():
+        local_path = base_path / name
+
+        if isinstance(content, str):
+            local_path.write_text(content)
+        elif isinstance(content, SyftPermission):
+            content.save(path=str(local_path))
+        elif isinstance(content, dict):
+            local_path.mkdir(parents=True, exist_ok=True)
+            create_local_tree(local_path, content)
 
 
 @pytest.fixture(scope="function")
@@ -157,6 +150,19 @@ def assert_files_on_server(server_client: TestClient, files: list[Path]):
         ).exists(), f"File {file} does not exist on server"
 
 
+def assert_dirtree_exists(base_path: Path, tree: DirTree) -> None:
+    for name, content in tree.items():
+        local_path = base_path / name
+
+        if isinstance(content, str):
+            assert local_path.read_text() == content
+        elif isinstance(content, SyftPermission):
+            assert json.loads(local_path.read_text()) == content.to_dict()
+        elif isinstance(content, dict):
+            assert local_path.is_dir()
+            assert_dirtree_exists(local_path, content)
+
+
 def test_create_public_file(
     server_client: TestClient, datasite_1: ClientConfig, datasite_2: ClientConfig
 ):
@@ -215,7 +221,6 @@ def test_modify_public_file(
     assert (datasite_2.sync_folder / file_path_1).read_text() == "modified"
 
 
-@pytest.mark.skip("Delete works after a few seconds, is this intended behaviour?")
 def test_delete_public_file(
     server_client: TestClient, datasite_1: ClientConfig, datasite_2: ClientConfig
 ):
@@ -247,3 +252,242 @@ def test_delete_public_file(
     do_sync(datasite_1_shared_state)
     do_sync(datasite_2_shared_state)
     assert_files_on_datasite(datasite_2, [file_path_1])
+
+
+def test_move_file(
+    server_client: TestClient, datasite_1: ClientConfig, datasite_2: ClientConfig
+):
+    datasite_1_shared_state = SharedState(client_config=datasite_1)
+    datasite_2_shared_state = SharedState(client_config=datasite_2)
+
+    tree = {
+        "folder1": {
+            "_.syftperm": SyftPermission.mine_with_public_read(datasite_1.email),
+            "file1.txt": "content1",
+        },
+    }
+
+    create_local_tree(Path(datasite_1.datasite_path), tree)
+
+    do_sync(datasite_1_shared_state)
+    do_sync(datasite_2_shared_state)
+
+    assert_dirtree_exists(Path(datasite_2.sync_folder) / datasite_1.email, tree)
+
+    # move file1 to new folder
+    file1 = Path(datasite_1.datasite_path) / "folder1" / "file1.txt"
+
+    new_tree = {
+        "folder2": {
+            "_.syftperm": SyftPermission.mine_with_public_read(datasite_1.email),
+        },
+    }
+
+    do_sync(datasite_1_shared_state)
+    do_sync(datasite_2_shared_state)
+
+    # wait for delete
+    time.sleep(5)
+
+    create_local_tree(Path(datasite_1.datasite_path), new_tree)
+    file1.rename(Path(datasite_1.datasite_path) / "folder2" / "file1.txt")
+
+    do_sync(datasite_1_shared_state)
+    do_sync(datasite_2_shared_state)
+
+    assert_files_not_on_datasite(
+        datasite_2, [Path(datasite_1.email) / "folder1" / "file1.txt"]
+    )
+    assert_dirtree_exists(Path(datasite_2.sync_folder) / datasite_1.email, new_tree)
+
+
+def test_sync_with_permissions(
+    server_client: TestClient, datasite_1: ClientConfig, datasite_2: ClientConfig
+):
+    # TODO split in multiple tests
+    datasite_1_shared_state = SharedState(client_config=datasite_1)
+    datasite_2_shared_state = SharedState(client_config=datasite_2)
+
+    snapshot_folder = server_client.app_state["server_settings"].snapshot_folder
+    snapshot_datasite_1 = snapshot_folder / datasite_1.email
+
+    do_sync(datasite_1_shared_state)
+    do_sync(datasite_2_shared_state)
+
+    tree = {
+        "public_read": {
+            "_.syftperm": SyftPermission.mine_with_public_read(datasite_1.email),
+            "public_read.json": "content1",
+        },
+        "private": {
+            "_.syftperm": SyftPermission.mine_no_permission(datasite_1.email),
+            "private.json": "content2",
+        },
+        "public_write": {
+            "_.syftperm": SyftPermission.mine_with_public_write(datasite_1.email),
+            "public_write.json": "content3",
+        },
+        "no_permission": {
+            "no_permission.json": "content4",
+        },
+    }
+
+    # Trees filtered by permission for datasite 2
+    public_read_folders = ["public_read", "public_write"]
+    public_read_tree = {k: v for k, v in tree.items() if k in public_read_folders}
+
+    create_local_tree(Path(datasite_1.datasite_path), tree)
+    assert_dirtree_exists(Path(datasite_1.datasite_path), tree)
+
+    do_sync(datasite_1_shared_state)
+    assert_dirtree_exists(snapshot_datasite_1, tree)
+
+    do_sync(datasite_2_shared_state)
+    # public files exist, private files do not
+    assert_dirtree_exists(
+        Path(datasite_2.sync_folder) / datasite_1.email, public_read_tree
+    )
+    assert_files_not_on_datasite(
+        datasite_2,
+        [
+            Path(datasite_1.email) / "private" / "private.json",
+            Path(datasite_1.email) / "no_permission" / "no_permission.json",
+        ],
+    )
+
+    # DS2 writes to public write file
+    public_write_file = (
+        Path(datasite_2.sync_folder)
+        / datasite_1.email
+        / "public_write"
+        / "public_write.json"
+    )
+    public_write_file.write_text("modified")
+
+    do_sync(datasite_2_shared_state)
+    do_sync(datasite_1_shared_state)
+
+    assert (
+        Path(datasite_1.datasite_path) / "public_write" / "public_write.json"
+    ).read_text() == "modified"
+
+    # DS2 writes to public read file, should not be synced
+    public_read_file = (
+        Path(datasite_2.sync_folder)
+        / datasite_1.email
+        / "public_read"
+        / "public_read.json"
+    )
+    public_read_file.write_text("modified")
+
+    do_sync(datasite_2_shared_state)
+    do_sync(datasite_1_shared_state)
+
+    # Server and datasite 1 should not have the modification
+    assert (
+        snapshot_datasite_1 / "public_read" / "public_read.json"
+    ).read_text() == "content1"
+    assert (
+        Path(datasite_1.datasite_path) / "public_read" / "public_read.json"
+    ).read_text() == "content1"
+
+
+def test_corrupted_permissions(
+    server_client: TestClient, datasite_1: ClientConfig, datasite_2: ClientConfig
+):
+    datasite_1_shared_state = SharedState(client_config=datasite_1)
+    datasite_2_shared_state = SharedState(client_config=datasite_2)
+
+    do_sync(datasite_1_shared_state)
+    do_sync(datasite_2_shared_state)
+
+    dir_tree = {
+        "corrupted_folder": {
+            "_.syftperm": SyftPermission.mine_with_public_read(datasite_1.email),
+            "file.txt": "content",
+            "corrupted_subfolder": {
+                "_.syftperm": SyftPermission.mine_with_public_read(datasite_1.email),
+                "file.txt": "content",
+            },
+        },
+        "normal_folder": {
+            "_.syftperm": SyftPermission.mine_with_public_read(datasite_1.email),
+            "file.txt": "content",
+        },
+    }
+
+    create_local_tree(Path(datasite_1.datasite_path), dir_tree)
+
+    do_sync(datasite_1_shared_state)
+    do_sync(datasite_2_shared_state)
+
+    # Corrupt the permission file and do an update
+    permission_file = Path(datasite_1.datasite_path) / "corrupted_folder" / "_.syftperm"
+    permission_file.write_text("corrupted")
+
+    # Make local changes
+    # expected behaviour: files under corrupted permissions are not synced, other files are
+    corrupted_file_to_update = (
+        Path(datasite_1.datasite_path) / "corrupted_folder" / "file.txt"
+    )
+    corrupted_subfolder_file_to_update = (
+        Path(datasite_1.datasite_path)
+        / "corrupted_folder"
+        / "corrupted_subfolder"
+        / "file.txt"
+    )
+    normal_file_to_update = (
+        Path(datasite_1.datasite_path) / "normal_folder" / "file.txt"
+    )
+    corrupted_file_to_update.write_text("updated")
+    corrupted_subfolder_file_to_update.write_text("updated")
+    normal_file_to_update.write_text("updated")
+
+    # NOTE fix this, need to sleep in order to detect faulty deletes
+    time.sleep(5)
+
+    do_sync(datasite_1_shared_state)
+    do_sync(datasite_2_shared_state)
+
+    # Corrupted folders and subfolders are not synced
+    assert (
+        Path(datasite_2.sync_folder)
+        / datasite_1.email
+        / "corrupted_folder"
+        / "file.txt"
+    ).read_text() == "content"
+    assert (
+        Path(datasite_2.sync_folder)
+        / datasite_1.email
+        / "corrupted_folder"
+        / "corrupted_subfolder"
+        / "file.txt"
+    ).read_text() == "content"
+
+    # Normal folder is synced
+    assert (
+        Path(datasite_2.sync_folder) / datasite_1.email / "normal_folder" / "file.txt"
+    ).read_text() == "updated"
+
+    # Fix the corrupted permission file
+    SyftPermission.mine_with_public_read(datasite_1.email).save(
+        path=str(permission_file)
+    )
+
+    do_sync(datasite_1_shared_state)
+    do_sync(datasite_2_shared_state)
+
+    # Corrupted folders and subfolders are now synced
+    assert (
+        Path(datasite_2.sync_folder)
+        / datasite_1.email
+        / "corrupted_folder"
+        / "file.txt"
+    ).read_text() == "updated"
+    assert (
+        Path(datasite_2.sync_folder)
+        / datasite_1.email
+        / "corrupted_folder"
+        / "corrupted_subfolder"
+        / "file.txt"
+    ).read_text() == "updated"

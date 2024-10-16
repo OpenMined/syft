@@ -117,7 +117,7 @@ build:
 install:
     rm -rf dist
     uv build
-    uv tool install $(ls /Users/madhavajay/dev/syft/dist/*.whl) --reinstall
+    uv tool install $(ls ./dist/*.whl) --reinstall
 
 # Bump version, commit and tag
 [group('build')]
