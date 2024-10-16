@@ -2,13 +2,13 @@ import json
 import os
 from datetime import datetime
 
-from syftbox.lib import ClientConfig
+from syftbox import Client
 
 
 def main():
     # Load the client configuration
     config_path = os.environ.get("SYFTBOX_CLIENT_CONFIG_PATH", None)
-    client_config = ClientConfig.load(config_path)
+    client = Client.load(config_path)
 
     # Get the current timestamp
     current_timestamp = datetime.now().isoformat()
@@ -17,7 +17,7 @@ def main():
     timestamp_data = {"last_check_in": current_timestamp}
 
     # Prepare output folders
-    output_folder = f"{client_config.sync_folder}/{client_config.email}/app_pipelines/timestamp_recorder/"
+    output_folder = f"{client.sync_folder}/{client.email}/app_pipelines/timestamp_recorder/"
     os.makedirs(output_folder, exist_ok=True)
 
     # Write timestamp to output file
@@ -27,9 +27,9 @@ def main():
 
     # Write _.syftperm file
     syftperm_data = {
-        "admin": [client_config.email],
+        "admin": [client.email],
         "read": ["GLOBAL"],
-        "write": [client_config.email],
+        "write": [client.email],
         "filepath": f"{output_folder}_.syftperm",
         "terminal": False,
     }

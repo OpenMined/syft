@@ -11,7 +11,7 @@ from types import SimpleNamespace
 
 from typing_extensions import Any, Tuple
 
-from syftbox.lib.lib import ClientConfig
+from syftbox import Client
 
 
 def is_git_installed() -> bool:
@@ -332,13 +332,13 @@ def load_config(path: str) -> SimpleNamespace:
 
 
 def create_symbolic_link(
-    client_config: ClientConfig, app_path: str, sanitized_path: str
+    client: Client, app_path: str, sanitized_path: str
 ):
     """
     Creates a symbolic link from the application directory in the Syftbox directory to the user's sync folder.
 
     Args:
-        client_config (ClientConfig): The configuration object for the client, which contains the sync folder path.
+        client (Client): The configuration object for the client, which contains the sync folder path.
         app_path (str): The actual path of the application directory.
         sanitized_path (str): The sanitized Git repository path in the format `owner/repository`.
 
@@ -354,7 +354,7 @@ def create_symbolic_link(
         Suppose you want to create a symbolic link for an application located at `/home/user/.syftbox/apps/PySyft`:
         ```python
         create_symbolic_link(
-            client_config=client_config,
+            client=client,
             app_path="/home/user/.syftbox/apps/PySyft",
             sanitized_path="OpenMined/PySyft"
         )
@@ -364,7 +364,7 @@ def create_symbolic_link(
     # TODO: Create a Symlink function
     # - Handles if path doesn't exists.
     target_symlink_path = (
-        f"{str(client_config.sync_folder)}/apps/{sanitized_path.split('/')[-1]}"
+        f"{str(client.sync_folder)}/apps/{sanitized_path.split('/')[-1]}"
     )
 
     # Create the symlink
@@ -379,7 +379,7 @@ def create_symbolic_link(
 
 
 def move_repository_to_syftbox(
-    client_config: ClientConfig, tmp_clone_path: str, sanitized_path: str
+    client: Client, tmp_clone_path: str, sanitized_path: str
 ) -> str:
     """
     Moves a cloned Git repository to the Syftbox directory.
@@ -405,7 +405,7 @@ def move_repository_to_syftbox(
         ```
         This will move the cloned repository to the Syftbox `apps` directory and return the final destination path.
     """
-    output_path = f"{client_config.sync_folder}/apps/{sanitized_path.split('/')[-1]}"
+    output_path = f"{client.sync_folder}/apps/{sanitized_path.split('/')[-1]}"
     delete_folder_if_exists(output_path)
     shutil.move(tmp_clone_path, output_path)
     return output_path
@@ -649,12 +649,12 @@ def check_app_config(tmp_clone_path) -> SimpleNamespace | None:
     return None
 
 
-def install(client_config: ClientConfig) -> None | Tuple[str, Exception]:
+def install(client: Client) -> None | Tuple[str, Exception]:
     """
     Installs an application by cloning the repository, checking compatibility, and running installation scripts.
 
     Args:
-        client_config (ClientConfig): The configuration object for the client, which is used during the installation process.
+        client (Client): The configuration object for the client, which is used during the installation process.
 
     Returns:
         None: If the installation is successful.
@@ -678,7 +678,7 @@ def install(client_config: ClientConfig) -> None | Tuple[str, Exception]:
         Suppose you have a client configuration and want to install an application from a repository:
         ```python
         try:
-            result = install(client_config)
+            result = install(client)
             if result is not None:
                 step, error = result
                 print(f"Error during step '{step}': {error}")
@@ -730,7 +730,7 @@ def install(client_config: ClientConfig) -> None | Tuple[str, Exception]:
         # Handles: If ~/.syftbox/apps/<repository_name> already exists (replaces it)
         if not os.path.exists(args.repository):
             app_config_path = move_repository_to_syftbox(
-                client_config,
+                client,
                 tmp_clone_path=tmp_clone_path,
                 sanitized_path=sanitized_path,
             )
@@ -739,10 +739,10 @@ def install(client_config: ClientConfig) -> None | Tuple[str, Exception]:
             # Handles: If ~/.syftbox/apps/<repository_name> already exists (replaces it)
             step = "Creating Symbolic Link"
             output_path = (
-                f"{client_config.sync_folder}/apps/{tmp_clone_path.split('/')[-1]}"
+                f"{client.sync_folder}/apps/{tmp_clone_path.split('/')[-1]}"
             )
             app_config_path = create_symbolic_link(
-                client_config=client_config,
+                client=client,
                 app_path=output_path,
                 sanitized_path=tmp_clone_path,
             )

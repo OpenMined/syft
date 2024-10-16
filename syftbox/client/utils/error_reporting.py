@@ -6,7 +6,7 @@ import requests
 from pydantic import BaseModel, Field
 
 import syftbox
-from syftbox.lib.lib import ClientConfig
+from syftbox import Client
 
 
 class ErrorReport(BaseModel):
@@ -20,7 +20,7 @@ class ErrorReport(BaseModel):
     )
 
     @classmethod
-    def from_client_config(cls, client_config: ClientConfig):
+    def from_client_config(cls, client_config: Client):
         client_config.token = None
         return cls(
             client_config=client_config.to_dict(),
@@ -28,7 +28,7 @@ class ErrorReport(BaseModel):
         )
 
 
-def make_error_report(client_config: ClientConfig):
+def make_error_report(client_config: Client):
     return ErrorReport.from_client_config(client_config)
 
 

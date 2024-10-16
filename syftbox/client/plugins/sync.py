@@ -15,7 +15,7 @@ from syftbox.lib import (
     hash_dir,
     strtobin,
 )
-from syftbox.lib.lib import ClientConfig
+from syftbox import Client
 from syftbox.server.models import FileChange, FileChangeKind
 
 CLIENT_CHANGELOG_FOLDER = "syft_changelog"
@@ -240,7 +240,7 @@ def filter_changes(
 
 
 def push_changes(
-    client_config: ClientConfig, changes: list[FileChange]
+    client_config: Client, changes: list[FileChange]
 ) -> list[FileChange]:
     written_changes = []
     for change in changes:
@@ -322,7 +322,7 @@ def pull_changes(client_config, changes: list[FileChange]):
     return remote_changes
 
 
-def list_datasites(client_config: ClientConfig):
+def list_datasites(client_config: Client):
     datasites = []
     try:
         response = client_config.server_client.get(
@@ -341,7 +341,7 @@ def list_datasites(client_config: ClientConfig):
     return datasites
 
 
-def get_remote_state(client_config: ClientConfig, sub_path: str):
+def get_remote_state(client_config: Client, sub_path: str):
     try:
         data = {
             "email": client_config.email,
@@ -438,7 +438,7 @@ def filter_changes_ignore(
     return filtered_changes
 
 
-def sync_up(client_config: ClientConfig):
+def sync_up(client_config: Client):
     # create a folder to store the change log
     change_log_folder = f"{client_config.sync_folder}/{CLIENT_CHANGELOG_FOLDER}"
     os.makedirs(change_log_folder, exist_ok=True)

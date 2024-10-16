@@ -21,15 +21,15 @@ def print_debug():
         import psutil
         import yaml
 
-        from syftbox.lib import DEFAULT_CONFIG_PATH, ClientConfig
+        from syftbox.lib import DEFAULT_CONFIG_PATH, Client
 
         config_path = os.environ.get("SYFTBOX_CLIENT_CONFIG_PATH", DEFAULT_CONFIG_PATH)
-        client_config = None
+        client = None
         apps = []
         try:
-            client_config = ClientConfig.load(config_path)
-            apps = list_app(client_config, silent=True)
-            client_config = client_config.to_dict()
+            client = Client.load(config_path)
+            apps = list_app(client, silent=True)
+            client = client.to_dict()
         except Exception:
             pass
 
@@ -57,7 +57,7 @@ def print_debug():
                 "command": syftbox_path or "syftbox executable not found in PATH",
                 "apps": apps,
                 "client_config_path": config_path,
-                "client_config": client_config,
+                "client": client,
             },
             "syftbox_env": {
                 key: value

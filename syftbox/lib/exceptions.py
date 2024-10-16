@@ -1,2 +1,2 @@
-class ClientConfigException(Exception):
+class ClientException(Exception):
     pass

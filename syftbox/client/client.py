@@ -37,7 +37,7 @@ from syftbox.client.fsevents import (
 from syftbox.client.utils.error_reporting import make_error_report
 from syftbox.lib import (
     DEFAULT_CONFIG_PATH,
-    ClientConfig,
+    Client,
     SharedState,
     load_or_create_config,
 )
@@ -90,12 +90,12 @@ def process_folder_input(user_input, default_path):
     return os.path.expanduser(user_input)
 
 
-def initialize_shared_state(client_config: ClientConfig) -> SharedState:
+def initialize_shared_state(client_config: Client) -> SharedState:
     shared_state = SharedState(client_config=client_config)
     return shared_state
 
 
-def load_plugins(client_config: ClientConfig) -> dict[str, Plugin]:
+def load_plugins(client_config: Client) -> dict[str, Plugin]:
     loaded_plugins = {}
     if os.path.exists(PLUGINS_DIR) and os.path.isdir(PLUGINS_DIR):
         for item in os.listdir(PLUGINS_DIR):
@@ -261,7 +261,7 @@ def start_watchdog(app) -> FSWatchdog:
 
 
 @contextlib.asynccontextmanager
-async def lifespan(app: CustomFastAPI, client_config: ClientConfig | None = None):
+async def lifespan(app: CustomFastAPI, client_config: Client | None = None):
     # Startup
     logger.info(
         f"> Starting SyftBox Client: {__version__} Python {platform.python_version()}"

@@ -6,14 +6,14 @@ from pathlib import Path
 
 from loguru import logger
 
-from ..lib import DEFAULT_CONFIG_PATH, ClientConfig
+from ..lib import DEFAULT_CONFIG_PATH, Client
 from .install import install
 
 config_path = os.environ.get("SYFTBOX_CLIENT_CONFIG_PATH", None)
 
 
-def list_app(client_config: ClientConfig, silent: bool = False) -> list[str]:
-    apps_path = Path(client_config.sync_folder + "/" + "apps")
+def list_app(client: Client, silent: bool = False) -> list[str]:
+    apps_path = Path(client.sync_folder + "/" + "apps")
     apps = []
     if os.path.exists(apps_path):
         files_and_folders = os.listdir(apps_path)
@@ -33,15 +33,15 @@ def list_app(client_config: ClientConfig, silent: bool = False) -> list[str]:
     return apps
 
 
-def uninstall_app(client_config: ClientConfig) -> None:
+def uninstall_app(client: Client) -> None:
     logger.info("Uninstalling Apps")
 
 
-def update_app(client_config: ClientConfig) -> None:
+def update_app(client: Client) -> None:
     logger.info("Updating Apps")
 
 
-def upgrade_app(client_config: ClientConfig) -> None:
+def upgrade_app(client: Client) -> None:
     logger.info("Upgrading Apps")
 
 
@@ -100,7 +100,7 @@ def main(parser, args_list) -> None:
     YELLOW_PASTEL = "\033[38;5;229m"
     args, remaining_args = parse_args()
     try:
-        client_config = ClientConfig.load(args.config_path)
+        client = Client.load(args.config_path)
     except Exception:
         print(
             f"\n{RED}Error:{RESET} Couldn't find the proper client_config.json in: {YELLOW_PASTEL}{args.config_path}{RESET}.\n\n"
@@ -114,7 +114,7 @@ def main(parser, args_list) -> None:
     if args.command:
         command = commands[args.command]
         sys.argv = [sys.argv[0]] + remaining_args
-        result = command.execute(client_config)
+        result = command.execute(client)
         if result is not None:
             # we should make this a type
             if isinstance(result, tuple):

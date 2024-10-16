@@ -18,10 +18,11 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
+from syftbox import Client
 from syftbox.client.plugins.create_datasite import run as run_create_datasite_plugin
 from syftbox.client.plugins.init import run as run_init_plugin
 from syftbox.client.plugins.sync import do_sync
-from syftbox.lib.lib import ClientConfig, SharedState, SyftPermission, perm_file_path
+from syftbox.lib.lib import SharedState, SyftPermission, perm_file_path
 from syftbox.server.server import app as server_app
 from syftbox.server.server import lifespan as server_lifespan
 from syftbox.server.settings import ServerSettings
@@ -46,25 +47,25 @@ def create_local_tree(base_path: Path, tree: DirTree) -> None:
 
 
 @pytest.fixture(scope="function")
-def datasite_1(tmp_path: Path, server_client: TestClient) -> ClientConfig:
+def datasite_1(tmp_path: Path, server_client: TestClient) -> Client:
     email = "user_1@openmined.org"
     return setup_datasite(tmp_path, server_client, email)
 
 
 @pytest.fixture(scope="function")
-def datasite_2(tmp_path: Path, server_client: TestClient) -> ClientConfig:
+def datasite_2(tmp_path: Path, server_client: TestClient) -> Client:
     email = "user_2@openmined.org"
     return setup_datasite(tmp_path, server_client, email)
 
 
 def setup_datasite(
     tmp_path: Path, server_client: TestClient, email: str
-) -> ClientConfig:
+) -> Client:
     client_path = tmp_path / email
     client_path.unlink(missing_ok=True)
     client_path.mkdir(parents=True)
 
-    client_config = ClientConfig(
+    client_config = Client(
         config_path=str(client_path / "client_config.json"),
         sync_folder=str(client_path / "sync"),
         email=email,
@@ -101,7 +102,7 @@ def http_server_client():
         yield client
 
 
-def wait_for_datasite_setup(client_config: ClientConfig, timeout=5):
+def wait_for_datasite_setup(client_config: Client, timeout=5):
     print("waiting for datasite setup...")
 
     perm_file = perm_file_path(str(client_config.datasite_path))
@@ -118,7 +119,7 @@ def wait_for_datasite_setup(client_config: ClientConfig, timeout=5):
     raise TimeoutError("Datasite setup took too long")
 
 
-def create_random_file(client_config: ClientConfig, sub_path: str = "") -> Path:
+def create_random_file(client_config: Client, sub_path: str = "") -> Path:
     relative_path = Path(sub_path) / fake.file_name(extension="json")
     file_path = client_config.datasite_path / relative_path
     content = {"body": fake.text()}
@@ -128,14 +129,14 @@ def create_random_file(client_config: ClientConfig, sub_path: str = "") -> Path:
     return path_in_datasite
 
 
-def assert_files_not_on_datasite(datasite: ClientConfig, files: list[Path]):
+def assert_files_not_on_datasite(datasite: Client, files: list[Path]):
     for file in files:
         assert not (
             datasite.sync_folder / file
         ).exists(), f"File {file} exists on datasite {datasite.email}"
 
 
-def assert_files_on_datasite(datasite: ClientConfig, files: list[Path]):
+def assert_files_on_datasite(datasite: Client, files: list[Path]):
     for file in files:
         assert (
             datasite.sync_folder / file
@@ -164,7 +165,7 @@ def assert_dirtree_exists(base_path: Path, tree: DirTree) -> None:
 
 
 def test_create_public_file(
-    server_client: TestClient, datasite_1: ClientConfig, datasite_2: ClientConfig
+    server_client: TestClient, datasite_1: Client, datasite_2: Client
 ):
     # Two datasites create and sync a random file each
 
@@ -194,7 +195,7 @@ def test_create_public_file(
 
 
 def test_modify_public_file(
-    server_client: TestClient, datasite_1: ClientConfig, datasite_2: ClientConfig
+    server_client: TestClient, datasite_1: Client, datasite_2: Client
 ):
     # Two datasites create and sync a random file each
 
@@ -222,7 +223,7 @@ def test_modify_public_file(
 
 
 def test_delete_public_file(
-    server_client: TestClient, datasite_1: ClientConfig, datasite_2: ClientConfig
+    server_client: TestClient, datasite_1: Client, datasite_2: Client
 ):
     # Two datasites create and sync a random file each
     datasite_1_shared_state = SharedState(client_config=datasite_1)
@@ -255,7 +256,7 @@ def test_delete_public_file(
 
 
 def test_move_file(
-    server_client: TestClient, datasite_1: ClientConfig, datasite_2: ClientConfig
+    server_client: TestClient, datasite_1: Client, datasite_2: Client
 ):
     datasite_1_shared_state = SharedState(client_config=datasite_1)
     datasite_2_shared_state = SharedState(client_config=datasite_2)
@@ -302,7 +303,7 @@ def test_move_file(
 
 
 def test_sync_with_permissions(
-    server_client: TestClient, datasite_1: ClientConfig, datasite_2: ClientConfig
+    server_client: TestClient, datasite_1: Client, datasite_2: Client
 ):
     # TODO split in multiple tests
     datasite_1_shared_state = SharedState(client_config=datasite_1)
@@ -393,7 +394,7 @@ def test_sync_with_permissions(
 
 
 def test_corrupted_permissions(
-    server_client: TestClient, datasite_1: ClientConfig, datasite_2: ClientConfig
+    server_client: TestClient, datasite_1: Client, datasite_2: Client
 ):
     datasite_1_shared_state = SharedState(client_config=datasite_1)
     datasite_2_shared_state = SharedState(client_config=datasite_2)

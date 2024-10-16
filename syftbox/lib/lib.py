@@ -26,7 +26,7 @@ from syftbox.server.models import (
     get_file_last_modified,
 )
 
-from .exceptions import ClientConfigException
+from .exceptions import ClientException
 
 current_dir = Path(__file__).parent
 ASSETS_FOLDER = current_dir.parent / "assets"
@@ -461,7 +461,7 @@ class ResettableTimer:
 
 
 class SharedState:
-    def __init__(self, client_config: ClientConfig):
+    def __init__(self, client_config: Client):
         self.data = {}
         self.lock = Lock()
         self.client_config = client_config
@@ -640,15 +640,12 @@ class Client(Jsonable):
                 filepath = config_path
             return super().load(filepath)
         except Exception:
-            raise ClientConfigException(
+            raise ClientException(
                 f"Unable to load Client config from {filepath}."
                 "If you are running this outside of syftbox app runner you must supply "
                 "the Client config path like so: \n"
                 "SYFTBOX_CLIENT_CONFIG_PATH=~/.syftbox/client_config.json"
             )
-
-
-ClientConfig = Client
 
 
 def get_user_input(prompt, default: Optional[str] = None):
@@ -658,24 +655,24 @@ def get_user_input(prompt, default: Optional[str] = None):
     return user_input if user_input else default
 
 
-def load_or_create_config(args) -> ClientConfig:
+def load_or_create_config(args) -> Client:
     syft_config_dir = os.path.abspath(os.path.expanduser("~/.syftbox"))
     os.makedirs(syft_config_dir, exist_ok=True)
 
     client_config = None
     try:
-        client_config = ClientConfig.load(args.config_path)
+        client_config = Client.load(args.config_path)
     except Exception:
         pass
 
     if client_config is None and args.config_path:
         config_path = os.path.abspath(os.path.expanduser(args.config_path))
-        client_config = ClientConfig(config_path=config_path)
+        client_config = Client(config_path=config_path)
 
     if client_config is None:
         # config_path = get_user_input("Path to config file?", DEFAULT_CONFIG_PATH)
         config_path = os.path.abspath(os.path.expanduser(config_path))
-        client_config = ClientConfig(config_path=config_path)
+        client_config = Client(config_path=config_path)
 
     if args.sync_folder:
         sync_folder = os.path.abspath(os.path.expanduser(args.sync_folder))
