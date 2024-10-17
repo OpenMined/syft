@@ -263,6 +263,23 @@ def start_watchdog(app) -> FSWatchdog:
     return watchdog
 
 
+def install_success_message():
+    welcome_ascii = rf"""INSTALLATION SUCCESSFUL!
+__        _____ _     ____ ___  __  __ _____   _____ ___
+ \ \      / / ___| |   / ___/ _ \|  \/  | ____| |_   _/ _ \
+  \ \ /\ / / |___| |  | |  | | | | |\/| |  _|     | || | | |
+   \ V  V /| |___| |__| |__| |_| | |  | | |___    | || |_| |
+    \_/\_/  \____|_____\____\___/|_|  |_|_____|   |_| \___/
+ ____         __ _   ____                  ____ _     ___ _____ _   _ _____
+/ ___| _   _ / _| |_| __ )  _____  __     / ___| |   |_ _| ____| \ | |_   _|
+\___ \| | | | |_| __|  _ \ / _ \ \/ /    | |   | |    | ||  _| |  \| | | |
+ ___) | |_| |  _| |_| |_) | (_) >  <     | |___| |___ | || |___| |\  | | |
+|____/ \__, |_|  \__|____/ \___/_/\_\     \____|_____|___|_____|_| \_| |_|
+       |___/                                               {__version__:>17}
+"""
+    return welcome_ascii
+
+
 @contextlib.asynccontextmanager
 async def lifespan(app: CustomFastAPI, client: Client | None = None):
     # Startup
@@ -305,6 +322,8 @@ async def lifespan(app: CustomFastAPI, client: Client | None = None):
     logger.info("> Starting autorun plugins:", sorted(client.autorun_plugins))
     for plugin in client.autorun_plugins:
         start_plugin(app, plugin)
+
+    logger.info(install_success_message())
 
     yield  # This yields control to run the application
 
