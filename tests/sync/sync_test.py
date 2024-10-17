@@ -66,7 +66,7 @@ def setup_datasite(
     client_path.mkdir(parents=True)
 
     client = Client(
-        config_path=str(client_path / "client_config.json"),
+        specified_config_path=str(client_path / "client_config.json"),
         sync_folder=str(client_path / "sync"),
         email=email,
         server_url=str(server_client.base_url),

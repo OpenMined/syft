@@ -4,7 +4,7 @@ import os
 from syftbox import Client
 
 config_path = os.environ.get("SYFTBOX_CLIENT_CONFIG_PATH", None)
-client = Client.load(config_path)
+client = Client()
 
 input_folder = f"{client.sync_folder}/{client.email}/app_pipelines/adder/inputs/"
 output_folder = f"{client.sync_folder}/{client.email}/app_pipelines/adder/done/"

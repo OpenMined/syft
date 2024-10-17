@@ -27,7 +27,7 @@ def print_debug():
         client = None
         apps = []
         try:
-            client = Client.load(config_path)
+            client = Client()
             apps = list_app(client, silent=True)
             client = client.to_dict()
         except Exception:

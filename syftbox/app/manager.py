@@ -100,7 +100,7 @@ def main(parser, args_list) -> None:
     YELLOW_PASTEL = "\033[38;5;229m"
     args, remaining_args = parse_args()
     try:
-        client = Client.load(args.config_path)
+        client = Client()
     except Exception:
         print(
             f"\n{RED}Error:{RESET} Couldn't find the proper client_config.json in: {YELLOW_PASTEL}{args.config_path}{RESET}.\n\n"

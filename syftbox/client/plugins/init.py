@@ -14,7 +14,7 @@ def register(client):
     j = response.json()
     if "token" in j:
         client.token = j["token"]
-        client.save()
+        client.save_yaml_config(client.default_config_path)
 
     return response.status_code == 200
 

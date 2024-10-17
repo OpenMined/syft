@@ -6,6 +6,7 @@ import json
 import os
 import platform
 import re
+import yaml
 import threading
 import zlib
 from dataclasses import dataclass, field
@@ -35,6 +36,7 @@ ICON_FOLDER = ASSETS_FOLDER / "icon"
 DEFAULT_SYNC_FOLDER = os.path.expanduser("~/Desktop/SyftBox")
 DEFAULT_CONFIG_FOLDER = os.path.expanduser("~/.syftbox")
 DEFAULT_CONFIG_PATH = os.path.join(DEFAULT_CONFIG_FOLDER, "client_config.json")
+DEFAULT_CONFIG_PATH_YAML = os.path.join(DEFAULT_CONFIG_FOLDER, "client_config.yaml")
 DEFAULT_LOGS_PATH = os.path.join(DEFAULT_CONFIG_FOLDER, "logs", "syftbox.log")
 
 USER_GROUP_GLOBAL = "GLOBAL"
@@ -559,8 +561,9 @@ def validate_email(email: str) -> bool:
 
 @dataclass
 class Client(Jsonable):
-    config_path: str
-    sync_folder: str | None = None
+    default_config_path: str | None = None  # todo: remove this and use SyftWorkspace
+    specified_config_path: str | None = None
+    sync_folder: str | None = None  # todo: remove this and use SyftWorkspace
     port: int | None = None
     email: str | None = None
     token: int | None = None
@@ -571,6 +574,24 @@ class Client(Jsonable):
     )
     _server_client: httpx.Client | None = None
 
+    def __post_init__(self):
+        self.default_config_path = str(Path(DEFAULT_CONFIG_PATH_YAML).expanduser())
+        self.specified_config_path = os.environ.get("SYFTBOX_CLIENT_CONFIG_PATH")
+        default_exists = Path(self.default_config_path).exists()
+        specified_is_default = self.specified_config_path == self.default_config_path
+        if default_exists and specified_is_default:
+            configs: dict = self.load_yaml_config(self.default_config_path)
+            filtered_data = {k: v for k, v in configs.items() if not k.startswith("_")}
+            for key, value in filtered_data.items():
+                setattr(self, key, value)
+        if not default_exists and specified_is_default:
+            # the config is saved later in the code that calls this
+            return
+        if not default_exists and not specified_is_default:
+            print("save the config to default path with specified_path saved to the field in the yaml")
+        if default_exists and not specified_is_default:
+            print("do something here")
+    
     @property
     def is_registered(self) -> bool:
         return self.token is not None
@@ -583,14 +604,14 @@ class Client(Jsonable):
                 follow_redirects=True,
             )
         return self._server_client
-
+    
     def close(self):
         if self._server_client:
             self._server_client.close()
 
     def save(self, path: str | None = None) -> None:
         if path is None:
-            path = self.config_path
+            path = self.default_config_path
         super().save(path)
 
     @property
@@ -609,11 +630,6 @@ class Client(Jsonable):
                 datasites.append(folder)
         return datasites
 
-    def use(self):
-        os.environ["SYFTBOX_CURRENT_CLIENT"] = self.config_path
-        os.environ["SYFTBOX_SYNC_DIR"] = self.sync_folder
-        logger.info(f"> Setting Sync Dir to: {self.sync_folder}")
-
     def create_folder(self, path: str, permission: SyftPermission):
         os.makedirs(path, exist_ok=True)
         permission.save(path)
@@ -630,23 +646,52 @@ class Client(Jsonable):
         public_read.save(full_path)
         return Path(full_path)
 
-    @classmethod
-    def load(cls, filepath: str | None = None) -> Self:
-        try:
-            if filepath is None:
-                config_path = os.getenv(
-                    "SYFTBOX_CLIENT_CONFIG_PATH", DEFAULT_CONFIG_PATH
-                )
-                filepath = config_path
-            return super().load(filepath)
-        except Exception:
-            raise ClientException(
-                f"Unable to load Client config from {filepath}."
-                "If you are running this outside of syftbox app runner you must supply "
-                "the Client config path like so: \n"
-                "SYFTBOX_CLIENT_CONFIG_PATH=~/.syftbox/client_config.json"
-            )
+    # @classmethod
+    # def load(cls, filepath: str | None = None) -> Self:
+    #     try:
+    #         if filepath is None:
+    #             config_path = os.getenv(
+    #                 "SYFTBOX_CLIENT_CONFIG_PATH", DEFAULT_CONFIG_PATH
+    #             )
+    #             filepath = config_path
+    #         return super().load(filepath)
+    #     except Exception:
+    #         raise ClientException(
+    #             f"Unable to load Client config from {filepath}."
+    #             "If you are running this outside of syftbox app runner you must supply "
+    #             "the Client config path like so: \n"
+    #             "SYFTBOX_CLIENT_CONFIG_PATH=~/.syftbox/client_config.yaml"
+    #         )
 
+    def load_yaml_config(self, filepath: str | Path | None = None) -> Self:
+        """
+        Load the client configuration from a YAML file into a dictionary.
+        
+        Args:
+            file_path (str): Path to the YAML configuration file.
+        
+        Returns:
+            dict: A dictionary containing the configuration data.
+        """
+        try:
+            with open(filepath, 'r') as config_file:
+                config_data = yaml.safe_load(config_file)
+            return config_data
+        except FileNotFoundError as fe:
+            logger.error(f"Error: The file {filepath} was not found.")
+            raise fe
+        except yaml.YAMLError as e:
+            logger.error(f"Error parsing the configuration YAML file: {e}")
+            raise e
+
+    def save_yaml_config(self, filepath: str | Path | None = None) -> None:
+        to_save: dict = self.to_dict()
+        try:
+            with open(filepath, 'w') as config_file:
+                yaml.dump(to_save, config_file)
+        except Exception as e:
+            logger.error(f"Error saving the configuration YAML file: {e}")
+            raise e
 
 def get_user_input(prompt, default: Optional[str] = None):
     if default:
@@ -659,21 +704,7 @@ def load_or_create_client(args) -> Client:
     syft_config_dir = os.path.abspath(os.path.expanduser("~/.syftbox"))
     os.makedirs(syft_config_dir, exist_ok=True)
 
-    client = None
-    try:
-        client = Client.load(args.config_path)
-    except Exception:
-        pass
-
-    if client is None and args.config_path:
-        config_path = os.path.abspath(os.path.expanduser(args.config_path))
-        client = Client(config_path=config_path)
-
-    if client is None:
-        # config_path = get_user_input("Path to config file?", DEFAULT_CONFIG_PATH)
-        config_path = os.path.abspath(os.path.expanduser(config_path))
-        client = Client(config_path=config_path)
-
+    client = Client()
     if args.sync_folder:
         sync_folder = os.path.abspath(os.path.expanduser(args.sync_folder))
         client.sync_folder = sync_folder
@@ -719,5 +750,6 @@ def load_or_create_client(args) -> Client:
     if client.server_url == "http://20.168.10.234:8080":
         client.server_url = "https://syftbox.openmined.org"
 
-    client.save(args.config_path)
+    client.save_yaml_config(client.default_config_path)
+
     return client

@@ -36,7 +36,7 @@ from syftbox.client.fsevents import (
 )
 from syftbox.client.utils.error_reporting import make_error_report
 from syftbox.lib import (
-    DEFAULT_CONFIG_PATH,
+    DEFAULT_CONFIG_PATH_YAML,
     Client,
     SharedState,
     load_or_create_client,
@@ -221,7 +221,7 @@ def parse_args():
         description="Run the web application with plugins.",
     )
     parser.add_argument(
-        "--config_path", type=str, default=DEFAULT_CONFIG_PATH, help="config path"
+        "--config_path", type=str, default=DEFAULT_CONFIG_PATH_YAML, help="config path"
     )
 
     parser.add_argument("--debug", action="store_true", help="debug mode")
@@ -250,7 +250,6 @@ def parse_args():
 def start_watchdog(app) -> FSWatchdog:
     def sync_on_event(event: FileSystemEvent):
         run_plugin("sync", event)
-
     watch_dir = Path(app.shared_state.client.sync_folder)
     watch_dir.mkdir(parents=True, exist_ok=True)
     event_handler = AnyFileSystemEventHandler(
@@ -287,21 +286,11 @@ async def lifespan(app: CustomFastAPI, client: Client | None = None):
         f"> Starting SyftBox Client: {__version__} Python {platform.python_version()}"
     )
 
-    config_path = os.environ.get("SYFTBOX_CLIENT_CONFIG_PATH")
-    if config_path:
-        client = Client.load(config_path)
-
-    # client_config needs to be closed if it was created in this context
-    # if it is passed as lifespan arg (eg for testing) it should be managed by the caller instead.
-    close_client: bool = False
-    if client is None:
-        args = parse_args()
-        client = load_or_create_client(args)
-        close_client = True
+    client = Client()
     app.shared_state = SharedState(client=client)
 
     # Clear the lock file on the first run if it exists
-    job_file = client.config_path.replace(".json", ".sql")
+    job_file = client.default_config_path.replace(".yaml", ".sql")
     app.job_file = job_file
     if os.path.exists(job_file):
         os.remove(job_file)
@@ -330,8 +319,7 @@ async def lifespan(app: CustomFastAPI, client: Client | None = None):
     logger.info("> Shutting down...")
     scheduler.shutdown()
     app.watchdog.stop()
-    if close_client:
-        client.close()
+    client.close()
 
 
 def stop_scheduler(app: FastAPI):
@@ -503,6 +491,7 @@ def get_syftbox_src_path():
 
 def main() -> None:
     args = parse_args()
+    os.environ["SYFTBOX_CLIENT_CONFIG_PATH"] = args.config_path
     client = load_or_create_client(args)
     error_config = make_error_report(client)
 
@@ -516,7 +505,6 @@ def main() -> None:
     logger.info(f"Client metadata: {error_config.model_dump_json(indent=2)}")
 
     os.environ["SYFTBOX_DATASITE"] = client.email
-    os.environ["SYFTBOX_CLIENT_CONFIG_PATH"] = client.config_path
 
     logger.info("Dev Mode: ", os.environ.get("SYFTBOX_DEV"))
     logger.info("Wheel: ", os.environ.get("SYFTBOX_WHEEL"))
