@@ -5,14 +5,14 @@ from platform import platform
 import requests
 from pydantic import BaseModel, Field
 
-import syftbox
 from syftbox import Client
+from syftbox.__version__ import __version__
 
 
 class ErrorReport(BaseModel):
     client: dict
     server_syftbox_version: str | None = None
-    client_syftbox_version: str = syftbox.__version__
+    client_syftbox_version: str = __version__
     python_version: str = sys.version
     platform: str = platform()
     timestamp: datetime.datetime = Field(

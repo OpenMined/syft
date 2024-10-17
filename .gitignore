@@ -179,3 +179,5 @@ jobs.sqlite
 
 .vscode
 experimental/
+
+notebooks/
