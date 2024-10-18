@@ -1,24 +1,27 @@
+import argparse
 import json
-import time
 from pathlib import Path
-from fastapi.testclient import TestClient
-import pytest
-from syftbox.app.install import  install
 
-from syftbox.lib.lib import ClientConfig, SharedState
+import pytest
+from pytest import MonkeyPatch
+
+from syftbox.app.install import install
 from syftbox.client.plugins.apps import run as run_apps
 from syftbox.client.plugins.sync import do_sync
-from pytest import MonkeyPatch
-import argparse
+from syftbox.lib.lib import ClientConfig, SharedState
 
 
 def mock_argparse_install_ring_app(*args, **kwargs):
     # Create a mock for the parsed arguments
     return argparse.Namespace(repository="https://github.com/OpenMined/ring")
 
+
 def install_ring(client_config: ClientConfig, monkeypatch: MonkeyPatch):
-    monkeypatch.setattr('argparse.ArgumentParser.parse_args', mock_argparse_install_ring_app)
+    monkeypatch.setattr(
+        "argparse.ArgumentParser.parse_args", mock_argparse_install_ring_app
+    )
     install(client_config)
+
 
 def sync_datasites(datasites: list[ClientConfig]):
     # Round robin sync
@@ -26,12 +29,17 @@ def sync_datasites(datasites: list[ClientConfig]):
         do_sync(SharedState(client_config=datasite))
 
     for datasite in datasites[::-1]:
-        do_sync(SharedState(client_config=datasites[datasite]))
-
+        do_sync(SharedState(client_config=datasite))
 
 
 def apps_pipeline_for(datasite_config: ClientConfig, app_name: str, state: str) -> Path:
-    return Path(datasite_config.sync_folder) / datasite_config.email / "app_pipelines" / app_name / state
+    return (
+        Path(datasite_config.sync_folder)
+        / datasite_config.email
+        / "app_pipelines"
+        / app_name
+        / state
+    )
 
 
 @pytest.mark.parametrize(
@@ -51,7 +59,7 @@ def apps_pipeline_for(datasite_config: ClientConfig, app_name: str, state: str) 
                 "ring": [
                     "alice@openmined.org",
                     "bob@openmined.org",
-                    "alice@openmined.org"
+                    "alice@openmined.org",
                 ],
                 "data": 3,
                 "current_index": 3,
@@ -61,9 +69,8 @@ def apps_pipeline_for(datasite_config: ClientConfig, app_name: str, state: str) 
 )
 def test_syftbox_ring(
     monkeypatch: MonkeyPatch,
-    server_client: TestClient, 
-    datasite_1: ClientConfig, 
-    datasite_2: ClientConfig, 
+    datasite_1: ClientConfig,
+    datasite_2: ClientConfig,
     data_json: tuple,
 ):
     input_json, expected_json = data_json
@@ -81,17 +88,14 @@ def test_syftbox_ring(
     sync_datasites([datasite_1, datasite_2])
 
     # time.sleep(20)
-    
+
     datasite_1_sync_folder = Path(datasite_1.sync_folder)
     print("datasite_1_sync_folder", datasite_1_sync_folder)
     datasite_2_sync_folder = Path(datasite_2.sync_folder)
     print("datasite_2_sync_folder", datasite_2_sync_folder)
 
-    
     datasite_1_running_dir = apps_pipeline_for(datasite_1, "ring", "running")
-    datasite_1_done_dir = apps_pipeline_for(datasite_1, "ring", "done")
     datasite_2_running_dir = apps_pipeline_for(datasite_2, "ring", "running")
-    datasite_2_done_dir = apps_pipeline_for(datasite_2, "ring", "done")
 
     # Create data in alice's datasite
     assert (
@@ -104,15 +108,14 @@ def test_syftbox_ring(
     run_apps(datasite_1_shared_state)
     # ---------------------------------------------------------------
 
-    sync_datasites([datasite_1, datasite_2]) 
-    
+    sync_datasites([datasite_1, datasite_2])
+
     file_in_datasite_2 = datasite_2_running_dir / "data.json"
 
-    assert file_in_datasite_2.exists() , f"File does not exist {file_in_datasite_2}"
+    assert file_in_datasite_2.exists(), f"File does not exist {file_in_datasite_2}"
 
     run_apps(datasite_2_shared_state)
     sync_datasites([datasite_1, datasite_2])
-    
 
     # while True:
     #     datasite_1_done_dir = datasite_1_ring_app / "done"
