@@ -21,8 +21,13 @@ def install_ring(client_config: ClientConfig, monkeypatch: MonkeyPatch):
     install(client_config)
 
 def sync_datasites(datasites: list[ClientConfig]):
+    # Round robin sync
     for datasite in datasites:
         do_sync(SharedState(client_config=datasite))
+
+    for datasite in datasites[::-1]:
+        do_sync(SharedState(client_config=datasites[datasite]))
+
 
 
 def apps_pipeline_for(datasite_config: ClientConfig, app_name: str, state: str) -> Path:
@@ -98,11 +103,8 @@ def test_syftbox_ring(
 
     run_apps(datasite_1_shared_state)
     # ---------------------------------------------------------------
-    import pdb
-    pdb.set_trace()
 
     sync_datasites([datasite_1, datasite_2]) 
-    pdb.set_trace()   
     
     file_in_datasite_2 = datasite_2_running_dir / "data.json"
 

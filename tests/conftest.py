@@ -63,6 +63,8 @@ def server_client(tmp_path: Path) -> Generator[TestClient, None, None]:
     path = tmp_path / "server"
     path.mkdir()
 
+    print("Server Path", path)
+
     settings = ServerSettings.from_data_folder(path)
     lifespan_with_settings = partial(server_lifespan, settings=settings)
     server_app.router.lifespan_context = lifespan_with_settings
