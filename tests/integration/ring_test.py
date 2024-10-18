@@ -1,14 +1,13 @@
 import json
 import time
 from pathlib import Path
-from types import SimpleNamespace
-import unittest
 from fastapi.testclient import TestClient
 import pytest
 from syftbox.app.install import  install
 
 from syftbox.lib.lib import ClientConfig, SharedState
 from syftbox.client.plugins.apps import run as run_apps
+from syftbox.client.plugins.sync import do_sync
 from pytest import MonkeyPatch
 import argparse
 
@@ -21,6 +20,13 @@ def install_ring(client_config: ClientConfig, monkeypatch: MonkeyPatch):
     monkeypatch.setattr('argparse.ArgumentParser.parse_args', mock_argparse_install_ring_app)
     install(client_config)
 
+def sync_datasites(datasites: list[ClientConfig]):
+    for datasite in datasites:
+        do_sync(SharedState(client_config=datasite))
+
+
+def apps_pipeline_for(datasite_config: ClientConfig, app_name: str, state: str) -> Path:
+    return Path(datasite_config.sync_folder) / datasite_config.email / "app_pipelines" / app_name / state
 
 
 @pytest.mark.parametrize(
@@ -67,32 +73,50 @@ def test_syftbox_ring(
     install_ring(datasite_2, monkeypatch)
     run_apps(datasite_1_shared_state)
     run_apps(datasite_2_shared_state)
+    sync_datasites([datasite_1, datasite_2])
+
+    # time.sleep(20)
     
+    datasite_1_sync_folder = Path(datasite_1.sync_folder)
+    print("datasite_1_sync_folder", datasite_1_sync_folder)
+    datasite_2_sync_folder = Path(datasite_2.sync_folder)
+    print("datasite_2_sync_folder", datasite_2_sync_folder)
+
     
-    client_1_sync_folder = Path(datasite_1.sync_folder)
-    print("client_1_sync_folder", client_1_sync_folder)
-    client_2_sync_folder = Path(datasite_2.sync_folder)
-    print("client_2_sync_folder", client_2_sync_folder)
-    print("Waiting")
-    time.sleep(20)
-    print("Done waiting")
-    # client_1_ring_app_pipelines = datasite_1 / "app_pipelines"
-    # client_1_running_dir = client_1_ring_app / "running"
+    datasite_1_running_dir = apps_pipeline_for(datasite_1, "ring", "running")
+    datasite_1_done_dir = apps_pipeline_for(datasite_1, "ring", "done")
+    datasite_2_running_dir = apps_pipeline_for(datasite_2, "ring", "running")
+    datasite_2_done_dir = apps_pipeline_for(datasite_2, "ring", "done")
 
-    # assert (
-    #     client_1_running_dir.exists()
-    # ), f"Running directory does not exist {client_1_running_dir}"
+    # Create data in alice's datasite
+    assert (
+        datasite_1_running_dir.exists()
+    ), f"Running directory does not exist {datasite_1_running_dir}"
 
-    # with open(client_1_running_dir / "data.json", "w") as fp:
-    #     json.dump(input_json, fp)
+    with open(datasite_1_running_dir / "data.json", "w") as fp:
+        json.dump(input_json, fp)
 
-    # start_time = time.time()
+    run_apps(datasite_1_shared_state)
+    # ---------------------------------------------------------------
+    import pdb
+    pdb.set_trace()
+
+    sync_datasites([datasite_1, datasite_2]) 
+    pdb.set_trace()   
+    
+    file_in_datasite_2 = datasite_2_running_dir / "data.json"
+
+    assert file_in_datasite_2.exists() , f"File does not exist {file_in_datasite_2}"
+
+    run_apps(datasite_2_shared_state)
+    sync_datasites([datasite_1, datasite_2])
+    
 
     # while True:
-    #     client_1_done_dir = client_1_ring_app / "done"
+    #     datasite_1_done_dir = datasite_1_ring_app / "done"
 
-    #     if client_1_done_dir.exists():
-    #         actual_json_fp = client_1_done_dir / "data.json"
+    #     if datasite_1_done_dir.exists():
+    #         actual_json_fp = datasite_1_done_dir / "data.json"
     #         assert json.loads(actual_json_fp.open()) == expected_json
     #         break
 
