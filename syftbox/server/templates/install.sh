@@ -51,6 +51,20 @@ downloader() {
     fi
 }
 
+get_python_command() {
+    # check if either python3 or python is available
+    # and return the python command
+
+    if check_cmd python3; then
+        echo "python3"
+    elif check_cmd python; then
+        echo "python"
+    else
+        err "need 'python' or 'python3' (command not found)"
+    fi
+}
+
+
 need_python() {
     # check if either python3 or python is available
     if ! check_cmd python && ! check_cmd python3
@@ -116,13 +130,38 @@ install_syftbox() {
     fi
 }
 
+
+check_python_version() {
+    # Try python3, if it exists; otherwise, fall back to python
+    python_command=$(get_python_command)
+
+    # Check if python_command is empty (meaning no python was found)
+    if [ -z "$python_command" ]; then
+        return 1
+    fi
+
+    # Check if the python version is >= 3.10
+    pyver_check=$($python_command -c "import sys; print((sys.version_info[:2] >= (3, 10)))")
+
+    # Check if Python version not is greater than or equal to 3.10
+    if [ "$pyver_check" = "False" ]; then
+        err "Minimum python version is 3.10. Found: $($python_command -V)"
+    fi
+
+}
+
+
 pre_install() {
     # ----- pre-install checks ----
     # uv doesn't really need python,
     # ... but incase we want we can toggle this on
-    # need_python
+    #  need_python
+
+    # check if python version is >= 3.10
+    check_python_version
 
     # if you see this message, you're good to go
+
     echo "
  ____         __ _   ____
 / ___| _   _ / _| |_| __ )  _____  __

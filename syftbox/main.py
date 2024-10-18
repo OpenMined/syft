@@ -117,7 +117,7 @@ def main():
     elif args.command == "version":
         print(__version__)
     elif args.command == "debug":
-        logger.info_debug()
+        print_debug()
     elif args.command == "path":
         current_dir = Path(__file__).parent.parent
         print(os.path.abspath(current_dir))

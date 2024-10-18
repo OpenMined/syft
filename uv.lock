@@ -306,6 +306,19 @@ toml = [
 ]
 
 [[package]]
+name = "croniter"
+version = "3.0.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "python-dateutil" },
+    { name = "pytz" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/44/7a/14b0b14ab0203e2c79493cf487829dc294d5c44bedc810ab2f4a97fc9ff4/croniter-3.0.3.tar.gz", hash = "sha256:34117ec1741f10a7bd0ec3ad7d8f0eb8fa457a2feb9be32e6a2250e158957668", size = 53088 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/93/6a/f2f68e0f9cf702b6d055ab53cab0d8c100f04e86228ca500a8ca9de94b58/croniter-3.0.3-py2.py3-none-any.whl", hash = "sha256:b3bd11f270dc54ccd1f2397b813436015a86d30ffc5a7a9438eec1ed916f2101", size = 22422 },
+]
+
+[[package]]
 name = "cryptography"
 version = "43.0.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1190,10 +1203,11 @@ wheels = [
 
 [[package]]
 name = "syftbox"
-version = "0.1.8"
+version = "0.1.10"
 source = { editable = "." }
 dependencies = [
     { name = "apscheduler" },
+    { name = "croniter" },
     { name = "cryptography" },
     { name = "fastapi" },
     { name = "httpx" },
@@ -1227,6 +1241,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "apscheduler", specifier = ">=3.10.4" },
+    { name = "croniter", specifier = ">=3.0.0" },
     { name = "cryptography", specifier = ">=43.0.1" },
     { name = "fastapi", specifier = ">=0.114.0" },
     { name = "httpx", specifier = ">=0.27.2" },

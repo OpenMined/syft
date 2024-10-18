@@ -4,6 +4,10 @@ import shutil
 import subprocess
 import threading
 from types import SimpleNamespace
+from datetime import datetime
+import time
+from croniter import croniter
+
 
 from loguru import logger
 from typing_extensions import Any
@@ -145,29 +149,51 @@ def output_published(app_output, published_output) -> bool:
         and get_file_hash(app_output) == get_file_hash(published_output)
     )
 
-
 def run_custom_app_config(client_config, app_config, path):
-    import time
-
-    env = os.environ.copy()  # Copy the current environment
+    env = os.environ.copy()
     app_name = os.path.basename(path)
 
+    # Update environment with any custom variables in app_config
     app_envs = getattr(app_config.app, "env", {})
     if not isinstance(app_envs, dict):
         app_envs = vars(app_envs)
-
     env.update(app_envs)
+
+    # Retrieve the cron-style schedule from app_config
+    cron_schedule = getattr(app_config.app.run, "schedule", "* * * * *")
+    base_time = datetime.now()
+    cron_iter = croniter(cron_schedule, base_time)
+    next_execution = cron_iter.get_next(datetime)  # Initial next execution time
+
     while True:
-        logger.info(f"👟 Running {app_name}")
-        _ = subprocess.run(
-            app_config.app.run.command,
-            cwd=path,
-            check=True,
-            capture_output=True,
-            text=True,
-            env=env,
-        )
-        time.sleep(int(app_config.app.run.interval))
+        current_time = datetime.now()
+        
+        if current_time >= next_execution:
+            logger.info(f"👟 Running {app_name} at scheduled time {current_time.strftime('%Y-%m-%d %H:%M:%S')}")
+            try:
+                result = subprocess.run(
+                    app_config.app.run.command,
+                    cwd=path,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    env=env,
+                )
+                logger.info(result.stdout)
+                logger.error(result.stderr)
+            except subprocess.CalledProcessError as e:
+                logger.error(f"Error running {app_name}: {e}")
+
+            # Set the next execution time after each successful run
+            next_execution = cron_iter.get_next(datetime)
+        else:
+            # Log waiting status with current and next scheduled time
+            logger.info(f"⏲ Waiting for scheduled time. Current time: {current_time.strftime('%Y-%m-%d %H:%M:%S')}, Next execution: {next_execution.strftime('%Y-%m-%d %H:%M:%S')}")
+
+        # Calculate the time to wait until the next execution
+        next_execution = iter.get_next(datetime)
+        time_to_wait = next_execution-current_time
+        time.sleep(time_to_wait)
 
 
 def run_app(client_config, path):
