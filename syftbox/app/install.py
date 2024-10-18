@@ -479,11 +479,11 @@ def run_post_install(app_config: SimpleNamespace, app_path: str):
         return
 
     subprocess.run(
-            app_config.app.post_install,
-            cwd=app_path,
-            check=True,
-            text=True,
-        )
+        app_config.app.post_install,
+        cwd=app_path,
+        check=True,
+        text=True,
+    )
 
 
 def check_os_compatibility(app_config) -> None:
