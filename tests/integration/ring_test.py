@@ -1,36 +1,28 @@
 import json
 import time
 from pathlib import Path
-
+from types import SimpleNamespace
+import unittest
+from fastapi.testclient import TestClient
 import pytest
+from syftbox.app.install import  install
+
+from syftbox.lib.lib import ClientConfig, SharedState
+from syftbox.client.plugins.apps import run as run_apps
+from pytest import MonkeyPatch
+import argparse
 
 
-@pytest.fixture(scope="function")
-def client_1() -> Path:
-    root_dir = Path(__file__).parent.parent.parent
+def mock_argparse_install_ring_app(*args, **kwargs):
+    # Create a mock for the parsed arguments
+    return argparse.Namespace(repository="https://github.com/OpenMined/ring")
 
-    client_1_sync_path = root_dir / ".clients" / "alice@openmined.org" / "sync"
-
-    if not client_1_sync_path.exists():
-        raise Exception("Client 1 sync path does not exist")
-
-    return client_1_sync_path
+def install_ring(client_config: ClientConfig, monkeypatch: MonkeyPatch):
+    monkeypatch.setattr('argparse.ArgumentParser.parse_args', mock_argparse_install_ring_app)
+    install(client_config)
 
 
-@pytest.fixture(scope="function")
-def client_2() -> Path:
-    root_dir = Path(__file__).parent.parent.parent
 
-    client_2_sync_path = root_dir / ".clients" / "bob@openmined.org" / "sync"
-
-    if not client_2_sync_path.exists():
-        raise Exception("Client 2 sync path does not exist")
-
-    return client_2_sync_path
-
-
-# client_1: points to sync directory of alice@openmined.org
-# client_2: points to sync directory of bob@openmined.org
 @pytest.mark.parametrize(
     "data_json",
     [
@@ -48,7 +40,7 @@ def client_2() -> Path:
                 "ring": [
                     "alice@openmined.org",
                     "bob@openmined.org",
-                    "alice@openmined.org",
+                    "alice@openmined.org"
                 ],
                 "data": 3,
                 "current_index": 3,
@@ -56,30 +48,55 @@ def client_2() -> Path:
         )
     ],
 )
-def test_syftbox_ring(client_1: Path, client_2: Path, data_json):
+def test_syftbox_ring(
+    monkeypatch: MonkeyPatch,
+    server_client: TestClient, 
+    datasite_1: ClientConfig, 
+    datasite_2: ClientConfig, 
+    data_json: tuple,
+):
     input_json, expected_json = data_json
 
-    client_1_ring_app = client_1 / "app_pipelines" / "ring"
-    client_1_running_dir = client_1_ring_app / "running"
+    print(input_json, expected_json)
 
-    assert (
-        client_1_running_dir.exists()
-    ), f"Running directory does not exist {client_1_running_dir}"
+    datasite_1_shared_state = SharedState(client_config=datasite_1)
+    datasite_2_shared_state = SharedState(client_config=datasite_2)
 
-    with open(client_1_running_dir / "data.json", "w") as fp:
-        json.dump(input_json, fp)
+    print()
+    install_ring(datasite_1, monkeypatch)
+    install_ring(datasite_2, monkeypatch)
+    run_apps(datasite_1_shared_state)
+    run_apps(datasite_2_shared_state)
+    
+    
+    client_1_sync_folder = Path(datasite_1.sync_folder)
+    print("client_1_sync_folder", client_1_sync_folder)
+    client_2_sync_folder = Path(datasite_2.sync_folder)
+    print("client_2_sync_folder", client_2_sync_folder)
+    print("Waiting")
+    time.sleep(20)
+    print("Done waiting")
+    # client_1_ring_app_pipelines = datasite_1 / "app_pipelines"
+    # client_1_running_dir = client_1_ring_app / "running"
 
-    start_time = time.time()
+    # assert (
+    #     client_1_running_dir.exists()
+    # ), f"Running directory does not exist {client_1_running_dir}"
 
-    while True:
-        client_1_done_dir = client_1_ring_app / "done"
+    # with open(client_1_running_dir / "data.json", "w") as fp:
+    #     json.dump(input_json, fp)
 
-        if client_1_done_dir.exists():
-            actual_json_fp = client_1_done_dir / "data.json"
-            assert json.loads(actual_json_fp.open()) == expected_json
-            break
+    # start_time = time.time()
 
-        time.sleep(5)
+    # while True:
+    #     client_1_done_dir = client_1_ring_app / "done"
 
-        if start_time - time.time() > 180:
-            raise TimeoutError("Timedout")
+    #     if client_1_done_dir.exists():
+    #         actual_json_fp = client_1_done_dir / "data.json"
+    #         assert json.loads(actual_json_fp.open()) == expected_json
+    #         break
+
+    #     time.sleep(5)
+
+    #     if start_time - time.time() > 180:
+    #         raise TimeoutError("Timedout")

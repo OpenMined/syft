@@ -19,9 +19,15 @@ from syftbox.lib import (
 )
 
 
-def find_and_run_script(task_path, extra_args):
+def find_and_run_script(task_path, extra_args, app_envs: dict):
     script_path = os.path.join(task_path, "run.sh")
-    env = os.environ.copy()  # Copy the current environment
+
+    environ_copy = os.environ.copy()
+
+    # Initialize the environment variables from app_envs
+    # in a copy of the current environment
+    for key, value in app_envs.items():
+        environ_copy[key] = value
 
     # Check if the script exists
     if os.path.isfile(script_path):
@@ -47,12 +53,14 @@ def find_and_run_script(task_path, extra_args):
                 check=True,
                 capture_output=True,
                 text=True,
-                env=env,
+                env=environ_copy,
             )
 
             # logger.info("✅ Script run.sh executed successfully.")
             return result
         except Exception as e:
+            print("error:")
+            print(e)
             logger.info("Error running shell script", e)
     else:
         raise FileNotFoundError(f"run.sh not found in {task_path}")
@@ -127,6 +135,7 @@ def run_apps(client_config):
 
     apps = os.listdir(apps_path)
     for app in apps:
+        print("Starting app: ", app)
         app_path = os.path.abspath(apps_path + "/" + app)
         if os.path.isdir(app_path):
             app_config = load_config(app_path + "/" + "config.json")
@@ -199,10 +208,17 @@ def run_custom_app_config(client_config, app_config, path):
 def run_app(client_config, path):
     app_name = os.path.basename(path)
 
+    
+    # NOTE: These environment variables are used when running the script 
+    # in app folder
+    app_envs = {
+        "SYFTBOX_CLIENT_CONFIG_PATH": client_config.config_path,
+    }
+
     extra_args = []
     try:
         logger.info(f"👟 Running {app_name} app", end="")
-        result = find_and_run_script(path, extra_args)
+        result = find_and_run_script(path, extra_args, app_envs=app_envs)
         if hasattr(result, "returncode"):
             if "Already generated" not in str(result.stdout):
                 logger.info("\n")
