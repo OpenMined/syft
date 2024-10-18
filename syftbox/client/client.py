@@ -4,6 +4,7 @@ import contextlib
 import importlib
 import os
 import platform
+import subprocess
 import sys
 import time
 import types
@@ -29,11 +30,6 @@ from pydantic import BaseModel
 from typing_extensions import Any
 
 from syftbox import __version__
-from syftbox.client.fsevents import (
-    AnyFileSystemEventHandler,
-    FileSystemEvent,
-    FSWatchdog,
-)
 from syftbox.client.utils.error_reporting import make_error_report
 from syftbox.lib import (
     DEFAULT_CONFIG_PATH,
@@ -78,6 +74,22 @@ class Plugin:
     module: types.ModuleType
     schedule: int
     description: str
+
+
+def open_sync_folder(folder_path):
+    """Open the folder specified by `folder_path` in the default file explorer."""
+    logger.info(f"Opening your sync folder: {folder_path}")
+    try:
+        if platform.system() == "Darwin":  # macOS
+            subprocess.run(["open", folder_path])
+        elif platform.system() == "Windows":  # Windows
+            subprocess.run(["explorer", folder_path])
+        elif platform.system() == "Linux":  # Linux
+            subprocess.run(["xdg-open", folder_path])
+        else:
+            logger.warning(f"Unsupported OS for opening folders: {platform.system()}")
+    except Exception as e:
+        logger.error(f"Failed to open folder {folder_path}: {e}")
 
 
 def process_folder_input(user_input, default_path):
@@ -247,37 +259,20 @@ def parse_args():
     return parser.parse_args()
 
 
-def start_watchdog(app) -> FSWatchdog:
-    def sync_on_event(event: FileSystemEvent):
-        run_plugin("sync", event)
+# def start_watchdog(app) -> FSWatchdog:
+#     def sync_on_event(event: FileSystemEvent):
+#         run_plugin("sync", event)
 
-    watch_dir = Path(app.shared_state.client.sync_folder)
-    watch_dir.mkdir(parents=True, exist_ok=True)
-    event_handler = AnyFileSystemEventHandler(
-        watch_dir,
-        callbacks=[sync_on_event],
-        ignored=WATCHDOG_IGNORE,
-    )
-    watchdog = FSWatchdog(watch_dir, event_handler)
-    watchdog.start()
-    return watchdog
-
-
-def install_success_message():
-    welcome_ascii = rf"""INSTALLATION SUCCESSFUL!
-__        _____ _     ____ ___  __  __ _____   _____ ___
- \ \      / / ___| |   / ___/ _ \|  \/  | ____| |_   _/ _ \
-  \ \ /\ / / |___| |  | |  | | | | |\/| |  _|     | || | | |
-   \ V  V /| |___| |__| |__| |_| | |  | | |___    | || |_| |
-    \_/\_/  \____|_____\____\___/|_|  |_|_____|   |_| \___/
- ____         __ _   ____                  ____ _     ___ _____ _   _ _____
-/ ___| _   _ / _| |_| __ )  _____  __     / ___| |   |_ _| ____| \ | |_   _|
-\___ \| | | | |_| __|  _ \ / _ \ \/ /    | |   | |    | ||  _| |  \| | | |
- ___) | |_| |  _| |_| |_) | (_) >  <     | |___| |___ | || |___| |\  | | |
-|____/ \__, |_|  \__|____/ \___/_/\_\     \____|_____|___|_____|_| \_| |_|
-       |___/                                               {__version__:>17}
-"""
-    return welcome_ascii
+#     watch_dir = Path(app.shared_state.client_config.sync_folder)
+#     watch_dir.mkdir(parents=True, exist_ok=True)
+#     event_handler = AnyFileSystemEventHandler(
+#         watch_dir,
+#         callbacks=[sync_on_event],
+#         ignored=WATCHDOG_IGNORE,
+#     )
+#     watchdog = FSWatchdog(watch_dir, event_handler)
+#     watchdog.start()
+#     return watchdog
 
 
 @contextlib.asynccontextmanager
@@ -317,19 +312,17 @@ async def lifespan(app: CustomFastAPI, client: Client | None = None):
     app.running_plugins = {}
     app.loaded_plugins = load_plugins(client)
     logger.info("> Loaded plugins:", sorted(list(app.loaded_plugins.keys())))
-    app.watchdog = start_watchdog(app)
+    # app.watchdog = start_watchdog(app)
 
     logger.info("> Starting autorun plugins:", sorted(client.autorun_plugins))
     for plugin in client.autorun_plugins:
         start_plugin(app, plugin)
 
-    logger.info(install_success_message())
-
     yield  # This yields control to run the application
 
     logger.info("> Shutting down...")
     scheduler.shutdown()
-    app.watchdog.stop()
+    # app.watchdog.stop()
     if close_client:
         client.close()
 
@@ -504,6 +497,7 @@ def get_syftbox_src_path():
 def main() -> None:
     args = parse_args()
     client = load_or_create_client(args)
+    open_sync_folder(client.sync_folder)
     error_config = make_error_report(client)
 
     if args.command == "report":

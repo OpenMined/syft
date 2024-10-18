@@ -1,21 +1,21 @@
 import os
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from threading import Event
 
 from loguru import logger
 from watchdog.events import DirModifiedEvent
 
+from syftbox import Client
 from syftbox.lib import (
     DirState,
     PermissionTree,
-    ResettableTimer,
     bintostr,
     get_datasites,
     hash_dir,
     strtobin,
 )
-from syftbox import Client
 from syftbox.server.models import FileChange, FileChangeKind
 
 CLIENT_CHANGELOG_FOLDER = "syft_changelog"
@@ -239,9 +239,7 @@ def filter_changes(
     return valid_changes, valid_change_files, invalid_changes, invalid_permissions
 
 
-def push_changes(
-    client: Client, changes: list[FileChange]
-) -> list[FileChange]:
+def push_changes(client: Client, changes: list[FileChange]) -> list[FileChange]:
     written_changes = []
     for change in changes:
         try:
@@ -354,9 +352,10 @@ def get_remote_state(client: Client, sub_path: str):
         )
         try:
             state_response = response.json()
-        except Exception as e:
-            print("/dir_state response Not JSON:", response.text)
-            raise e
+        except Exception:
+            logger.error(f"""Failed to call /dir_state for {sub_path} response Not JSON: {response.text}. \
+This may be related to broken (empty!) syftperm files""")
+            return None
 
         if response.status_code == 200:
             if isinstance(state_response, dict) and "dir_state" in state_response:
@@ -552,113 +551,126 @@ def sync_down(client) -> int:
     change_log_folder = f"{client.sync_folder}/{CLIENT_CHANGELOG_FOLDER}"
     os.makedirs(change_log_folder, exist_ok=True)
 
-    n_changes = 0
-
     # get all the datasites
     datasites = get_datasites(client.sync_folder)
-    for datasite in datasites:
-        # get the top level perm file
 
-        dir_filename = f"{change_log_folder}/{datasite}.json"
-
-        # datasite_path = os.path.join(client.sync_folder, datasite)
-
-        # perm_tree = PermissionTree.from_path(datasite_path)
-
-        # get the new dir state
-
-        unfiltered_new_dir_state = hash_dir(
-            client.sync_folder, datasite, IGNORE_FOLDERS
-        )
-        syft_ignore_files = get_ignore_rules(unfiltered_new_dir_state)
-
-        # ignore files
-        new_dir_state = filter_ignore_files(unfiltered_new_dir_state)
-
-        remote_dir_state = get_remote_state(client, datasite)
-        if not remote_dir_state:
-            # logger.info(f"No remote state for dir: {datasite}")
-            continue
-
-        pre_filter_changes = diff_dirstate(new_dir_state, remote_dir_state)
-
-        # Add handling for empty folders
-        empty_folder_changes = handle_empty_folders(client, datasite)
-        pre_filter_changes.extend(empty_folder_changes)
-
-        changes = filter_changes_ignore(pre_filter_changes, syft_ignore_files)
-
-        if len(changes) == 0:
-            continue
-
-        # fetch writes from the /read endpoint
-        fetch_files = []
-        for change in changes:
-            if change.kind_write:
-                fetch_files.append(change)
-
-        results = pull_changes(client, fetch_files)
-
-        # make writes
-        changed_files = []
-        for change, data in results:
-            change.sync_folder = client.sync_folder
-            if change.kind_write:
-                if data is None:  # This is an empty directory
-                    os.makedirs(change.full_path, exist_ok=True)
-                    changed_files.append(change.internal_path)
-                else:
-                    result = change.write(data)
-                    if result:
-                        changed_files.append(change.internal_path)
-
-        # delete local files dont need the server
-        deleted_files = []
-        for change in changes:
-            change.sync_folder = client.sync_folder
-            if change.kind_delete:
-                # perm_file_at_path = perm_tree.permission_for_path(change.sub_path)
-                # if client.email in perm_file_at_path.admin:
-                #     continue
-                result = change.delete()
-                if result:
-                    deleted_files.append(change.internal_path)
-
-        # remove empty folders
-        folder_tree = defaultdict(dict)
-        # Process each file and build the folder structure
-        for item in deleted_files:
-            folders = os.path.dirname(item).split("/")
-            add_to_folder_tree(folder_tree, folders)
-
-        # Remove empty folders, starting from the root directory
-        remove_empty_folders(folder_tree, "/", root_dir=client.sync_folder)
-
-        synced_dir_state = prune_invalid_changes(new_dir_state, changed_files)
-
-        # combine successfulc hanges qwith old dir state
-        # we use unfiltered so they keep being ignored but we could change these to another list?
-        combined_tree = unfiltered_new_dir_state.tree
-        combined_tree.update(synced_dir_state.tree)
-        synced_dir_state.tree = combined_tree
-
-        synced_dir_state = delete_files(synced_dir_state, deleted_files)
-
-        change_text = ""
-        if len(changed_files):
-            change_text += f"⏬ Syncing Down {len(changed_files)} Changes\n"
-            change_text += ascii_for_change(changed_files)
-        if len(deleted_files):
-            change_text += f"❌ Syncing Down {len(deleted_files)} Deletes\n"
-            change_text += ascii_for_change(deleted_files)
-
-        if len(change_text) > 0:
-            logger.info(change_text)
-
-        synced_dir_state.save(dir_filename)
-        n_changes += len(changed_files) + len(deleted_files)
+    with ThreadPoolExecutor(max_workers=min(6, len(datasites))) as executor:
+        results = []
+        for datasite in datasites:
+            n_changes_datasite_future = executor.submit(
+                sync_down_dataite, datasite, client, change_log_folder
+            )
+            results.append(n_changes_datasite_future)
+        n_changes = sum([x.result() for x in results])
 
     return n_changes
+
+
+def sync_down_dataite(datasite, client_config, change_log_folder):
+    # get the top level perm file
+
+    dir_filename = f"{change_log_folder}/{datasite}.json"
+
+    # datasite_path = os.path.join(client_config.sync_folder, datasite)
+
+    # perm_tree = PermissionTree.from_path(datasite_path)
+
+    # get the new dir state
+
+    unfiltered_new_dir_state = hash_dir(
+        client_config.sync_folder, datasite, IGNORE_FOLDERS
+    )
+    syft_ignore_files = get_ignore_rules(unfiltered_new_dir_state)
+
+    # ignore files
+    new_dir_state = filter_ignore_files(unfiltered_new_dir_state)
+
+    remote_dir_state = get_remote_state(client_config, datasite)
+    if not remote_dir_state:
+        logger.info(
+            f"Could not find remote state for {datasite}, skipping syncing down"
+        )
+        return 0
+
+    pre_filter_changes = diff_dirstate(new_dir_state, remote_dir_state)
+
+    # Add handling for empty folders
+    empty_folder_changes = handle_empty_folders(client_config, datasite)
+    pre_filter_changes.extend(empty_folder_changes)
+
+    changes = filter_changes_ignore(pre_filter_changes, syft_ignore_files)
+
+    if len(changes) == 0:
+        return 0
+
+    # fetch writes from the /read endpoint
+    fetch_files = []
+    for change in changes:
+        if change.kind_write:
+            fetch_files.append(change)
+
+    results = pull_changes(client_config, fetch_files)
+
+    # make writes
+    changed_files = []
+    for change, data in results:
+        change.sync_folder = client_config.sync_folder
+        if change.kind_write:
+            if data is None:  # This is an empty directory
+                os.makedirs(change.full_path, exist_ok=True)
+                changed_files.append(change.internal_path)
+            else:
+                result = change.write(data)
+                if result:
+                    changed_files.append(change.internal_path)
+
+    # delete local files dont need the server
+    deleted_files = []
+    for change in changes:
+        change.sync_folder = client_config.sync_folder
+        if change.kind_delete:
+            # perm_file_at_path = perm_tree.permission_for_path(change.sub_path)
+            # if client_config.email in perm_file_at_path.admin:
+            #     continue
+            result = change.delete()
+            if result:
+                deleted_files.append(change.internal_path)
+
+    # remove empty folders
+    folder_tree = defaultdict(dict)
+    # Process each file and build the folder structure
+    for item in deleted_files:
+        folders = os.path.dirname(item).split("/")
+        add_to_folder_tree(folder_tree, folders)
+
+    # Remove empty folders, starting from the root directory
+    remove_empty_folders(folder_tree, "/", root_dir=client_config.sync_folder)
+
+    synced_dir_state = prune_invalid_changes(new_dir_state, changed_files)
+
+    # combine successfulc hanges qwith old dir state
+    # we use unfiltered so they keep being ignored but we could change these to another list?
+    combined_tree = unfiltered_new_dir_state.tree
+    combined_tree.update(synced_dir_state.tree)
+    synced_dir_state.tree = combined_tree
+
+    synced_dir_state = delete_files(synced_dir_state, deleted_files)
+
+    change_text = ""
+    if len(changed_files):
+        change_text += f"⏬ Syncing Down {len(changed_files)} Changes\n"
+        change_text += ascii_for_change(changed_files)
+    if len(deleted_files):
+        change_text += f"❌ Syncing Down {len(deleted_files)} Deletes\n"
+        change_text += ascii_for_change(deleted_files)
+
+    if len(change_text) > 0:
+        import threading
+
+        logger.info(f"{threading.get_ident()} {os.getpid()} {change_text}")
+
+    synced_dir_state.save(dir_filename)
+    return len(changed_files) + len(deleted_files)
 
 
 SYNC_UP_ENABLED = True
@@ -706,7 +718,7 @@ def do_sync(shared_state):
 
 
 FLUSH_SYNC_TIMEOUT = 0.5
-DEFAULT_SCHEDULE = 10000
+DEFAULT_SCHEDULE = 1000
 
 
 def run(shared_state, *args, **kwargs):
@@ -729,10 +741,4 @@ def run(shared_state, *args, **kwargs):
 
         shared_state.fs_events.append(event)
 
-    if "sync" not in shared_state.timers:
-        shared_state.timers["sync"] = ResettableTimer(
-            timeout=FLUSH_SYNC_TIMEOUT,
-            callback=do_sync,
-        )
-
-    shared_state.timers["sync"].start(shared_state=shared_state)
+    do_sync(shared_state)
