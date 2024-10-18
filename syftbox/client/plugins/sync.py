@@ -97,15 +97,19 @@ def remove_empty_folders(leaf, current_path, root_dir):
 
 
 # write operations
-def diff_dirstate(old: DirState, new: DirState):
-    sync_folder = old.sync_folder
-    old_sub_path = old.sub_path
+def diff_dirstate(current_state: DirState, incoming_state: DirState):
+    sync_folder = current_state.sync_folder
+    old_sub_path = current_state.sub_path
+
+    # when pullinh
+    # current_state is client state
+    # incoming_state is server state
     try:
         changes = []
-        for afile, file_info in new.tree.items():
+        for afile, file_info in incoming_state.tree.items():
             kind = None
-            if afile in old.tree.keys():
-                old_file_info = old.tree[afile]
+            if afile in current_state.tree.keys():
+                old_file_info = current_state.tree[afile]
                 if (
                     old_file_info.file_hash != file_info.file_hash
                     and file_info.last_modified >= old_file_info.last_modified
@@ -136,22 +140,29 @@ def diff_dirstate(old: DirState, new: DirState):
                 )
                 changes.append(change)
 
-        for afile, file_info in old.tree.items():
-            if afile not in new.tree.keys():
+
+        # when pushing
+        # current_state is server state
+        # incoming_state is client state
+        for afile, file_info in current_state.tree.items():
+            if afile not in incoming_state.tree.keys():
                 # delete
                 now = datetime.now().timestamp()
                 # TODO we need to overhaul this to prevent these kinds of edge cases
-                SECS_SINCE_CHANGE = 5
+                SECS_SINCE_CHANGE = 0.5
                 if now >= (file_info.last_modified + SECS_SINCE_CHANGE):
+                    import ipdb
+                    ipdb.set_trace()
                     kind = FileChangeKind.DELETE
                     change = FileChange(
                         kind=kind,
-                        parent_path=old.sub_path,
+                        parent_path=current_state.sub_path,
                         sub_path=afile,
                         file_hash=file_info.file_hash,
                         last_modified=file_info.last_modified,
                         sync_folder=sync_folder,
                     )
+                    logger.error(f"DELETING {afile}")
                     changes.append(change)
                 else:
                     logger.info(
@@ -255,7 +266,7 @@ def push_changes(
                     data["is_directory"] = True
                 else:
                     # Handle file
-                    data["data"] = bintostr(change.read())
+                    data["data"] = bintostr(change.read(client_config.sync_folder))
             elif change.kind_delete:
                 # no data for delete operations
                 pass
@@ -272,12 +283,14 @@ def push_changes(
                 if "accepted" in write_response and write_response["accepted"]:
                     written_changes.append(ok_change)
                 else:
-                    logger.info(f"> 🔥 Rejected change: {change.full_path}", ok_change)
+                    logger.info(f"> 🔥 Rejected change: {change.full_path} {change.kind}", ok_change)
             else:
                 logger.info(
                     f"> {client_config.email} FAILED /write {change.kind} {change.internal_path}",
                 )
         except Exception as e:
+            import ipdb
+            ipdb.set_trace()
             logger.info(
                 f"Failed to call /write on the server for {change.internal_path}",
                 str(e),
@@ -450,102 +463,109 @@ def sync_up(client_config: ClientConfig):
     n_changes = 0
 
     for datasite in datasites:
+        n_changes_datasite = sync_up_datasite(datasite, client_config, change_log_folder)
+        n_changes.append(n_changes_datasite)
         # get the top level perm file
-        datasite_path = os.path.join(client_config.sync_folder, datasite)
-
-        perm_tree = PermissionTree.from_path(datasite_path)
-
-        dir_filename = f"{change_log_folder}/{datasite}.json"
-
-        # get the old dir state
-        old_dir_state = None
-        try:
-            # it might not exist yet
-            old_dir_state = DirState.load(dir_filename)
-            fix_tree = {}
-            for key, value in old_dir_state.tree.items():
-                fix_tree[key] = value
-            old_dir_state.tree = fix_tree
-        except Exception:
-            pass
-
-        if old_dir_state is None:
-            old_dir_state = DirState(
-                tree={},
-                timestamp=0,
-                sync_folder=client_config.sync_folder,
-                sub_path=datasite,
-            )
-
-        # get the new dir state
-        unfiltered_new_dir_state = hash_dir(
-            client_config.sync_folder, datasite, IGNORE_FOLDERS
-        )
-
-        # ignore files
-        syft_ignore_files = get_ignore_rules(unfiltered_new_dir_state)
-        new_dir_state = filter_ignore_files(unfiltered_new_dir_state)
-
-        pre_filter_changes = diff_dirstate(old_dir_state, new_dir_state)
-
-        # Add handling for empty folders
-        empty_folder_changes = handle_empty_folders(client_config, datasite)
-        pre_filter_changes.extend(empty_folder_changes)
-
-        changes = filter_changes_ignore(pre_filter_changes, syft_ignore_files)
-
-        if len(changes) == 0:
-            continue
-
-        val, val_files, inval_changes, inval_permissions = filter_changes(
-            client_config.email, changes, perm_tree
-        )
-        if len(inval_permissions) > 0:
-            logger.warning(
-                f"Filtered {len(inval_permissions)} changes with corrupted permissions"
-            )
-            inval_permission_files = [
-                change.internal_path for change in inval_permissions
-            ]
-            logger.debug(
-                f"Filtered changes with corrupted permissions: {inval_permission_files}"
-            )
-
-        # send val changes
-        results = push_changes(client_config, val)
-
-        deleted_files = []
-        changed_files = []
-        for result in results:
-            if result.kind_write:
-                changed_files.append(result.internal_path)
-            elif result.kind_delete:
-                deleted_files.append(result.internal_path)
-
-        synced_dir_state = prune_invalid_changes(new_dir_state, changed_files)
-
-        # combine successful changes qwith old dir state
-        combined_tree = old_dir_state.tree
-
-        # add new successful changes
-        combined_tree.update(synced_dir_state.tree)
-        synced_dir_state.tree = combined_tree
-
-        synced_dir_state = delete_files(synced_dir_state, deleted_files)
-
-        change_text = ""
-        if len(changed_files):
-            change_text += f"🔼 Syncing Up {len(changed_files)} Changes\n"
-            change_text += ascii_for_change(changed_files)
-
-        if len(deleted_files):
-            change_text += f"❌ Syncing Up {len(deleted_files)} Deletes\n"
-            change_text += ascii_for_change(deleted_files)
-
-        synced_dir_state.save(dir_filename)
-        n_changes += len(changed_files) + len(deleted_files)
 
     return n_changes
+
+def sync_up_datasite(datasite,client_config,  change_log_folder):
+    datasite_path = os.path.join(client_config.sync_folder, datasite)
+
+    perm_tree = PermissionTree.from_path(datasite_path)
+
+    dir_filename = f"{change_log_folder}/{datasite}.json"
+
+    # # get the old dir state
+    # server_dir_state = None
+    # try:
+    #     # it might not exist yet
+    #     server_dir_state = DirState.load(dir_filename)
+    #     fix_tree = {}
+    #     for key, value in server_dir_state.tree.items():
+    #         fix_tree[key] = value
+    #     server_dir_state.tree = fix_tree
+    # except Exception:
+    #     pass
+
+    # if server_dir_state is None:
+    #     server_dir_state = DirState(
+    #         tree={},
+    #         timestamp=0,
+    #         sync_folder=client_config.sync_folder,
+    #         sub_path=datasite,
+    #     )
+    server_dir_state = get_remote_state(client_config, datasite)
+
+    # get the new dir state
+    unfiltered_new_dir_state = hash_dir(
+        client_config.sync_folder, datasite, IGNORE_FOLDERS
+    )
+
+    # ignore files
+    syft_ignore_files = get_ignore_rules(unfiltered_new_dir_state)
+    client_dir_state = filter_ignore_files(unfiltered_new_dir_state)
+
+    pre_filter_changes = diff_dirstate(server_dir_state, client_dir_state)
+
+    # Add handling for empty folders
+    empty_folder_changes = handle_empty_folders(client_config, datasite)
+    pre_filter_changes.extend(empty_folder_changes)
+
+    changes = filter_changes_ignore(pre_filter_changes, syft_ignore_files)
+    
+    print("changes up", changes)
+
+    if len(changes) == 0:
+        return 0
+
+    val, val_files, inval_changes, inval_permissions = filter_changes(
+        client_config.email, changes, perm_tree
+    )
+    if len(inval_permissions) > 0:
+        logger.warning(
+            f"Filtered {len(inval_permissions)} changes with corrupted permissions"
+        )
+        inval_permission_files = [
+            change.internal_path for change in inval_permissions
+        ]
+        logger.debug(
+            f"Filtered changes with corrupted permissions: {inval_permission_files}"
+        )
+
+    # send val changes
+    results = push_changes(client_config, val)
+
+    deleted_files = []
+    changed_files = []
+    for result in results:
+        if result.kind_write:
+            changed_files.append(result.internal_path)
+        elif result.kind_delete:
+            deleted_files.append(result.internal_path)
+
+    synced_dir_state = prune_invalid_changes(client_dir_state, changed_files)
+
+    # combine successful changes qwith old dir state
+    combined_tree = server_dir_state.tree
+
+    # add new successful changes
+    combined_tree.update(synced_dir_state.tree)
+    synced_dir_state.tree = combined_tree
+
+    synced_dir_state = delete_files(synced_dir_state, deleted_files)
+
+    change_text = ""
+    if len(changed_files):
+        change_text += f"🔼 Syncing Up {len(changed_files)} Changes\n"
+        change_text += ascii_for_change(changed_files)
+
+    if len(deleted_files):
+        change_text += f"❌ Syncing Up {len(deleted_files)} Deletes\n"
+        change_text += ascii_for_change(deleted_files)
+
+    synced_dir_state.save(dir_filename)
+    return len(changed_files) + len(deleted_files)
 
 
 def sync_down(client_config) -> int:
@@ -560,7 +580,7 @@ def sync_down(client_config) -> int:
         results = []
         for datasite in datasites:
             n_changes_datasite_future = executor.submit(
-                sync_down_dataite, datasite, client_config, change_log_folder
+                sync_down_datasite, datasite, client_config, change_log_folder
             )
             results.append(n_changes_datasite_future)
         n_changes = sum([x.result() for x in results])
@@ -568,7 +588,7 @@ def sync_down(client_config) -> int:
     return n_changes
 
 
-def sync_down_dataite(datasite, client_config, change_log_folder):
+def sync_down_datasite(datasite, client_config, change_log_folder):
     # get the top level perm file
 
     dir_filename = f"{change_log_folder}/{datasite}.json"
@@ -585,16 +605,17 @@ def sync_down_dataite(datasite, client_config, change_log_folder):
     syft_ignore_files = get_ignore_rules(unfiltered_new_dir_state)
 
     # ignore files
-    new_dir_state = filter_ignore_files(unfiltered_new_dir_state)
+    local_dir_state = filter_ignore_files(unfiltered_new_dir_state)
 
     remote_dir_state = get_remote_state(client_config, datasite)
+
     if not remote_dir_state:
         logger.info(
             f"Could not find remote state for {datasite}, skipping syncing down"
         )
         return 0
 
-    pre_filter_changes = diff_dirstate(new_dir_state, remote_dir_state)
+    pre_filter_changes = diff_dirstate(local_dir_state, remote_dir_state)
 
     # Add handling for empty folders
     empty_folder_changes = handle_empty_folders(client_config, datasite)
@@ -648,7 +669,7 @@ def sync_down_dataite(datasite, client_config, change_log_folder):
     # Remove empty folders, starting from the root directory
     remove_empty_folders(folder_tree, "/", root_dir=client_config.sync_folder)
 
-    synced_dir_state = prune_invalid_changes(new_dir_state, changed_files)
+    synced_dir_state = prune_invalid_changes(local_dir_state, changed_files)
 
     # combine successfulc hanges qwith old dir state
     # we use unfiltered so they keep being ignored but we could change these to another list?

@@ -1,6 +1,7 @@
 import hashlib
 import os
 from enum import Enum
+from pathlib import Path
 
 from loguru import logger
 from pydantic import BaseModel
@@ -76,7 +77,12 @@ class FileChange(SyftBaseModel):
     def is_directory(self) -> bool:
         return os.path.isdir(self.full_path)
 
-    def read(self) -> bytes | None:
+    def path_for_syncfolder(self, sync_folder):
+        return sync_folder + "/" + self.parent_path + "/" + self.sub_path
+
+    def read(self, sync_folder: str | Path | None) -> bytes | None:
+        sync_folder = self.sync_folder if sync_folder is None else sync_folder
+        path = self.path_for_syncfolder(sync_folder)
         # if is_symlink(self.full_path):
         #     # write a text file with a syftlink
         #     data = convert_to_symlink(self.full_path).encode("utf-8")
@@ -84,7 +90,7 @@ class FileChange(SyftBaseModel):
         # else:
         if self.is_directory():
             return None
-        with open(self.full_path, "rb") as f:
+        with open(path, "rb") as f:
             return f.read()
 
     def write(self, data: bytes) -> bool:
