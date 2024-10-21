@@ -87,8 +87,6 @@ def test_syftbox_ring(
     run_apps(datasite_2_shared_state)
     sync_datasites([datasite_1, datasite_2])
 
-    # time.sleep(20)
-
     datasite_1_sync_folder = Path(datasite_1.sync_folder)
     print("datasite_1_sync_folder", datasite_1_sync_folder)
     datasite_2_sync_folder = Path(datasite_2.sync_folder)
@@ -96,6 +94,7 @@ def test_syftbox_ring(
 
     datasite_1_running_dir = apps_pipeline_for(datasite_1, "ring", "running")
     datasite_2_running_dir = apps_pipeline_for(datasite_2, "ring", "running")
+    datasite_1_done_dir = apps_pipeline_for(datasite_1, "ring", "done")
 
     # Create data in alice's datasite
     assert (
@@ -105,27 +104,32 @@ def test_syftbox_ring(
     with open(datasite_1_running_dir / "data.json", "w") as fp:
         json.dump(input_json, fp)
 
+    # Run the ring app, sync the datasites. Data should be moved to bob's ring running dir
     run_apps(datasite_1_shared_state)
-    # ---------------------------------------------------------------
-
     sync_datasites([datasite_1, datasite_2])
-
     file_in_datasite_2 = datasite_2_running_dir / "data.json"
-
     assert file_in_datasite_2.exists(), f"File does not exist {file_in_datasite_2}"
+    with file_in_datasite_2.open() as fp:
+        data_in_datasite_2 = json.load(fp)
+    assert data_in_datasite_2["data"] == 1
+    assert data_in_datasite_2["current_index"] == 1
 
+    # Run the ring app again, sync the datasites. Data should be moved to alice's ring running dir
     run_apps(datasite_2_shared_state)
     sync_datasites([datasite_1, datasite_2])
+    file_in_datasite_1 = datasite_1_running_dir / "data.json"
+    assert file_in_datasite_1.exists(), f"File does not exist {file_in_datasite_1}"
+    with file_in_datasite_1.open() as fp:
+        data_in_datasite_1 = json.load(fp)
+    assert data_in_datasite_1["data"] == 2
+    assert data_in_datasite_1["current_index"] == 2
 
-    # while True:
-    #     datasite_1_done_dir = datasite_1_ring_app / "done"
-
-    #     if datasite_1_done_dir.exists():
-    #         actual_json_fp = datasite_1_done_dir / "data.json"
-    #         assert json.loads(actual_json_fp.open()) == expected_json
-    #         break
-
-    #     time.sleep(5)
-
-    #     if start_time - time.time() > 180:
-    #         raise TimeoutError("Timedout")
+    # Run the ring app again, sync the datasites. Data should be moved to alice's ring done dir
+    run_apps(datasite_1_shared_state)
+    sync_datasites([datasite_1, datasite_2])
+    file_in_datasite_1 = datasite_1_done_dir / "data.json"
+    assert file_in_datasite_1.exists(), f"File does not exist {file_in_datasite_1}"
+    with file_in_datasite_1.open() as fp:
+        data_in_datasite_1 = json.load(fp)
+    assert data_in_datasite_1["data"] == expected_json["data"]
+    assert data_in_datasite_1["current_index"] == expected_json["current_index"]
