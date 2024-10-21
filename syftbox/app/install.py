@@ -372,7 +372,7 @@ def create_symbolic_link(
         os.unlink(target_symlink_path)
 
     if not os.path.exists(target_symlink_path):
-        os.symlink(sanitized_path, target_symlink_path)
+        shutil.copytree(sanitized_path, target_symlink_path)
     else:
         raise Exception(f"Path exists and isn't a symlink: {target_symlink_path}")
     return target_symlink_path
