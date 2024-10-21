@@ -1,10 +1,9 @@
 import json
 import os
 
-from syftbox.lib import ClientConfig
+from syftbox.lib import Client
 
-config_path = os.environ.get("SYFTBOX_CLIENT_CONFIG_PATH", None)
-client_config = ClientConfig.load(config_path)
+client_config = Client.load()
 
 input_folder = (
     f"{client_config.sync_folder}/{client_config.email}/app_pipelines/adder/inputs/"

@@ -4,18 +4,38 @@ import base64
 import hashlib
 import json
 import os
+import platform
 import re
 import threading
 import zlib
-from dataclasses import dataclass
-from datetime import datetime
-from enum import Enum
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
-from typing import Any
 
+import httpx
 import requests
-from typing_extensions import Self
+from loguru import logger
+from typing_extensions import Any, Optional, Self
+
+from syftbox.client.utils import macos
+from syftbox.server.models import (
+    DirState,
+    FileInfo,
+    get_file_hash,
+    get_file_last_modified,
+)
+
+from .exceptions import ClientConfigException
+
+current_dir = Path(__file__).parent
+ASSETS_FOLDER = current_dir.parent / "assets"
+DEFAULT_PORT = 8082
+ICON_FOLDER = ASSETS_FOLDER / "icon"
+DEFAULT_SYNC_FOLDER = os.path.expanduser("~/Desktop/SyftBox")
+DEFAULT_CONFIG_FOLDER = os.path.expanduser("~/.syftbox")
+DEFAULT_CONFIG_PATH = os.path.join(DEFAULT_CONFIG_FOLDER, "client_config.json")
+DEFAULT_LOGS_PATH = os.path.join(DEFAULT_CONFIG_FOLDER, "logs", "syftbox.log")
 
 USER_GROUP_GLOBAL = "GLOBAL"
 
@@ -77,12 +97,12 @@ class Jsonable:
                 return cls(**d)
         except Exception as e:
             raise e
-            print(f"Unable to load jsonable file: {filepath}. {e}")
+            logger.info(f"Unable to load jsonable file: {filepath}. {e}")
         return None
 
     def save(self, filepath: str) -> None:
         d = self.to_dict()
-        with open(filepath, "w") as f:
+        with open(Path(filepath).expanduser(), "w") as f:
             f.write(json.dumps(d))
 
 
@@ -96,11 +116,14 @@ class SyftPermission(Jsonable):
 
     @classmethod
     def datasite_default(cls, email: str) -> Self:
-        return SyftPermission(
+        return cls(
             admin=[email],
             read=[email],
             write=[email],
         )
+
+    def has_read_permission(self, email: str) -> bool:
+        return email in self.read or USER_GROUP_GLOBAL in self.read
 
     def __eq__(self, other):
         if not isinstance(other, SyftPermission):
@@ -145,32 +168,30 @@ class SyftPermission(Jsonable):
         return self.save(path)
 
     @classmethod
-    def no_permission(self) -> Self:
-        return SyftPermission(admin=[], read=[], write=[])
+    def no_permission(cls) -> Self:
+        return cls(admin=[], read=[], write=[])
 
     @classmethod
-    def mine_no_permission(self, email: str) -> Self:
-        return SyftPermission(admin=[email], read=[], write=[])
+    def mine_no_permission(cls, email: str) -> Self:
+        return cls(admin=[email], read=[], write=[])
 
     @classmethod
-    def mine_with_public_read(self, email: str) -> Self:
-        return SyftPermission(admin=[email], read=[email, "GLOBAL"], write=[email])
+    def mine_with_public_read(cls, email: str) -> Self:
+        return cls(admin=[email], read=[email, "GLOBAL"], write=[email])
 
     @classmethod
-    def mine_with_public_write(self, email: str) -> Self:
-        return SyftPermission(
-            admin=[email], read=[email, "GLOBAL"], write=[email, "GLOBAL"]
-        )
+    def mine_with_public_write(cls, email: str) -> Self:
+        return cls(admin=[email], read=[email, "GLOBAL"], write=[email, "GLOBAL"])
 
     @classmethod
-    def theirs_with_my_read(self, their_email, my_email: str) -> Self:
-        return SyftPermission(
+    def theirs_with_my_read(cls, their_email, my_email: str) -> Self:
+        return cls(
             admin=[their_email], read=[their_email, my_email], write=[their_email]
         )
 
     @classmethod
-    def theirs_with_my_read_write(self, their_email, my_email: str) -> Self:
-        return SyftPermission(
+    def theirs_with_my_read_write(cls, their_email, my_email: str) -> Self:
+        return cls(
             admin=[their_email],
             read=[their_email, my_email],
             write=[their_email, my_email],
@@ -204,136 +225,6 @@ def strtobin(encoded_data):
     return zlib.decompress(base64.b85decode(encoded_data.encode("utf-8")))
 
 
-class FileChangeKind(Enum):
-    CREATE: str = "create"
-    # READ: str "read"
-    WRITE: str = "write"
-    # append?
-    DELETE: str = "delete"
-
-
-@dataclass
-class FileChange(Jsonable):
-    kind: FileChangeKind
-    parent_path: str
-    sub_path: str
-    file_hash: str
-    last_modified: float
-    sync_folder: str | None = None
-
-    @property
-    def kind_write(self) -> bool:
-        return self.kind in [FileChangeKind.WRITE, FileChangeKind.CREATE]
-
-    @property
-    def kind_delete(self) -> bool:
-        return self.kind == FileChangeKind.DELETE
-
-    def to_dict(self) -> dict:
-        output = {}
-        for k, v in self.__dict__.items():
-            if k.startswith("_"):
-                continue
-            if k == "kind":
-                v = v.value
-            output[k] = pack(v)
-        return output
-
-    @property
-    def full_path(self) -> str:
-        return self.sync_folder + "/" + self.parent_path + "/" + self.sub_path
-
-    @property
-    def internal_path(self) -> str:
-        return self.parent_path + "/" + self.sub_path
-
-    def hash_equal_or_none(self) -> bool:
-        if not os.path.exists(self.full_path):
-            return True
-
-        local_file_hash = get_file_hash(self.full_path)
-        return self.file_hash == local_file_hash
-
-    def newer(self) -> bool:
-        if not os.path.exists(self.full_path):
-            return True
-
-        local_last_modified = get_file_last_modified(self.full_path)
-        if self.last_modified >= local_last_modified:
-            return True
-
-        return False
-
-    def read(self) -> bytes:
-        # if is_symlink(self.full_path):
-        #     # write a text file with a syftlink
-        #     data = convert_to_symlink(self.full_path).encode("utf-8")
-        #     return data
-        # else:
-        with open(self.full_path, "rb") as f:
-            return f.read()
-
-    def write(self, data: bytes) -> bool:
-        # if its a non private syftlink turn it into a symlink
-        # if data.startswith(b"syft://") and not self.full_path.endswith(".private"):
-        #     syft_link = SyftLink.from_url(data.decode("utf-8"))
-        #     abs_path = os.path.join(
-        #         os.path.abspath(self.sync_folder), syft_link.sync_path
-        #     )
-        #     if not os.path.exists(abs_path):
-        #         raise Exception(
-        #             f"Cant make symlink because source doesnt exist {abs_path}"
-        #         )
-        #     dir_path = os.path.dirname(self.full_path)
-        #     os.makedirs(dir_path, exist_ok=True)
-        #     if os.path.exists(self.full_path) and is_symlink(self.full_path):
-        #         os.unlink(self.full_path)
-        #     os.symlink(abs_path, self.full_path)
-        #     os.utime(
-        #         self.full_path,
-        #         (self.last_modified, self.last_modified),
-        #         follow_symlinks=False,
-        #     )
-
-        #     return True
-        # else:
-        return self.write_to(data, self.full_path)
-
-    def delete(self) -> bool:
-        try:
-            os.unlink(self.full_path)
-            return True
-        except Exception as e:
-            if "No such file" in str(e):
-                return True
-            print(f"Failed to delete file at {self.full_path}. {e}")
-        return False
-
-    def write_to(self, data: bytes, path: str) -> bool:
-        base_dir = os.path.dirname(path)
-        os.makedirs(base_dir, exist_ok=True)
-        try:
-            with open(path, "wb") as f:
-                f.write(data)
-            os.utime(
-                path,
-                (self.last_modified, self.last_modified),
-                follow_symlinks=False,
-            )
-            return True
-        except Exception as e:
-            print("failed to write", path, e)
-            return False
-
-
-@dataclass
-class DirState(Jsonable):
-    tree: dict[str, FileInfo]
-    timestamp: float
-    sync_folder: str
-    sub_path: str
-
-
 def get_symlink(file_path) -> str:
     return os.readlink(file_path)
 
@@ -354,32 +245,12 @@ def is_symlink(file_path) -> bool:
 #     return str(syft_link)
 
 
-def get_file_last_modified(file_path: str) -> float:
-    return os.path.getmtime(file_path)
-
-
-def get_file_hash(file_path: str) -> str:
-    # if is_symlink(file_path):
-    #     # return the hash of the syftlink instead
-    #     sym_link_string = convert_to_symlink(file_path)
-    #     return hashlib.md5(sym_link_string.encode("utf-8")).hexdigest()
-    # else:
-    with open(file_path, "rb") as file:
-        return hashlib.md5(file.read()).hexdigest()
-
-
 def ignore_dirs(directory: str, root: str, ignore_folders=None) -> bool:
     if ignore_folders is not None:
         for ignore_folder in ignore_folders:
             if root.endswith(ignore_folder):
                 return True
     return False
-
-
-@dataclass
-class FileInfo(Jsonable):
-    file_hash: str
-    last_modified: float
 
 
 def hash_dir(
@@ -401,7 +272,7 @@ def hash_dir(
                     )
                     state_dict[rel_path] = file_info
 
-    utc_unix_timestamp = datetime.now().timestamp()
+    utc_unix_timestamp = datetime.now(timezone.utc).timestamp()
     dir_state = DirState(
         tree=state_dict,
         timestamp=utc_unix_timestamp,
@@ -422,7 +293,10 @@ def ignore_file(directory: str, root: str, filename: str) -> bool:
     return False
 
 
-def get_datasites(sync_folder: str) -> list[str]:
+def get_datasites(sync_folder: str | Path) -> list[str]:
+    sync_folder = (
+        str(sync_folder.resolve()) if isinstance(sync_folder, Path) else sync_folder
+    )
     datasites = []
     folders = os.listdir(sync_folder)
     for folder in folders:
@@ -454,23 +328,51 @@ class PermissionTree(Jsonable):
     parent_path: str
     root_perm: SyftPermission | None
 
+    corrupted_permission_files: list[str] = field(default_factory=list)
+
     @classmethod
-    def from_path(cls, parent_path) -> Self:
+    def from_path(cls, parent_path, raise_on_corrupted_files: bool = False) -> Self:
+        corrupted_permission_files = []
         perm_dict = {}
         for root, dirs, files in os.walk(parent_path):
             for file in files:
                 if file.endswith(".syftperm"):
                     path = os.path.join(root, file)
-                    perm_dict[path] = SyftPermission.load(path)
+                    try:
+                        perm_dict[path] = SyftPermission.load(path)
+                    except Exception:
+                        corrupted_permission_files.append(path)
 
         root_perm = None
         root_perm_path = perm_file_path(parent_path)
         if root_perm_path in perm_dict:
             root_perm = perm_dict[root_perm_path]
 
-        return PermissionTree(
-            root_perm=root_perm, tree=perm_dict, parent_path=parent_path
+        if corrupted_permission_files:
+            if raise_on_corrupted_files:
+                raise ValueError(
+                    f"Found corrupted permission files: {corrupted_permission_files}"
+                )
+            logger.warning(
+                f"Found corrupted permission files: {corrupted_permission_files}"
+            )
+
+        return cls(
+            root_perm=root_perm,
+            tree=perm_dict,
+            parent_path=parent_path,
+            corrupted_permission_files=corrupted_permission_files,
         )
+
+    def has_corrupted_permission(self, path: str | Path) -> bool:
+        path = Path(path).resolve()
+        corrupted_permission_paths = [
+            Path(p).parent.resolve() for p in self.corrupted_permission_files
+        ]
+        for perm_path in corrupted_permission_paths:
+            if path.is_relative_to(perm_path):
+                return True
+        return False
 
     @property
     def root_or_default(self) -> SyftPermission:
@@ -617,7 +519,7 @@ def autocache(
             return file_path
         return download_file(url, file_path)
     except Exception as e:
-        print(f"Failed to autocache: {url}. {e}")
+        logger.info(f"Failed to autocache: {url}. {e}")
         return None
 
 
@@ -626,7 +528,7 @@ def download_file(url: str, full_path: str | Path) -> Path | None:
     if not full_path.exists():
         r = requests.get(url, allow_redirects=True, verify=verify_tls())  # nosec
         if not r.ok:
-            print(f"Got {r.status_code} trying to download {url}")
+            logger.info(f"Got {r.status_code} trying to download {url}")
             return None
         full_path.parent.mkdir(parents=True, exist_ok=True)
         full_path.write_bytes(r.content)
@@ -656,7 +558,7 @@ def validate_email(email: str) -> bool:
 
 
 @dataclass
-class ClientConfig(Jsonable):
+class Client(Jsonable):
     config_path: Path
     sync_folder: Path | None = None
     port: int | None = None
@@ -664,6 +566,27 @@ class ClientConfig(Jsonable):
     token: int | None = None
     server_url: str = "http://localhost:5001"
     email_token: str | None = None
+    autorun_plugins: list[str] | None = field(
+        default_factory=lambda: ["init", "create_datasite", "sync", "apps"]
+    )
+    _server_client: httpx.Client | None = None
+
+    @property
+    def is_registered(self) -> bool:
+        return self.token is not None
+
+    @property
+    def server_client(self) -> httpx.Client:
+        if self._server_client is None:
+            self._server_client = httpx.Client(
+                base_url=self.server_url,
+                follow_redirects=True,
+            )
+        return self._server_client
+
+    def close(self):
+        if self._server_client:
+            self._server_client.close()
 
     def save(self, path: str | None = None) -> None:
         if path is None:
@@ -678,18 +601,6 @@ class ClientConfig(Jsonable):
     def manifest_path(self) -> Path:
         return os.path.join(self.datasite_path, "public/manifest/manifest.json")
 
-    # @property
-    # def manifest(self) -> DatasiteManifest:
-    #     datasite_manifest = None
-    #     try:
-    #         datasite_manifest = DatasiteManifest.load(self.manifest_path)
-    #     except Exception:
-    #         datasite_manifest = DatasiteManifest.create_manifest(
-    #             path=self.manifest_path, email=self.email
-    #         )
-
-    #     return datasite_manifest
-
     def get_datasites(self: str) -> list[str]:
         datasites = []
         folders = os.listdir(self.sync_folder)
@@ -698,71 +609,10 @@ class ClientConfig(Jsonable):
                 datasites.append(folder)
         return datasites
 
-    # def get_all_manifests(self):
-    #     manifests = {}
-    #     for datasite in get_datasites(self.sync_folder):
-    #         datasite_path = Path(self.sync_folder + "/" + datasite)
-    #         datasite_manifest = DatasiteManifest.load_from_datasite(datasite_path)
-    #         if datasite_manifest:
-    #             manifests[datasite] = datasite_manifest
-    #     return manifests
-
-    # def get_datasets(self):
-    #     manifests = self.get_all_manifests()
-    #     datasets = []
-    #     for datasite, manifest in manifests.items():
-    #         for dataset_name, dataset_dict in manifest.datasets.items():
-    #             try:
-    #                 dataset = TabularDataset(**dataset_dict)
-    #                 dataset.syft_link = SyftLink(**dataset_dict["syft_link"])
-    #                 dataset.readme_link = SyftLink(**dataset_dict["readme_link"])
-    #                 dataset.loader_link = SyftLink(**dataset_dict["loader_link"])
-    #                 dataset._client_config = self
-    #                 datasets.append(dataset)
-    #             except Exception as e:
-    #                 print(f"Bad dataset format. {datasite} {e}")
-
-    #     return DatasetResults(datasets)
-
-    # def get_code(self):
-    #     manifests = self.get_all_manifests()
-    #     all_code = []
-    #     for datasite, manifest in manifests.items():
-    #         for func_name, code_dict in manifest.code.items():
-    #             try:
-    #                 code = Code(**code_dict)
-    #                 code.syft_link = SyftLink(**code_dict["syft_link"])
-    #                 code.readme_link = SyftLink(**code_dict["readme_link"])
-    #                 code.requirements_link = SyftLink(**code_dict["requirements_link"])
-    #                 code._client_config = self
-    #                 all_code.append(code)
-    #             except Exception as e:
-    #                 print(f"Bad dataset format. {datasite} {e}")
-
-    #     return CodeResults(all_code)
-
-    # def resolve_link(self, link: SyftLink | str) -> Path:
-    #     if isinstance(link, str):
-    #         link = SyftLink.from_url(link)
-    #     return Path(os.path.join(os.path.abspath(self.sync_folder), link.sync_path))
-
     def use(self):
         os.environ["SYFTBOX_CURRENT_CLIENT"] = self.config_path
         os.environ["SYFTBOX_SYNC_DIR"] = self.sync_folder
-        print(f"> Setting Sync Dir to: {self.sync_folder}")
-
-    # @classmethod
-    # def create_manifest(cls, path: str, email: str):
-    #     # make a dir and set the permissions
-    #     manifest_dir = os.path.dirname(path)
-    #     os.makedirs(manifest_dir, exist_ok=True)
-
-    #     public_read = SyftPermission.mine_with_public_read(email=email)
-    #     public_read.save(manifest_dir)
-
-    #     datasite_manifest = DatasiteManifest(datasite=email, file_path=path)
-    #     datasite_manifest.save(path)
-    #     return datasite_manifest
+        logger.info(f"> Setting Sync Dir to: {self.sync_folder}")
 
     def create_folder(self, path: str, permission: SyftPermission):
         os.makedirs(path, exist_ok=True)
@@ -780,6 +630,97 @@ class ClientConfig(Jsonable):
         public_read.save(full_path)
         return Path(full_path)
 
-    # def publish(self, item, overwrite: bool = False):
-    #     if isinstance(item, Callable):
-    #         syftbox_code(item).publish(self, overwrite=overwrite)
+    @classmethod
+    def load(cls, filepath: str | None = None) -> Self:
+        try:
+            if filepath is None:
+                config_path = os.getenv(
+                    "SYFTBOX_CLIENT_CONFIG_PATH", DEFAULT_CONFIG_PATH
+                )
+                filepath = config_path
+            return super().load(filepath)
+        except Exception:
+            raise ClientConfigException(
+                f"Unable to load Client config from {filepath}."
+                "If you are running this outside of syftbox app runner you must supply "
+                "the Client config path like so: \n"
+                "SYFTBOX_CLIENT_CONFIG_PATH=~/.syftbox/client_config.json"
+            )
+
+
+ClientConfig = Client
+
+
+def get_user_input(prompt, default: Optional[str] = None):
+    if default:
+        prompt = f"{prompt} (default: {default}): "
+    user_input = input(prompt).strip()
+    return user_input if user_input else default
+
+
+def load_or_create_config(args) -> ClientConfig:
+    syft_config_dir = os.path.abspath(os.path.expanduser("~/.syftbox"))
+    os.makedirs(syft_config_dir, exist_ok=True)
+
+    client_config = None
+    try:
+        client_config = ClientConfig.load(args.config_path)
+    except Exception:
+        pass
+
+    if client_config is None and args.config_path:
+        config_path = os.path.abspath(os.path.expanduser(args.config_path))
+        client_config = ClientConfig(config_path=config_path)
+
+    if client_config is None:
+        # config_path = get_user_input("Path to config file?", DEFAULT_CONFIG_PATH)
+        config_path = os.path.abspath(os.path.expanduser(config_path))
+        client_config = ClientConfig(config_path=config_path)
+
+    if args.sync_folder:
+        sync_folder = os.path.abspath(os.path.expanduser(args.sync_folder))
+        client_config.sync_folder = sync_folder
+
+    if client_config.sync_folder is None:
+        sync_folder = get_user_input(
+            "Where do you want to Sync SyftBox to?",
+            DEFAULT_SYNC_FOLDER,
+        )
+        sync_folder = os.path.abspath(os.path.expanduser(sync_folder))
+        client_config.sync_folder = sync_folder
+
+    if args.server:
+        client_config.server_url = args.server
+
+    if not os.path.exists(client_config.sync_folder):
+        os.makedirs(client_config.sync_folder, exist_ok=True)
+
+    if platform.system() == "Darwin":
+        macos.copy_icon_file(ICON_FOLDER, client_config.sync_folder)
+
+    if args.email:
+        client_config.email = args.email
+
+    if client_config.email is None:
+        email = get_user_input("What is your email address? ")
+        if not validate_email(email):
+            raise Exception(f"Invalid email: {email}")
+        client_config.email = email
+
+    if args.port:
+        client_config.port = args.port
+
+    if client_config.port is None:
+        port = int(get_user_input("Enter the port to use", DEFAULT_PORT))
+        client_config.port = port
+
+    email_token = os.environ.get("EMAIL_TOKEN", None)
+    if email_token:
+        client_config.email_token = email_token
+
+    # Migrate Old Server URL to HTTPS
+    if client_config.server_url == "http://20.168.10.234:8080":
+        client_config.server_url = "https://syftbox.openmined.org"
+
+    client_config.save(args.config_path)
+    return client_config

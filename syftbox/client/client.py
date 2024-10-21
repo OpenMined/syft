@@ -1,17 +1,17 @@
 import argparse
 import atexit
+import contextlib
 import importlib
 import os
 import platform
 import subprocess
 import sys
-import threading
 import time
-import traceback
 import types
 from dataclasses import dataclass
+from datetime import datetime
+from functools import partial
 from pathlib import Path
-from typing import Optional
 
 import uvicorn
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
@@ -25,24 +25,43 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from loguru import logger
 from pydantic import BaseModel
-from watchdog.events import FileSystemEvent, FileSystemEventHandler
-from watchdog.observers import Observer
+from typing_extensions import Any
 
-from syftbox.lib import ClientConfig, SharedState, validate_email
+from syftbox import __version__
+from syftbox.client.utils.error_reporting import make_error_report
+from syftbox.lib import (
+    DEFAULT_CONFIG_PATH,
+    ClientConfig,
+    SharedState,
+    load_or_create_config,
+)
+from syftbox.lib.logger import zip_logs
+
+
+class CustomFastAPI(FastAPI):
+    loaded_plugins: dict
+    running_plugins: dict
+    scheduler: Any
+    shared_state: dict
+    job_file: str
+    watchdog: Any
+    job_file: str
+
 
 current_dir = Path(__file__).parent
 # Initialize FastAPI app and scheduler
 
-templates = Jinja2Templates(directory="templates")
+templates = Jinja2Templates(directory=str(current_dir / "templates"))
 
 
 PLUGINS_DIR = current_dir / "plugins"
 sys.path.insert(0, os.path.dirname(PLUGINS_DIR))
 
 DEFAULT_SYNC_FOLDER = os.path.expanduser("~/Desktop/SyftBox")
-DEFAULT_PORT = 8082
-DEFAULT_CONFIG_PATH = os.path.expanduser("~/.syftbox/client_config.json")
+
+
 ASSETS_FOLDER = current_dir.parent / "assets"
 ICON_FOLDER = ASSETS_FOLDER / "icon"
 
@@ -57,126 +76,20 @@ class Plugin:
     description: str
 
 
-# if you knew the pain of this function
-def find_icon_file(src_folder: str) -> Path:
-    src_path = Path(src_folder)
-
-    # Function to search for Icon\r file
-    def search_icon_file():
-        if os.path.exists(src_folder):
-            for file_path in src_path.iterdir():
-                if "Icon" in file_path.name and "\r" in file_path.name:
-                    return file_path
-        return None
-
-    # First attempt to find the Icon\r file
-    icon_file = search_icon_file()
-    if icon_file:
-        return icon_file
-
-    # If Icon\r is not found, search for icon.zip and unzip it
-    zip_file = ASSETS_FOLDER / "icon.zip"
-
-    if zip_file.exists():
-        try:
-            # cant use other zip tools as they don't unpack it correctly
-            subprocess.run(
-                ["ditto", "-xk", str(zip_file), str(src_path.parent)],
-                check=True,
-            )
-
-            # Try to find the Icon\r file again after extraction
-            icon_file = search_icon_file()
-            if icon_file:
-                return icon_file
-        except subprocess.CalledProcessError:
-            raise RuntimeError("Failed to unzip icon.zip using macOS CLI tool.")
-
-    # If still not found, raise an error
-    raise FileNotFoundError(
-        "Icon file with a carriage return not found, and icon.zip did not contain it.",
-    )
-
-
-def copy_icon_file(icon_folder: str, dest_folder: str) -> None:
-    src_icon_path = find_icon_file(icon_folder)
-    if not os.path.isdir(dest_folder):
-        raise FileNotFoundError(f"Destination folder '{dest_folder}' does not exist.")
-
-    # shutil wont work with these special icon files
-    subprocess.run(["cp", "-p", src_icon_path, dest_folder], check=True)
-    subprocess.run(["SetFile", "-a", "C", dest_folder], check=True)
-
-
-def load_or_create_config(args) -> ClientConfig:
-    syft_config_dir = os.path.abspath(os.path.expanduser("~/.syftbox"))
-    os.makedirs(syft_config_dir, exist_ok=True)
-
-    client_config = None
+def open_sync_folder(folder_path):
+    """Open the folder specified by `folder_path` in the default file explorer."""
+    logger.info(f"Opening your sync folder: {folder_path}")
     try:
-        client_config = ClientConfig.load(args.config_path)
-    except Exception:
-        pass
-
-    if client_config is None and args.config_path:
-        config_path = os.path.abspath(os.path.expanduser(args.config_path))
-        client_config = ClientConfig(config_path=config_path)
-
-    if client_config is None:
-        # config_path = get_user_input("Path to config file?", DEFAULT_CONFIG_PATH)
-        config_path = os.path.abspath(os.path.expanduser(config_path))
-        client_config = ClientConfig(config_path=config_path)
-
-    if args.sync_folder:
-        sync_folder = os.path.abspath(os.path.expanduser(args.sync_folder))
-        client_config.sync_folder = sync_folder
-
-    if client_config.sync_folder is None:
-        sync_folder = get_user_input(
-            "Where do you want to Sync SyftBox to?",
-            DEFAULT_SYNC_FOLDER,
-        )
-        sync_folder = os.path.abspath(os.path.expanduser(sync_folder))
-        client_config.sync_folder = sync_folder
-
-    if args.server:
-        client_config.server_url = args.server
-
-    if not os.path.exists(client_config.sync_folder):
-        os.makedirs(client_config.sync_folder, exist_ok=True)
-
-    if platform.system() == "Darwin":
-        copy_icon_file(ICON_FOLDER, client_config.sync_folder)
-
-    if args.email:
-        client_config.email = args.email
-
-    if client_config.email is None:
-        email = get_user_input("What is your email address? ")
-        if not validate_email(email):
-            raise Exception(f"Invalid email: {email}")
-        client_config.email = email
-
-    if args.port:
-        client_config.port = args.port
-
-    if client_config.port is None:
-        port = int(get_user_input("Enter the port to use", DEFAULT_PORT))
-        client_config.port = port
-
-    email_token = os.environ.get("EMAIL_TOKEN", None)
-    if email_token:
-        client_config.email_token = email_token
-
-    client_config.save(args.config_path)
-    return client_config
-
-
-def get_user_input(prompt, default: Optional[str] = None):
-    if default:
-        prompt = f"{prompt} (default: {default}): "
-    user_input = input(prompt).strip()
-    return user_input if user_input else default
+        if platform.system() == "Darwin":  # macOS
+            subprocess.run(["open", folder_path])
+        elif platform.system() == "Windows":  # Windows
+            subprocess.run(["explorer", folder_path])
+        elif platform.system() == "Linux":  # Linux
+            subprocess.run(["xdg-open", folder_path])
+        else:
+            logger.warning(f"Unsupported OS for opening folders: {platform.system()}")
+    except Exception as e:
+        logger.error(f"Failed to open folder {folder_path}: {e}")
 
 
 def process_folder_input(user_input, default_path):
@@ -220,7 +133,7 @@ def load_plugins(client_config: ClientConfig) -> dict[str, Plugin]:
                     )
                     loaded_plugins[plugin_name] = plugin
                 except Exception as e:
-                    print(e)
+                    logger.info(e)
 
     return loaded_plugins
 
@@ -250,14 +163,6 @@ def is_valid_datasite_name(name):
     return name.isalnum() or all(c.isalnum() or c in ("-", "_") for c in name)
 
 
-@dataclass
-class Plugin:
-    name: str
-    module: types.ModuleType
-    schedule: int
-    description: str
-
-
 # API Models
 class PluginRequest(BaseModel):
     plugin_name: str
@@ -278,11 +183,10 @@ def run_plugin(plugin_name, *args, **kwargs):
         module = app.loaded_plugins[plugin_name].module
         module.run(app.shared_state, *args, **kwargs)
     except Exception as e:
-        traceback.print_exc()
-        print("error", e)
+        logger.exception(e)
 
 
-def start_plugin(plugin_name: str):
+def start_plugin(app: CustomFastAPI, plugin_name: str):
     if plugin_name not in app.loaded_plugins:
         raise HTTPException(
             status_code=400,
@@ -314,7 +218,7 @@ def start_plugin(plugin_name: str):
             }
             return {"message": f"Plugin {plugin_name} started successfully"}
         else:
-            print(f"Job {existing_job}, already added")
+            logger.info(f"Job {existing_job}, already added")
             return {"message": f"Plugin {plugin_name} already started"}
     except Exception as e:
         raise HTTPException(
@@ -331,106 +235,106 @@ def parse_args():
     parser.add_argument(
         "--config_path", type=str, default=DEFAULT_CONFIG_PATH, help="config path"
     )
+
+    parser.add_argument("--debug", action="store_true", help="debug mode")
+
     parser.add_argument("--sync_folder", type=str, help="sync folder path")
     parser.add_argument("--email", type=str, help="email")
     parser.add_argument("--port", type=int, default=8080, help="Port number")
     parser.add_argument(
         "--server",
         type=str,
-        default="http://20.168.10.234:8080",
+        default="https://syftbox.openmined.org",
         help="Server",
     )
+    subparsers = parser.add_subparsers(dest="command", help="Sub-command help")
+    start_parser = subparsers.add_parser("report", help="Generate an error report")
+    start_parser.add_argument(
+        "--path",
+        type=str,
+        help="Path to the error report file",
+        default=f"./syftbox_logs_{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}",
+    )
+
     return parser.parse_args()
 
 
-def start_watchdog(app):
-    shared_state = app.shared_state
-    sync_folder = shared_state.client_config.sync_folder
+# def start_watchdog(app) -> FSWatchdog:
+#     def sync_on_event(event: FileSystemEvent):
+#         run_plugin("sync", event)
 
-    stop_event = threading.Event()
-    app.stop_event = stop_event
-
-    class AnyFileSystemEventHandler(FileSystemEventHandler):
-        def on_any_event(self, event: FileSystemEvent) -> None:
-            for ignore in WATCHDOG_IGNORE:
-                full_path = shared_state.client_config.sync_folder + "/" + ignore
-                if event.src_path.startswith(full_path):
-                    return
-            run_plugin("sync", event)
-
-    event_handler = AnyFileSystemEventHandler()
-    observer = Observer()
-    observer.schedule(event_handler, sync_folder, recursive=True)
-    observer.start()
-
-    # Run observer in a thread to keep the process alive
-    try:
-        while not stop_event.is_set():
-            time.sleep(1)
-    except KeyboardInterrupt:
-        print("> Watchdog received KeyboardInterrupt")
-    finally:
-        print("> Stopping Watchdog...")
-        observer.stop()
-        observer.join()
-        print("> Watchdog stopped")
+#     watch_dir = Path(app.shared_state.client_config.sync_folder)
+#     watch_dir.mkdir(parents=True, exist_ok=True)
+#     event_handler = AnyFileSystemEventHandler(
+#         watch_dir,
+#         callbacks=[sync_on_event],
+#         ignored=WATCHDOG_IGNORE,
+#     )
+#     watchdog = FSWatchdog(watch_dir, event_handler)
+#     watchdog.start()
+#     return watchdog
 
 
-async def lifespan(app: FastAPI):
+@contextlib.asynccontextmanager
+async def lifespan(app: CustomFastAPI, client_config: ClientConfig | None = None):
     # Startup
-    print("> Starting Client")
-    args = parse_args()
-    client_config = load_or_create_config(args)
-    app.shared_state = initialize_shared_state(client_config)
+    logger.info(
+        f"> Starting SyftBox Client: {__version__} Python {platform.python_version()}"
+    )
+
+    config_path = os.environ.get("SYFTBOX_CLIENT_CONFIG_PATH")
+    if config_path:
+        client_config = ClientConfig.load(config_path)
+
+    # client_config needs to be closed if it was created in this context
+    # if it is passed as lifespan arg (eg for testing) it should be managed by the caller instead.
+    close_client_config: bool = False
+    if client_config is None:
+        args = parse_args()
+        client_config = load_or_create_config(args)
+        close_client_config = True
+    app.shared_state = SharedState(client_config=client_config)
 
     # Clear the lock file on the first run if it exists
     job_file = client_config.config_path.replace(".json", ".sql")
     app.job_file = job_file
     if os.path.exists(job_file):
         os.remove(job_file)
-        print(f"> Cleared existing job file: {job_file}")
+        logger.info(f"> Cleared existing job file: {job_file}")
 
     # Start the scheduler
     jobstores = {"default": SQLAlchemyJobStore(url=f"sqlite:///{job_file}")}
     scheduler = BackgroundScheduler(jobstores=jobstores)
     scheduler.start()
-    app.scheduler = scheduler
-    atexit.register(stop_scheduler)
+    atexit.register(partial(stop_scheduler, app))
 
+    app.scheduler = scheduler
     app.running_plugins = {}
     app.loaded_plugins = load_plugins(client_config)
+    logger.info("> Loaded plugins:", sorted(list(app.loaded_plugins.keys())))
+    # app.watchdog = start_watchdog(app)
 
-    # Start the watchdog observer in a thread
-    if not hasattr(app, "watchdog_thread") or not app.watchdog_thread.is_alive():
-        print("> Starting Watchdog Thread")
-        watchdog_thread = threading.Thread(
-            target=start_watchdog, args=(app,), daemon=True
-        )
-        watchdog_thread.start()
-        app.watchdog_thread = watchdog_thread
-
-    autorun_plugins = ["init", "create_datasite", "sync", "apps", "servers"]
-    for plugin in autorun_plugins:
-        start_plugin(plugin)
+    logger.info("> Starting autorun plugins:", sorted(client_config.autorun_plugins))
+    for plugin in client_config.autorun_plugins:
+        start_plugin(app, plugin)
 
     yield  # This yields control to run the application
 
-    print("> Shutting down...")
+    logger.info("> Shutting down...")
     scheduler.shutdown()
+    # app.watchdog.stop()
+    if close_client_config:
+        client_config.close()
 
-    if app.watchdog_thread.is_alive():
-        app.stop_event.set()
-        app.watchdog_thread.join()
 
-
-def stop_scheduler():
+def stop_scheduler(app: FastAPI):
     # Remove the lock file if it exists
     if os.path.exists(app.job_file):
         os.remove(app.job_file)
-        print("> Scheduler stopped and lock file removed.")
+        logger.info("> Scheduler stopped and lock file removed.")
 
 
-app = FastAPI(lifespan=lifespan)
+app: CustomFastAPI = FastAPI(lifespan=lifespan)
 
 app.mount("/static", StaticFiles(directory=current_dir / "static"), name="static")
 
@@ -491,8 +395,8 @@ def list_plugins():
 
 
 @app.post("/launch")
-def launch_plugin(request: PluginRequest):
-    return start_plugin(request.plugin_name)
+def launch_plugin(plugin_request: PluginRequest, request: Request):
+    return start_plugin(request.app, plugin_request.plugin_name)
 
 
 @app.get("/running")
@@ -593,24 +497,46 @@ def get_syftbox_src_path():
 def main() -> None:
     args = parse_args()
     client_config = load_or_create_config(args)
+    open_sync_folder(client_config.sync_folder)
+    error_config = make_error_report(client_config)
+
+    if args.command == "report":
+        output_path = Path(args.path).resolve()
+        output_path_with_extension = zip_logs(output_path)
+        logger.info(f"Logs saved to: {output_path_with_extension}.")
+        logger.info("Please share your bug report together with the zipped logs")
+        return
+
+    logger.info(f"Client metadata: {error_config.model_dump_json(indent=2)}")
 
     os.environ["SYFTBOX_DATASITE"] = client_config.email
     os.environ["SYFTBOX_CLIENT_CONFIG_PATH"] = client_config.config_path
 
-    print("Dev Mode: ", os.environ.get("SYFTBOX_DEV"))
-    print("Wheel: ", os.environ.get("SYFTBOX_WHEEL"))
+    logger.info("Dev Mode: ", os.environ.get("SYFTBOX_DEV"))
+    logger.info("Wheel: ", os.environ.get("SYFTBOX_WHEEL"))
 
-    debug = True
-    uvicorn.run(
-        "syftbox.client.client:app"
-        if debug
-        else app,  # Use import string in debug mode
-        host="0.0.0.0",
-        port=client_config.port,
-        log_level="debug" if debug else "info",
-        reload=debug,  # Enable hot reloading only in debug mode
-        reload_dirs="./syftbox",
-    )
+    debug = True if args.debug else False
+    port = client_config.port
+    max_attempts = 10  # Maximum number of port attempts
+
+    for attempt in range(max_attempts):
+        try:
+            uvicorn.run(
+                "syftbox.client.client:app" if debug else app,
+                host="0.0.0.0",
+                port=port,
+                log_level="debug" if debug else "info",
+                reload=debug,
+                reload_dirs="./syftbox",
+            )
+            return  # If successful, exit the loop
+        except SystemExit as e:
+            if e.code != 1:  # If it's not the "Address already in use" error
+                raise
+            logger.info(f"Failed to start server on port {port}. Trying next port.")
+            port = 0
+    logger.info(f"Unable to find an available port after {max_attempts} attempts.")
+    sys.exit(1)
 
 
 if __name__ == "__main__":

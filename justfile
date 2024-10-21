@@ -25,7 +25,6 @@ alias rs := run-server
 alias rc := run-client
 alias rj := run-jupyter
 alias b := build
-alias d := deploy
 
 # ---------------------------------------------------------------------------------------------------------------------
 
@@ -70,15 +69,89 @@ run-client name port="auto" server="http://localhost:5001":
 
 # ---------------------------------------------------------------------------------------------------------------------
 
+[group('client')]
+run-live-client server="https://syftbox.openmined.org/":
+    #!/bin/bash
+    set -eou pipefail
+
+    # Working directory for client is .clients/<email>
+    CONFIG_DIR=~/.syftbox
+    mkdir -p $CONFIG_DIR
+
+    echo -e "Config Dir : $CONFIG_DIR"
+
+    uv run syftbox/client/client.py --config_path=$CONFIG_DIR/client_config.json --server={{ server }}
+
+# ---------------------------------------------------------------------------------------------------------------------
+
+# Run a local syftbox app command
+[group('app')]
+run-app name command subcommand="":
+    #!/bin/bash
+    set -eou pipefail
+
+    # generate a local email from name, but if it looks like an email, then use it as is
+    EMAIL="{{ name }}@openmined.org"
+    if [[ "{{ name }}" == *@*.* ]]; then EMAIL="{{ name }}"; fi
+
+    # Working directory for client is .clients/<email>
+    CONFIG_DIR=.clients/$EMAIL/config
+    SYNC_DIR=.clients/$EMAIL/sync
+    mkdir -p $CONFIG_DIR $SYNC_DIR
+
+    echo -e "Config Dir : $CONFIG_DIR"
+
+    uv run syftbox/main.py app {{ command }} {{ subcommand }} --config_path=$CONFIG_DIR/config.json
+
+# ---------------------------------------------------------------------------------------------------------------------
+
 # Build syftbox wheel
 [group('build')]
 build:
     rm -rf dist
     uv build
 
-# Build & Deploy syftbox to a remote server using SSH
+
+# Build syftbox wheel
+[group('install')]
+install:
+    rm -rf dist
+    uv build
+    uv tool install $(ls ./dist/*.whl) --reinstall
+
+# Bump version, commit and tag
 [group('build')]
-deploy keyfile remote="azureuser@20.168.10.234": build
+bump-version level="patch":
+    #!/bin/bash
+    # We need to uv.lock before we can commit the whole thing in the repo.
+    # DO not bump the version on the uv.lock file, else other packages with same version might get updated
+
+    set -eou pipefail
+
+    # sync dev dependencies for bump2version
+    uv sync --frozen
+
+    # get the current and new version
+    BUMPVERS_CHANGES=$(uv run bump2version --dry-run --allow-dirty --list {{ level }})
+    CURRENT_VERSION=$(echo "$BUMPVERS_CHANGES" | grep current_version | cut -d'=' -f2)
+    NEW_VERSION=$(echo "$BUMPVERS_CHANGES" | grep new_version | cut -d'=' -f2)
+    echo "Bumping version from $CURRENT_VERSION to $NEW_VERSION"
+
+    # first bump version
+    uv run bump2version {{ level }}
+
+    # update uv.lock file to reflect new package version
+    uv lock
+
+    # commit the changes
+    git commit -am "Bump version $CURRENT_VERSION -> $NEW_VERSION"
+    git tag -a $NEW_VERSION -m "Release $NEW_VERSION"
+
+# ---------------------------------------------------------------------------------------------------------------------
+
+# Build & Deploy syftbox to a remote server using SSH
+[group('deploy')]
+upload-dev keyfile remote="user@0.0.0.0": build
     #!/bin/bash
     set -eou pipefail
 
@@ -98,20 +171,37 @@ deploy keyfile remote="azureuser@20.168.10.234": build
     scp -i {{ keyfile }} "$LOCAL_WHEEL" "{{ remote }}:$REMOTE_DIR"
 
     # install pip package
-    ssh -i {{ keyfile }} {{ remote }} "pip install --break-system-packages $REMOTE_WHEEL --force"
+    ssh -i {{ keyfile }} {{ remote }} "uv venv && uv pip install $REMOTE_WHEEL"
 
     # restart service
-    # TODO - syftbox service was created manually on 20.168.10.234
-    ssh -i {{ keyfile }} {{ remote }} "sudo systemctl daemon-reload"
-    ssh -i {{ keyfile }} {{ remote }} "sudo systemctl restart syftbox"
+    # NOTE - syftbox service is created manually on the remote server
+    ssh -i {{ keyfile }} {{ remote }} "sudo systemctl daemon-reload && sudo systemctl restart syftbox"
+    echo -e "{{ _green }}Deployed SyftBox local wheel to {{ remote }}{{ _nc }}"
 
-    echo -e "{{ _green }}Deploy successful!{{ _nc }}"
+# Deploy syftbox from pypi to a remote server using SSH
+[group('deploy')]
+upload-pip version keyfile remote="user@0.0.0.0":
+    #!/bin/bash
+    set -eou pipefail
+
+    # change permissions to comply with ssh/scp
+    chmod 600 {{ keyfile }}
+
+    echo -e "Deploying syftbox version {{ version }} to {{ remote }}..."
+
+    # install pip package
+    ssh -i {{ keyfile }} {{ remote }} "uv venv && uv pip install syftbox=={{ version }}"
+
+    # restart service
+    ssh -i {{ keyfile }} {{ remote }} "sudo systemctl daemon-reload && sudo systemctl restart syftbox"
+
+    echo -e "{{ _green }}Deployed SyftBox {{ version }} to {{ remote }}{{ _nc }}"
 
 # ---------------------------------------------------------------------------------------------------------------------
 
 [group('utils')]
-ssh keyfile remote="azureuser@20.168.10.234":
-    ssh -i {{ keyfile }} remote
+ssh keyfile remote="user@0.0.0.0":
+    ssh -i {{ keyfile }} {{ remote }}
 
 # remove all local files & directories
 [group('utils')]
@@ -121,7 +211,5 @@ reset:
 
 [group('utils')]
 run-jupyter jupyter_args="":
-    uv run \
-        --with "jupyterlab" \
-        --with-editable ".[dev]" \
-        jupyter lab --notebook-dir=./notebooks {{ jupyter_args }}
+    uv run --frozen --with "jupyterlab" \
+        jupyter lab {{ jupyter_args }}
