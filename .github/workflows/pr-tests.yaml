@@ -67,3 +67,9 @@ jobs:
           TOX_PYTHON: python${{ matrix.python-version }}
         run: |
           uv run tox -e syft.test.unit
+
+      - name: Run integration tests
+        env:
+          TOX_PYTHON: python${{ matrix.python-version }}
+        run: |
+          uv run tox -e syft.test.ring
