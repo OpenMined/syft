@@ -1,6 +1,7 @@
 from collections.abc import Generator
 from functools import partial
 from pathlib import Path
+import shutil
 import time
 from typing import Generator
 
@@ -38,7 +39,7 @@ def setup_datasite(
 ) -> ClientConfig:
     client_path = tmp_path / email
     if client_path.exists():
-        client_path.rmdir()
+        shutil.rmtree(client_path)
     client_path.mkdir(parents=True)
 
     client_config = ClientConfig(
