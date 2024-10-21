@@ -45,7 +45,7 @@ def apps_pipeline_for(datasite_config: ClientConfig, app_name: str, state: str) 
 
 #TODO: Solve name confusion in the server client before merge
 @pytest.mark.parametrize(
-    "data_json",
+    "input_json,expected_json",
     [
         (
             {
@@ -66,10 +66,33 @@ def apps_pipeline_for(datasite_config: ClientConfig, app_name: str, state: str) 
                 "data": 3,
                 "current_index": 2,
             },
+        ),
+        (
+            {
+                "ring": [
+                    "alice@openmined.org",
+                    "bob@openmined.org",
+                    "charlie@openmined.org",
+                    "alice@openmined.org"
+                ],
+                "data": 0,
+                "current_index": 0,
+            },
+            {
+                "ring": [
+                    "alice@openmined.org",
+                    "bob@openmined.org",
+                    "charlie@openmined.org",
+                    "alice@openmined.org"
+                ],
+                "data": 4,
+                "current_index": 3,
+            },
         )
+
     ],
 )
-def test_syftbox_ring_new(tmp_path: Path,server_client: TestClient, monkeypatch: MonkeyPatch, data_json: tuple):
+def test_syftbox_ring_new(tmp_path: Path,server_client: TestClient, monkeypatch: MonkeyPatch, input_json: dict,expected_json: dict):
     # Create a generic test function for the ring app
 
     # Step 0: Create clients with the ring parties
@@ -78,8 +101,6 @@ def test_syftbox_ring_new(tmp_path: Path,server_client: TestClient, monkeypatch:
     # Step 3: check the data.json in the next person in the ring in the running directory
     # Step 4: Repeat step 2 and 3 until the last person in the ring
     # Step 5: check the data.json for the last person in the done directory
-    
-    input_json, expected_json = data_json
 
     print(input_json, expected_json)
 
