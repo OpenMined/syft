@@ -3,8 +3,8 @@ from functools import partial
 from pathlib import Path
 import time
 from typing import Generator
+import shutil
 
-import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -38,7 +38,11 @@ def setup_datasite(
     tmp_path: Path, server_client: TestClient, email: str
 ) -> ClientConfig:
     client_path = tmp_path / email
-    client_path.unlink(missing_ok=True)
+    if client_path.exists():
+        if client_path.is_dir():
+            shutil.rmtree(client_path)
+        else:
+            client_path.unlink()
     client_path.mkdir(parents=True)
 
     client_config = ClientConfig(

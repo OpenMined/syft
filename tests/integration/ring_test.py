@@ -196,7 +196,6 @@ def test_syftbox_ring_new(tmp_path: Path,server_client: TestClient, monkeypatch:
     with open(datasite_1_running_dir / "data.json", "w") as fp:
         json.dump(input_json, fp)
 
-
     for idx in range(len(datasites)-1):
         curr_datasite = datasites[idx]
         next_datasite = datasites[idx+1]
