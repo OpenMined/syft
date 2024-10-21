@@ -260,8 +260,6 @@ def push_changes(
                 # no data for delete operations
                 pass
 
-            print("Pushing changes....", data)
-
             response = client_config.server_client.post(
                 "/write",
                 json=data,
@@ -695,16 +693,10 @@ def do_sync(shared_state):
                     logger.exception(e)
 
                 try:
-                    print("="*30)
-                    print("🔄 Syncing Up", shared_state.client_config.email)
-                    print("="*30)
                     if SYNC_UP_ENABLED:
                         num_changes += sync_up(shared_state.client_config)
                     else:
                         logger.info("❌ Sync Up Disabled")
-                    print("="*30)
-                    print("🔄 Syncing Successful")
-                    print("="*30)
                 except Exception as e:
                     logger.error("failed to sync up", e)
                     logger.exception(e)

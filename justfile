@@ -85,7 +85,6 @@ run-client name port="auto" server="http://localhost:5001":
 # ---------------------------------------------------------------------------------------------------------------------
 
 # Kill the syftbox client running on a specific port and remove config and sync directories
-# TODO: we could get the port from the config file and omit the port argument
 [group('client')]
 purge-client name:
     #!/bin/bash

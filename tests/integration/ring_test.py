@@ -62,7 +62,7 @@ def apps_pipeline_for(datasite_config: ClientConfig, app_name: str, state: str) 
                     "alice@openmined.org",
                 ],
                 "data": 3,
-                "current_index": 3,
+                "current_index": 2,
             },
         )
     ],
