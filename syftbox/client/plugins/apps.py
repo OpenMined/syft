@@ -109,7 +109,7 @@ def run_apps(client_config):
     os.makedirs(apps_path, exist_ok=True)
 
     # Copy default apps if they don't exist
-    copy_default_apps(apps_path)
+    # copy_default_apps(apps_path)
 
     # add the first perm file
     file_path = perm_file_path(apps_path)

@@ -313,8 +313,8 @@ async def lifespan(app: CustomFastAPI, client_config: ClientConfig | None = None
     app.loaded_plugins = load_plugins(client_config)
     logger.info("> Loaded plugins:", sorted(list(app.loaded_plugins.keys())))
     # app.watchdog = start_watchdog(app)
-
-    logger.info("> Starting autorun plugins:", sorted(client_config.autorun_plugins))
+    print("client_config.autorun_plugins???", client_config.autorun_plugins)
+    logger.info(f"> Starting autorun plugins: {sorted(client_config.autorun_plugins)}")
     for plugin in client_config.autorun_plugins:
         start_plugin(app, plugin)
 
