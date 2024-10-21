@@ -58,10 +58,11 @@ def find_and_run_script(task_path, extra_args, app_envs: dict):
 
             # logger.info("✅ Script run.sh executed successfully.")
             return result
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Error running shell script: {e}")
+            logger.error(e.stderr)
         except Exception as e:
-            print("error:")
-            print(e)
-            logger.info("Error running shell script", e)
+            logger.error("Error running shell script", e)
     else:
         raise FileNotFoundError(f"run.sh not found in {task_path}")
 
