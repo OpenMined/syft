@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Union
 
 from fastapi import Request
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -27,7 +28,7 @@ class ServerSettings(BaseSettings):
         return [self.data_folder, self.snapshot_folder]
 
     @classmethod
-    def from_data_folder(cls, data_folder: Path | str) -> Self:
+    def from_data_folder(cls, data_folder: Union[Path, str]) -> Self:
         data_folder = Path(data_folder)
         return cls(
             data_folder=data_folder,

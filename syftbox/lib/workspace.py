@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Union
 
 DEFAULT_WORKSPACE_DIR = Path("~/.syftbox")
 
@@ -22,7 +23,7 @@ class SyftWorkspace:
             └── bob@acme.org
     """
 
-    def __init__(self, root_dir: Path | str = DEFAULT_WORKSPACE_DIR):
+    def __init__(self, root_dir: Union[Path, str] = DEFAULT_WORKSPACE_DIR):
         self.root_dir = Path(root_dir).expanduser()
 
         # config dir

@@ -1,17 +1,19 @@
-import json
-import subprocess
-import shutil
-from pathlib import Path
 import os
+import shutil
+import subprocess
+from pathlib import Path
 
-# Load the JSON data from a file
-with open("default_apps.json", "r") as file:
-    repo_urls = json.load(file)
+default_apps = [
+    "https://github.com/OpenMined/ring",
+    "https://github.com/OpenMined/github_app_updater",
+    "https://github.com/OpenMined/logged_in",
+]
 
 
 def clone_apps():
+    global default_apps
     # Iterate over the list and clone each repository
-    for url in repo_urls:
+    for url in default_apps:
         subprocess.run(["git", "clone", url])
 
 

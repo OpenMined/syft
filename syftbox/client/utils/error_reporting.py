@@ -1,18 +1,18 @@
 import datetime
 import sys
 from platform import platform
+from typing import Optional
 
 import requests
 from pydantic import BaseModel, Field
 
-import syftbox
-from syftbox.lib.lib import ClientConfig
 from syftbox.__version__ import __version__
+from syftbox.lib.lib import ClientConfig
 
 
 class ErrorReport(BaseModel):
     client_config: dict
-    server_syftbox_version: str | None = None
+    server_syftbox_version: Optional[str] = None
     client_syftbox_version: str = __version__
     python_version: str = sys.version
     platform: str = platform()

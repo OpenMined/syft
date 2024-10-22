@@ -1,10 +1,11 @@
 import hashlib
 import os
 from enum import Enum
+from typing import Optional
 
 from loguru import logger
 from pydantic import BaseModel
-from typing_extensions import Optional, Self
+from typing_extensions import Self
 
 
 class SyftBaseModel(BaseModel):
@@ -38,7 +39,7 @@ class FileChange(SyftBaseModel):
     sub_path: str
     file_hash: str
     last_modified: float
-    sync_folder: str | None = None
+    sync_folder: Optional[str] = None
 
     @property
     def kind_write(self) -> bool:
@@ -76,7 +77,7 @@ class FileChange(SyftBaseModel):
     def is_directory(self) -> bool:
         return os.path.isdir(self.full_path)
 
-    def read(self) -> bytes | None:
+    def read(self) -> Optional[bytes]:
         # if is_symlink(self.full_path):
         #     # write a text file with a syftlink
         #     data = convert_to_symlink(self.full_path).encode("utf-8")

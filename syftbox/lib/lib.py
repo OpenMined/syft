@@ -12,11 +12,12 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Lock
+from typing import Optional, Union
 
 import httpx
 import requests
 from loguru import logger
-from typing_extensions import Any, Optional, Self
+from typing_extensions import Any, Self
 
 from syftbox.client.utils import macos
 from syftbox.server.models import (
@@ -111,7 +112,7 @@ class SyftPermission(Jsonable):
     admin: list[str]
     read: list[str]
     write: list[str]
-    filepath: str | None = None
+    filepath: Optional[str] = None
     terminal: bool = False
 
     @classmethod
@@ -256,7 +257,7 @@ def ignore_dirs(directory: str, root: str, ignore_folders=None) -> bool:
 def hash_dir(
     sync_folder: str,
     sub_path: str,
-    ignore_folders: list | None = None,
+    ignore_folders: Optional[list] = None,
 ) -> DirState:
     state_dict = {}
     full_path = os.path.join(sync_folder, sub_path)
@@ -293,7 +294,7 @@ def ignore_file(directory: str, root: str, filename: str) -> bool:
     return False
 
 
-def get_datasites(sync_folder: str | Path) -> list[str]:
+def get_datasites(sync_folder: Union[str, Path]) -> list[str]:
     sync_folder = (
         str(sync_folder.resolve()) if isinstance(sync_folder, Path) else sync_folder
     )
@@ -326,7 +327,7 @@ def build_tree_string(paths_dict, prefix=""):
 class PermissionTree(Jsonable):
     tree: dict[str, SyftPermission]
     parent_path: str
-    root_perm: SyftPermission | None
+    root_perm: Optional[SyftPermission]
 
     corrupted_permission_files: list[str] = field(default_factory=list)
 
@@ -364,7 +365,7 @@ class PermissionTree(Jsonable):
             corrupted_permission_files=corrupted_permission_files,
         )
 
-    def has_corrupted_permission(self, path: str | Path) -> bool:
+    def has_corrupted_permission(self, path: Union[str, Path]) -> bool:
         path = Path(path).resolve()
         corrupted_permission_paths = [
             Path(p).parent.resolve() for p in self.corrupted_permission_files
@@ -506,8 +507,8 @@ def get_root_data_path() -> Path:
 
 
 def autocache(
-    url: str, extension: str | None = None, cache: bool = True
-) -> Path | None:
+    url: str, extension: Optional[str] = None, cache: bool = True
+) -> Optional[Path]:
     try:
         data_path = get_root_data_path()
         file_hash = hashlib.sha256(url.encode("utf8")).hexdigest()
@@ -523,7 +524,7 @@ def autocache(
         return None
 
 
-def download_file(url: str, full_path: str | Path) -> Path | None:
+def download_file(url: str, full_path: Union[str, Path]) -> Optional[Path]:
     full_path = Path(full_path)
     if not full_path.exists():
         r = requests.get(url, allow_redirects=True, verify=verify_tls())  # nosec
@@ -539,7 +540,7 @@ def verify_tls() -> bool:
     return not str_to_bool(str(os.environ.get("IGNORE_TLS_ERRORS", "0")))
 
 
-def str_to_bool(bool_str: str | None) -> bool:
+def str_to_bool(bool_str: Optional[str]) -> bool:
     result = False
     bool_str = str(bool_str).lower()
     if bool_str == "true" or bool_str == "1":
@@ -559,17 +560,17 @@ def validate_email(email: str) -> bool:
 
 @dataclass
 class Client(Jsonable):
-    config_path: Path 
-    sync_folder: Path | None = None
-    port: int | None = None
-    email: str | None = None
-    token: int | None = None
+    config_path: Path
+    sync_folder: Optional[Path] = None
+    port: Optional[int] = None
+    email: Optional[str] = None
+    token: Optional[int] = None
     server_url: str = "http://localhost:5001"
-    email_token: str | None = None
-    autorun_plugins: list[str] | None = field(
+    email_token: Optional[str] = None
+    autorun_plugins: Optional[list[str]] = field(
         default_factory=lambda: ["init", "create_datasite", "sync", "apps"]
     )
-    _server_client: httpx.Client | None = None
+    _server_client: Optional[httpx.Client] = None
 
     @property
     def is_registered(self) -> bool:
@@ -588,7 +589,7 @@ class Client(Jsonable):
         if self._server_client:
             self._server_client.close()
 
-    def save(self, path: str | None = None) -> None:
+    def save(self, path: Optional[int] = None) -> None:
         if path is None:
             path = self.config_path
         super().save(path)
@@ -631,7 +632,7 @@ class Client(Jsonable):
         return Path(full_path)
 
     @classmethod
-    def load(cls, filepath: str | None = None) -> Self:
+    def load(cls, filepath: Optional[int] = None) -> Self:
         try:
             if filepath is None:
                 config_path = os.getenv(

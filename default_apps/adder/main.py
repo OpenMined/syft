@@ -1,8 +1,7 @@
 import json
 import os
 
-from syftbox.lib import ClientConfig
-from syftbox.lib import Client, SyftPermission
+from syftbox.lib import Client
 
 client_config = Client.load()
 

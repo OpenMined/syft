@@ -8,6 +8,7 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Union
 
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -148,7 +149,7 @@ def create_folders(folders: list[str]) -> None:
 
 
 @contextlib.asynccontextmanager
-async def lifespan(app: FastAPI, settings: ServerSettings | None = None):
+async def lifespan(app: FastAPI, settings: Optional[ServerSettings] = None):
     # Startup
     logger.info(
         f"> Starting SyftBox Server {__version__}. Python {platform.python_version()}"
@@ -212,7 +213,7 @@ async def get_wheel(path: str):
     return filename
 
 
-def get_file_list(directory: str | Path = ".") -> list[dict[str, Any]]:
+def get_file_list(directory: Union[str, Path] = ".") -> list[dict[str, Any]]:
     # TODO rewrite with pathlib
     directory = str(directory)
 

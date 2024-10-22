@@ -4,6 +4,7 @@ import contextlib
 import importlib
 import os
 import platform
+import subprocess
 import sys
 import time
 import types
@@ -11,7 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from functools import partial
 from pathlib import Path
-import subprocess
+from typing import Optional
 
 import uvicorn
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
@@ -90,6 +91,7 @@ def open_sync_folder(folder_path):
             logger.warning(f"Unsupported OS for opening folders: {platform.system()}")
     except Exception as e:
         logger.error(f"Failed to open folder {folder_path}: {e}")
+
 
 def process_folder_input(user_input, default_path):
     if not user_input:
@@ -275,7 +277,7 @@ def parse_args():
 
 
 @contextlib.asynccontextmanager
-async def lifespan(app: CustomFastAPI, client_config: ClientConfig | None = None):
+async def lifespan(app: CustomFastAPI, client_config: Optional[ClientConfig] = None):
     # Startup
     logger.info(
         f"> Starting SyftBox Client: {__version__} Python {platform.python_version()}"

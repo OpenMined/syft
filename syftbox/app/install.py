@@ -8,6 +8,7 @@ import subprocess
 from pathlib import Path
 from tempfile import mkdtemp
 from types import SimpleNamespace
+from typing import Optional
 
 from typing_extensions import Any, Tuple
 
@@ -629,7 +630,7 @@ def update_app_config_file(app_path: str, sanitized_git_path: str, app_config) -
         json.dump(app_json_config, json_file, indent=4)
 
 
-def check_app_config(tmp_clone_path) -> SimpleNamespace | None:
+def check_app_config(tmp_clone_path) -> Optional[SimpleNamespace]:
     try:
         app_config_path = Path(tmp_clone_path) / "config.json"
         if os.path.exists(app_config_path):
@@ -649,7 +650,7 @@ def check_app_config(tmp_clone_path) -> SimpleNamespace | None:
     return None
 
 
-def install(client_config: ClientConfig) -> None | Tuple[str, Exception]:
+def install(client_config: ClientConfig) -> Optional[Tuple[str, Exception]]:
     """
     Installs an application by cloning the repository, checking compatibility, and running installation scripts.
 

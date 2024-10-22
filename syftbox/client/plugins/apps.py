@@ -3,12 +3,12 @@ import os
 import shutil
 import subprocess
 import threading
-from types import SimpleNamespace
-from datetime import datetime
 import time
+from datetime import datetime
+from types import SimpleNamespace
+from typing import Optional, Union
+
 from croniter import croniter
-
-
 from loguru import logger
 from typing_extensions import Any
 
@@ -93,7 +93,7 @@ def copy_default_apps(apps_path):
             logger.info(f"Copied default app: {app}")
 
 
-def dict_to_namespace(data) -> SimpleNamespace | list | Any:
+def dict_to_namespace(data) -> Union[SimpleNamespace, list, Any]:
     if isinstance(data, dict):
         return SimpleNamespace(
             **{key: dict_to_namespace(value) for key, value in data.items()}
@@ -104,7 +104,7 @@ def dict_to_namespace(data) -> SimpleNamespace | list | Any:
         return data
 
 
-def load_config(path: str) -> None | SimpleNamespace:
+def load_config(path: str) -> Optional[SimpleNamespace]:
     try:
         with open(path, "r") as f:
             data = json.load(f)
@@ -219,8 +219,7 @@ def run_custom_app_config(client_config, app_config, path):
 def run_app(client_config, path):
     app_name = os.path.basename(path)
 
-    
-    # NOTE: These environment variables are used when running the script 
+    # NOTE: These environment variables are used when running the script
     # in app folder
     app_envs = {
         "SYFTBOX_CLIENT_CONFIG_PATH": client_config.config_path,
