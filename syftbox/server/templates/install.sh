@@ -15,7 +15,7 @@ MANAGED_PYTHON_VERSION=${MANAGED_PYTHON_VERSION:-"3.12"}
 
 # min system python version if not using managed python
 REQ_PYTHON_MAJOR="3"
-REQ_PYTHON_MINOR="10"
+REQ_PYTHON_MINOR="9"
 
 red='\033[1;31m'
 yellow='\033[0;33m'
@@ -72,10 +72,10 @@ get_python_command() {
 
     # check if either python3 or python is available
     # and echo the python one that works
-    if check_cmd python
-    then echo "python"
-    elif check_cmd python3
+    if check_cmd python3
     then echo "python3"
+    elif check_cmd python
+    then echo "python"
     fi
 }
 
@@ -133,11 +133,21 @@ install_syftbox() {
     need_cmd "uv"
 
     python_flag=""
+    py_detail=""
+
     if [ $MANAGED_PYTHON -eq 1 ]
-    then python_flag="--python $MANAGED_PYTHON_VERSION"
+    then
+        python_flag="--python $MANAGED_PYTHON_VERSION"
+        py_detail="managed Python $MANAGED_PYTHON_VERSION"
+    else
+        py=$(get_python_command)
+        python_flag="--python-preference system"
+        py_detail="system $($py -V)"
     fi
 
-    exit=$(uv tool install $python_flag -Uq syftbox)
+    info "Installing SyftBox (with $py_detail)"
+
+    exit=$(uv tool install $python_flag -Uq --force syftbox)
     if ! $(exit)
     then err "Failed to install SyftBox"
     fi
@@ -246,7 +256,6 @@ do_install() {
     info "Installing uv"
     install_uv
 
-    info "Installing SyftBox"
     install_syftbox
 
     success "Installation completed!"
