@@ -691,7 +691,7 @@ def load_or_create_config(args) -> ClientConfig:
         client_config.port = args.port
 
     if client_config.port is None:
-        port = int(get_user_input("Enter the port to use", DEFAULT_PORT))  # type: ignore
+        port = int(get_user_input("Enter the port to use", str(DEFAULT_PORT)))
         client_config.port = port
 
     email_token = os.environ.get("EMAIL_TOKEN", None)
