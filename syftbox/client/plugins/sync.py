@@ -24,7 +24,7 @@ STAGING = "staging"
 IGNORE_FOLDERS = [CLIENT_CHANGELOG_FOLDER, STAGING, CLIENT_APPS]
 
 
-def get_ignore_rules(dir_state: DirState) -> list[str, str, str]:
+def get_ignore_rules(dir_state: DirState) -> list[tuple[str, str, str]]:
     # get the ignore files
     syft_ignore_files = []
     folder_path = dir_state.sync_folder + "/" + dir_state.sub_path
@@ -304,11 +304,11 @@ def pull_changes(client_config, changes: list[FileChange]):
 
             if ok_change.kind_write:
                 if read_response.get("is_directory", False):
-                    data = None
+                    data = None  # type: ignore
                 else:
                     data = strtobin(read_response["data"])
             elif change.kind_delete:
-                data = None
+                data = None  # type: ignore
 
             if response.status_code == 200:
                 remote_changes.append((ok_change, data))
@@ -445,12 +445,17 @@ def sync_up(client_config: ClientConfig):
     os.makedirs(change_log_folder, exist_ok=True)
 
     # get all the datasites
+    if client_config.sync_folder is None:
+        raise ValueError(f"client {client_config.email}'s sync_folder is not set")
     datasites = get_datasites(client_config.sync_folder)
 
     n_changes = 0
 
     for datasite in datasites:
         # get the top level perm file
+        if client_config.sync_folder is None:
+            raise ValueError(f"client {client_config.email}'s sync_folder is not set")
+
         datasite_path = os.path.join(client_config.sync_folder, datasite)
 
         perm_tree = PermissionTree.from_path(datasite_path)
@@ -478,6 +483,9 @@ def sync_up(client_config: ClientConfig):
             )
 
         # get the new dir state
+        if client_config.sync_folder is None:
+            raise ValueError(f"client {client_config.email}'s sync_folder is not set")
+
         unfiltered_new_dir_state = hash_dir(
             client_config.sync_folder, datasite, IGNORE_FOLDERS
         )
@@ -496,6 +504,9 @@ def sync_up(client_config: ClientConfig):
 
         if len(changes) == 0:
             continue
+
+        if client_config.email is None:
+            raise ValueError(f"client {client_config.email}'s email is not set")
 
         val, val_files, inval_changes, inval_permissions = filter_changes(
             client_config.email, changes, perm_tree

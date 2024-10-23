@@ -13,7 +13,9 @@ config_path = os.environ.get("SYFTBOX_CLIENT_CONFIG_PATH", None)
 
 
 def list_app(client_config: ClientConfig, silent: bool = False) -> list[str]:
-    apps_path = Path(client_config.sync_folder + "/" + "apps")
+    if client_config.sync_folder is None:
+        raise ValueError(f"client {client_config.email}'s sync_folder is not set")
+    apps_path = Path(client_config.sync_folder) / "apps"
     apps = []
     if os.path.exists(apps_path):
         files_and_folders = os.listdir(apps_path)

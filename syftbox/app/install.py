@@ -9,7 +9,7 @@ from pathlib import Path
 from tempfile import mkdtemp
 from types import SimpleNamespace
 
-from typing_extensions import Any, Optional, Tuple
+from typing_extensions import Any, Optional, Tuple, Union
 
 from syftbox.lib.lib import ClientConfig
 
@@ -98,7 +98,7 @@ def sanitize_git_path(path: str) -> str:
         )
 
 
-def delete_folder_if_exists(folder_path: str) -> None:
+def delete_folder_if_exists(folder_path: Union[str, Path]) -> None:
     """
     Deletes a folder if it exists at the specified path.
 
@@ -224,7 +224,7 @@ def clone_repository(sanitized_git_path: str) -> str:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
-        return temp_clone_path
+        return str(temp_clone_path)
     except subprocess.CalledProcessError as e:
         raise e
 
@@ -276,7 +276,7 @@ def dict_to_namespace(data: Any) -> Any:
         return data
 
 
-def load_config(path: str) -> SimpleNamespace:
+def load_config(path: Union[str, Path]) -> SimpleNamespace:
     """
     Loads a JSON configuration file and converts it to a SimpleNamespace object.
 
@@ -632,7 +632,7 @@ def update_app_config_file(app_path: str, sanitized_git_path: str, app_config) -
 def check_app_config(tmp_clone_path) -> Optional[SimpleNamespace]:
     try:
         app_config_path = Path(tmp_clone_path) / "config.json"
-        if os.path.exists(app_config_path):
+        if app_config_path.exists():
             app_config = load_config(app_config_path)
             step = "Loading config.json"
             print(step)
@@ -779,5 +779,6 @@ def install(client_config: ClientConfig) -> Optional[Tuple[str, Exception]]:
             "------------------------------------\n\n"
             f"✅ App {app_name} installed\n"
         )
+        return None
     except Exception as e:
         return (step, e)

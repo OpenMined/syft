@@ -46,7 +46,7 @@ from syftbox.server.settings import ServerSettings, get_server_settings
 current_dir = Path(__file__).parent
 
 
-def load_list(cls, filepath: str) -> list[Any]:
+def load_list(cls, filepath: str) -> Optional[list[Any]]:
     try:
         with open(filepath) as f:
             data = f.read()
@@ -68,7 +68,7 @@ def save_list(obj: Any, filepath: str) -> None:
         f.write(json.dumps(dicts))
 
 
-def load_dict(cls, filepath: str) -> list[Any]:
+def load_dict(cls, filepath: str) -> Optional[dict[str, Any]]:
     try:
         with open(filepath) as f:
             data = f.read()
@@ -100,7 +100,7 @@ class User(Jsonable):
 class Users:
     def __init__(self, path: Path) -> None:
         self.path = path
-        self.users = {}
+        self.users: dict[str, User] = {}
         self.load()
 
     def load(self):
@@ -141,10 +141,10 @@ def get_users(request: Request) -> Users:
     return request.state.users
 
 
-def create_folders(folders: list[str]) -> None:
+def create_folders(folders: list[Path]) -> None:
     for folder in folders:
-        if not os.path.exists(folder):
-            os.makedirs(folder, exist_ok=True)
+        if not folder.exists():
+            folder.mkdir(parents=True, exist_ok=True)
 
 
 @contextlib.asynccontextmanager
@@ -375,7 +375,7 @@ async def write(
             change=change,
             accepted=accepted,
             reason=reason,
-        ), 400
+        )
     except Exception as e:
         logger.info("Exception writing", e)
         raise HTTPException(
@@ -438,6 +438,7 @@ async def dir_state(
         raise HTTPException(status_code=400, detail={"status": "error"})
     except Exception as e:
         logger.exception("Failed to run /dir_state", e)
+        raise HTTPException(status_code=400, detail={"status": "error"})
 
 
 @app.get("/list_datasites", response_model=ListDatasitesResponse)

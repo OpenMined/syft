@@ -44,10 +44,9 @@ class CustomFastAPI(FastAPI):
     loaded_plugins: dict
     running_plugins: dict
     scheduler: Any
-    shared_state: dict
+    shared_state: SharedState
     job_file: str
     watchdog: Any
-    job_file: str
 
 
 current_dir = Path(__file__).parent
@@ -314,9 +313,12 @@ async def lifespan(app: CustomFastAPI, client_config: Optional[ClientConfig] = N
     logger.info("> Loaded plugins:", sorted(list(app.loaded_plugins.keys())))
     # app.watchdog = start_watchdog(app)
 
-    logger.info("> Starting autorun plugins:", sorted(client_config.autorun_plugins))
-    for plugin in client_config.autorun_plugins:
-        start_plugin(app, plugin)
+    if client_config.autorun_plugins:
+        logger.info(
+            "> Starting autorun plugins:", sorted(client_config.autorun_plugins)
+        )
+        for plugin in client_config.autorun_plugins:
+            start_plugin(app, plugin)
 
     yield  # This yields control to run the application
 
@@ -442,6 +444,10 @@ async def file_operation(
     file_path: str = Body(...),
     content: str = Body(None),
 ):
+    if app.shared_state.client_config.sync_folder is None:
+        raise ValueError(
+            f"client {app.shared_state.client_config.email}'s sync_folder is not set"
+        )
     full_path = Path(app.shared_state.client_config.sync_folder) / file_path
 
     # Ensure the path is within the SyftBox directory
@@ -509,7 +515,7 @@ def main() -> None:
 
     logger.info(f"Client metadata: {error_config.model_dump_json(indent=2)}")
 
-    os.environ["SYFTBOX_DATASITE"] = client_config.email
+    os.environ["SYFTBOX_DATASITE"] = client_config.email  # type: ignore
     os.environ["SYFTBOX_CLIENT_CONFIG_PATH"] = client_config.config_path
 
     logger.info("Dev Mode: ", os.environ.get("SYFTBOX_DEV"))

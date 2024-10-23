@@ -7,7 +7,7 @@ import time
 from datetime import datetime
 from types import SimpleNamespace
 
-from croniter import croniter
+from croniter import croniter  # type: ignore
 from loguru import logger
 from typing_extensions import Any, Optional, Union
 
@@ -59,7 +59,7 @@ def find_and_run_script(task_path, extra_args):
 
 DEFAULT_SCHEDULE = 10000
 DESCRIPTION = "Runs Apps"
-RUNNING_APPS = {}
+RUNNING_APPS: dict[str, threading.Thread] = {}
 DEFAULT_APPS_PATH = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "..", "..", "default_apps")
 )
@@ -94,7 +94,7 @@ def dict_to_namespace(data) -> Union[SimpleNamespace, list, Any]:
         return data
 
 
-def load_config(path: str) -> Optional[SimpleNamespace]:
+def load_config(path: str) -> Optional[Union[SimpleNamespace, list, Any]]:
     try:
         with open(path, "r") as f:
             data = json.load(f)

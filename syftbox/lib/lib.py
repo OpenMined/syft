@@ -14,7 +14,7 @@ from pathlib import Path
 from threading import Lock
 
 import httpx
-import requests
+import requests  # type: ignore
 from loguru import logger
 from typing_extensions import Any, Optional, Self, Union
 
@@ -40,7 +40,7 @@ DEFAULT_LOGS_PATH = os.path.join(DEFAULT_CONFIG_FOLDER, "logs", "syftbox.log")
 USER_GROUP_GLOBAL = "GLOBAL"
 
 ICON_FILE = "Icon"  # special
-IGNORE_FILES = []
+IGNORE_FILES: list[str] = []
 
 
 def perm_file_path(path: str) -> str:
@@ -147,25 +147,14 @@ class SyftPermission(Jsonable):
             self.filepath = perm_file_path(self.filepath)
         return self.filepath
 
-    def save(self, path=None) -> bool:
+    def save(self, path: str) -> None:
         self.perm_path(path=path)
+        if self.filepath is None:
+            raise ValueError(f"Saving requites a path: {self}")
         if self.filepath.endswith(".syftperm"):
             super().save(self.filepath)
         else:
             raise Exception(f"Perm file must end in .syftperm. {self.filepath}")
-        return True
-
-    def ensure(self, path=None) -> bool:
-        # make sure the contents matches otherwise write it
-        self.perm_path(path=path)
-        try:
-            prev_perm_file = SyftPermission.load(self.filepath)
-            if self == prev_perm_file:
-                # no need to write
-                return True
-        except Exception:
-            pass
-        return self.save(path)
 
     @classmethod
     def no_permission(cls) -> Self:
@@ -462,14 +451,13 @@ class ResettableTimer:
 
 class SharedState:
     def __init__(self, client_config: ClientConfig):
-        self.data = {}
+        self.data: dict[str, Any] = {}
         self.lock = Lock()
         self.client_config = client_config
-        self.timers: dict[str:ResettableTimer] = {}
-        self.fs_events = []
+        self.fs_events: list[Any] = []
 
     @property
-    def sync_folder(self) -> str:
+    def sync_folder(self) -> Optional[str]:
         return self.client_config.sync_folder
 
     def get(self, key, default=None):
@@ -559,8 +547,8 @@ def validate_email(email: str) -> bool:
 
 @dataclass
 class Client(Jsonable):
-    config_path: Path
-    sync_folder: Optional[Path] = None
+    config_path: str
+    sync_folder: Optional[str] = None
     port: Optional[int] = None
     email: Optional[str] = None
     token: Optional[int] = None
@@ -588,20 +576,24 @@ class Client(Jsonable):
         if self._server_client:
             self._server_client.close()
 
-    def save(self, path: Optional[int] = None) -> None:
+    def save(self, path: Optional[str] = None) -> None:
         if path is None:
             path = self.config_path
         super().save(path)
 
     @property
-    def datasite_path(self) -> Path:
+    def datasite_path(self) -> str:
+        if self.sync_folder is None:
+            raise ValueError(f"client {self.email}'s sync_folder is not set")
+        if self.email is None:
+            raise ValueError(f"client {self.email}'s email is not set")
         return os.path.join(self.sync_folder, self.email)
 
     @property
-    def manifest_path(self) -> Path:
+    def manifest_path(self) -> str:
         return os.path.join(self.datasite_path, "public/manifest/manifest.json")
 
-    def get_datasites(self: str) -> list[str]:
+    def get_datasites(self) -> list[str]:
         datasites = []
         folders = os.listdir(self.sync_folder)
         for folder in folders:
@@ -618,20 +610,8 @@ class Client(Jsonable):
         os.makedirs(path, exist_ok=True)
         permission.save(path)
 
-    @property
-    def root_dir(self) -> Path:
-        root_dir = Path(os.path.abspath(os.path.dirname(self.file_path) + "/../"))
-        return root_dir
-
-    def create_public_folder(self, path: str):
-        full_path = self.root_dir / path
-        os.makedirs(str(full_path), exist_ok=True)
-        public_read = SyftPermission.mine_with_public_read(email=self.datasite)
-        public_read.save(full_path)
-        return Path(full_path)
-
     @classmethod
-    def load(cls, filepath: Optional[int] = None) -> Self:
+    def load(cls, filepath: Optional[str] = None) -> Self:
         try:
             if filepath is None:
                 config_path = os.getenv(
@@ -696,7 +676,7 @@ def load_or_create_config(args) -> ClientConfig:
         os.makedirs(client_config.sync_folder, exist_ok=True)
 
     if platform.system() == "Darwin":
-        macos.copy_icon_file(ICON_FOLDER, client_config.sync_folder)
+        macos.copy_icon_file(str(ICON_FOLDER), client_config.sync_folder)
 
     if args.email:
         client_config.email = args.email
@@ -711,7 +691,7 @@ def load_or_create_config(args) -> ClientConfig:
         client_config.port = args.port
 
     if client_config.port is None:
-        port = int(get_user_input("Enter the port to use", DEFAULT_PORT))
+        port = int(get_user_input("Enter the port to use", DEFAULT_PORT))  # type: ignore
         client_config.port = port
 
     email_token = os.environ.get("EMAIL_TOKEN", None)

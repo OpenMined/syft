@@ -19,7 +19,7 @@ def print_debug():
         import shutil
 
         import psutil
-        import yaml
+        import yaml  # type: ignore
 
         from syftbox.lib import DEFAULT_CONFIG_PATH, ClientConfig
 

@@ -1,6 +1,7 @@
 import subprocess
 from pathlib import Path
 
+from loguru import logger
 from typing_extensions import Optional
 
 ASSETS_FOLDER = Path(__file__).parents[2] / "assets"
@@ -14,10 +15,11 @@ def search_icon_file(src_path: Path) -> Optional[Path]:
     for file_path in src_path.iterdir():
         if "Icon" in file_path.name and "\r" in file_path.name:
             return file_path
+    return None
 
 
 # if you knew the pain of this function
-def find_icon_file(src_path: Path) -> Path:
+def find_icon_file(src_path: Path) -> Optional[Path]:
     # First attempt to find the Icon\r file
     icon_file = search_icon_file(src_path)
     if icon_file:
@@ -41,6 +43,8 @@ def find_icon_file(src_path: Path) -> Path:
     except subprocess.CalledProcessError:
         raise RuntimeError("Failed to unzip icon.zip using macOS CLI tool.")
 
+    return None
+
 
 def copy_icon_file(icon_folder: str, dest_folder: str) -> None:
     dest_path = Path(dest_folder)
@@ -48,7 +52,8 @@ def copy_icon_file(icon_folder: str, dest_folder: str) -> None:
     src_icon_path = find_icon_file(icon_path)
     if not dest_path.exists():
         raise FileNotFoundError(f"Destination folder '{dest_folder}' does not exist.")
-
+    if not src_icon_path:
+        logger.error(f"Icon file not found in {icon_folder}")
     # shutil wont work with these special icon files
-    subprocess.run(["cp", "-p", src_icon_path, dest_folder], check=True)
+    subprocess.run(["cp", "-p", str(src_icon_path), dest_folder], check=True)  # type: ignore
     subprocess.run(["SetFile", "-a", "C", dest_folder], check=True)

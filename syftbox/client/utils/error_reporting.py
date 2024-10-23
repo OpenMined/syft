@@ -2,7 +2,7 @@ import datetime
 import sys
 from platform import platform
 
-import requests
+import requests  # type: ignore
 from pydantic import BaseModel, Field
 from typing_extensions import Optional
 

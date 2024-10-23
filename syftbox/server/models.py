@@ -50,6 +50,8 @@ class FileChange(SyftBaseModel):
 
     @property
     def full_path(self) -> str:
+        if self.sync_folder is None:
+            raise ValueError(f"FileChange {self} has no sync_folder")
         return self.sync_folder + "/" + self.parent_path + "/" + self.sub_path
 
     @property
