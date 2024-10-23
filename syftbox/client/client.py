@@ -27,13 +27,13 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from loguru import logger
 from pydantic import BaseModel
-from typing_extensions import Any
+from typing_extensions import Any, Optional
 
-from syftbox import __version__
+from syftbox import Client, __version__
+from syftbox.client.plugins.sync.manager import SyncManager
 from syftbox.client.utils.error_reporting import make_error_report
 from syftbox.lib import (
     DEFAULT_CONFIG_PATH,
-    Client,
     SharedState,
     load_or_create_client,
 )
@@ -44,7 +44,7 @@ class CustomFastAPI(FastAPI):
     loaded_plugins: dict
     running_plugins: dict
     scheduler: Any
-    shared_state: dict
+    shared_state: SharedState
     job_file: str
     watchdog: Any
     job_file: str
@@ -111,7 +111,7 @@ def load_plugins(client: Client) -> dict[str, Plugin]:
     loaded_plugins = {}
     if os.path.exists(PLUGINS_DIR) and os.path.isdir(PLUGINS_DIR):
         for item in os.listdir(PLUGINS_DIR):
-            if item.endswith(".py") and not item.startswith("__"):
+            if item.endswith(".py") and not item.startswith("__") and "sync" not in item:
                 plugin_name = item[:-3]
                 try:
                     module = importlib.import_module(f"plugins.{plugin_name}")
@@ -187,6 +187,9 @@ def run_plugin(plugin_name, *args, **kwargs):
 
 
 def start_plugin(app: CustomFastAPI, plugin_name: str):
+    if "sync" in plugin_name:
+        return
+
     if plugin_name not in app.loaded_plugins:
         raise HTTPException(
             status_code=400,
@@ -232,9 +235,7 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Run the web application with plugins.",
     )
-    parser.add_argument(
-        "--config_path", type=str, default=DEFAULT_CONFIG_PATH, help="config path"
-    )
+    parser.add_argument("--config_path", type=str, default=DEFAULT_CONFIG_PATH, help="config path")
 
     parser.add_argument("--debug", action="store_true", help="debug mode")
 
@@ -259,34 +260,16 @@ def parse_args():
     return parser.parse_args()
 
 
-# def start_watchdog(app) -> FSWatchdog:
-#     def sync_on_event(event: FileSystemEvent):
-#         run_plugin("sync", event)
-
-#     watch_dir = Path(app.shared_state.client_config.sync_folder)
-#     watch_dir.mkdir(parents=True, exist_ok=True)
-#     event_handler = AnyFileSystemEventHandler(
-#         watch_dir,
-#         callbacks=[sync_on_event],
-#         ignored=WATCHDOG_IGNORE,
-#     )
-#     watchdog = FSWatchdog(watch_dir, event_handler)
-#     watchdog.start()
-#     return watchdog
-
-
 @contextlib.asynccontextmanager
-async def lifespan(app: CustomFastAPI, client: Client | None = None):
+async def lifespan(app: CustomFastAPI, client: Optional[Client] = None):
     # Startup
-    logger.info(
-        f"> Starting SyftBox Client: {__version__} Python {platform.python_version()}"
-    )
+    logger.info(f"> Starting SyftBox Client: {__version__} Python {platform.python_version()}")
 
     config_path = os.environ.get("SYFTBOX_CLIENT_CONFIG_PATH")
     if config_path:
         client = Client.load(config_path)
 
-    # client_config needs to be closed if it was created in this context
+    # client needs to be closed if it was created in this context
     # if it is passed as lifespan arg (eg for testing) it should be managed by the caller instead.
     close_client: bool = False
     if client is None:
@@ -294,6 +277,8 @@ async def lifespan(app: CustomFastAPI, client: Client | None = None):
         client = load_or_create_client(args)
         close_client = True
     app.shared_state = SharedState(client=client)
+
+    logger.info(f"Connecting to {client.server_url}")
 
     # Clear the lock file on the first run if it exists
     job_file = client.config_path.replace(".json", ".sql")
@@ -312,11 +297,12 @@ async def lifespan(app: CustomFastAPI, client: Client | None = None):
     app.running_plugins = {}
     app.loaded_plugins = load_plugins(client)
     logger.info("> Loaded plugins:", sorted(list(app.loaded_plugins.keys())))
-    # app.watchdog = start_watchdog(app)
 
     logger.info("> Starting autorun plugins:", sorted(client.autorun_plugins))
     for plugin in client.autorun_plugins:
         start_plugin(app, plugin)
+
+    start_syncing(app)
 
     yield  # This yields control to run the application
 
@@ -325,6 +311,11 @@ async def lifespan(app: CustomFastAPI, client: Client | None = None):
     # app.watchdog.stop()
     if close_client:
         client.close()
+
+
+def start_syncing(app: CustomFastAPI):
+    manager = SyncManager(app.shared_state.client)
+    manager.start()
 
 
 def stop_scheduler(app: FastAPI):

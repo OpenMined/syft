@@ -1,19 +1,25 @@
 import logging
 import os
 
+from syftbox import Client
 from syftbox.lib import SyftPermission, perm_file_path
+from syftbox.lib.ignore import create_default_ignore_file
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_SCHEDULE = 10000
 DESCRIPTION = "Creates a datasite with a permfile"
 
 
-def claim_datasite(client):
+def claim_datasite(client: Client):
     # create the directory
     os.makedirs(client.datasite_path, exist_ok=True)
 
+    # create syftignore
+    create_default_ignore_file(client)
+
     # add the first perm file
-    file_path = perm_file_path(client.datasite_path)
+    file_path = perm_file_path(str(client.datasite_path))
     if os.path.exists(file_path):
         perm_file = SyftPermission.load(file_path)
     else:
@@ -25,7 +31,7 @@ def claim_datasite(client):
             logger.error("Failed to create perm file")
             logger.exception(e)
 
-    public_path = client.datasite_path + "/" + "public"
+    public_path = str(client.datasite_path) + "/" + "public"
     os.makedirs(public_path, exist_ok=True)
     public_file_path = perm_file_path(public_path)
     if os.path.exists(public_file_path):

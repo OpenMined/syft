@@ -179,6 +179,6 @@ jobs.sqlite
 
 .vscode
 experimental/
-
+*.db
 notebooks/
 dev_space/

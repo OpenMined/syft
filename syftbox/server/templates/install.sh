@@ -8,6 +8,15 @@ ASK_RUN_CLIENT=1
 # --run => disables the prompt & runs the client
 RUN_CLIENT=0
 
+# --system-python => MANAGED_PYTHON=0
+# --managed-python => MANAGED_PYTHON=1
+MANAGED_PYTHON=1
+MANAGED_PYTHON_VERSION=${MANAGED_PYTHON_VERSION:-"3.12"}
+
+# min system python version if not using managed python
+REQ_PYTHON_MAJOR="3"
+REQ_PYTHON_MINOR="9"
+
 red='\033[1;31m'
 yellow='\033[0;33m'
 cyan='\033[0;36m'
@@ -42,6 +51,13 @@ need_cmd() {
     fi
 }
 
+need_python() {
+    # check if either python3 or python is available
+    if ! check_cmd python && ! check_cmd python3
+    then err "need 'python' or 'python3' (command not found)"
+    fi
+}
+
 downloader() {
     if check_cmd curl
     then curl -sSfL "$1"
@@ -52,23 +68,14 @@ downloader() {
 }
 
 get_python_command() {
+    need_python
+
     # check if either python3 or python is available
-    # and return the python command
-
-    if check_cmd python3; then
-        echo "python3"
-    elif check_cmd python; then
-        echo "python"
-    else
-        err "need 'python' or 'python3' (command not found)"
-    fi
-}
-
-
-need_python() {
-    # check if either python3 or python is available
-    if ! check_cmd python && ! check_cmd python3
-    then err "need 'python' or 'python3' (command not found)"
+    # and echo the python one that works
+    if check_cmd python3
+    then echo "python3"
+    elif check_cmd python
+    then echo "python"
     fi
 }
 
@@ -124,44 +131,55 @@ install_uv() {
 
 install_syftbox() {
     need_cmd "uv"
-    exit=$(uv tool install -Uq syftbox)
+
+    python_flag=""
+    py_detail=""
+
+    if [ $MANAGED_PYTHON -eq 1 ]
+    then
+        python_flag="--python $MANAGED_PYTHON_VERSION"
+        py_detail="managed Python $MANAGED_PYTHON_VERSION"
+    else
+        py=$(get_python_command)
+        python_flag="--python-preference system"
+        py_detail="system $($py -V)"
+    fi
+
+    info "Installing SyftBox (with $py_detail)"
+
+    exit=$(uv tool install $python_flag -Uq --force syftbox)
     if ! $(exit)
-    then err "failed to install syftbox"
+    then err "Failed to install SyftBox"
     fi
 }
 
 
 check_python_version() {
     # Try python3, if it exists; otherwise, fall back to python
-    python_command=$(get_python_command)
+    py=$(get_python_command)
 
-    # Check if python_command is empty (meaning no python was found)
-    if [ -z "$python_command" ]; then
+    # Check if py is empty (meaning no python was found)
+    if [ -z "$py" ]; then
         return 1
     fi
 
     # Check if the python version is >= 3.10
-    pyver_check=$($python_command -c "import sys; print((sys.version_info[:2] >= (3, 10)))")
+    py_valid_ver=$($py -c "import sys; print((sys.version_info[:2] >= ($REQ_PYTHON_MAJOR, $REQ_PYTHON_MINOR)))")
 
     # Check if Python version not is greater than or equal to 3.10
-    if [ "$pyver_check" = "False" ]; then
-        err "Minimum python version is 3.10. Found: $($python_command -V)"
+    if [ "$py_valid_ver" = "False" ]; then
+        err "SyftBox requires Python $REQ_PYTHON_MAJOR.$REQ_PYTHON_MINOR or higher, found $($py -V). Please upgrade your Python installation and retry."
     fi
-
 }
 
 
 pre_install() {
-    # ----- pre-install checks ----
-    # uv doesn't really need python,
-    # ... but incase we want we can toggle this on
-    #  need_python
-
-    # check if python version is >= 3.10
-    check_python_version
+    # check if python version is >= 3.10, if uv is not managing python
+    if [ $MANAGED_PYTHON -eq 0 ]
+    then check_python_version
+    fi
 
     # if you see this message, you're good to go
-
     echo "
  ____         __ _   ____
 / ___| _   _ / _| |_| __ )  _____  __
@@ -222,6 +240,12 @@ do_install() {
             -n|--no-prompt|no-prompt)
                 ASK_RUN_CLIENT=0
                 ;;
+            --system-python|system-python)
+                MANAGED_PYTHON=0
+                ;;
+            --managed-python|managed-python)
+                MANAGED_PYTHON=1
+                ;;
             *)
                 ;;
         esac
@@ -232,7 +256,6 @@ do_install() {
     info "Installing uv"
     install_uv
 
-    info "Installing SyftBox"
     install_syftbox
 
     success "Installation completed!"
