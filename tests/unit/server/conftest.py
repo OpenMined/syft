@@ -38,6 +38,12 @@ def client(monkeypatch, tmp_path):
     datafile.touch()
     datafile.write_bytes(b"Hello, World!")
 
+    datafile = datasite / TEST_DATASITE_NAME / TEST_FILE
+    datafile.parent.mkdir(parents=True)
+
+    datafile.touch()
+    datafile.write_bytes(b"Hello, World!")
+
     permfile = datasite / PERMFILE_FILE
     permfile.touch()
     permfile.write_text(json.dumps(PERMFILE_DICT))

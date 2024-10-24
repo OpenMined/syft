@@ -54,7 +54,7 @@ def get_diff(
     conn: sqlite3.Connection = Depends(get_db_connection),
     server_settings: ServerSettings = Depends(get_server_settings),
 ) -> DiffResponse:
-    metadata_list = get_all_metadata(conn, path_like=f"{req.path}%")
+    metadata_list = get_all_metadata(conn, path_like=f"{req.path}")
     if len(metadata_list) == 0:
         raise HTTPException(status_code=404, detail="path not found")
     elif len(metadata_list) > 1:
@@ -111,7 +111,7 @@ def apply_diffs(
     conn: sqlite3.Connection = Depends(get_db_connection),
     server_settings: ServerSettings = Depends(get_server_settings),
 ) -> ApplyDiffResponse:
-    metadata_list = get_all_metadata(conn, path_like=f"{req.path}%")
+    metadata_list = get_all_metadata(conn, path_like=f"{req.path}")
 
     if len(metadata_list) == 0:
         raise HTTPException(status_code=404, detail="path not found")
@@ -146,7 +146,7 @@ def delete_file(
     conn: sqlite3.Connection = Depends(get_db_connection),
     server_settings: ServerSettings = Depends(get_server_settings),
 ) -> JSONResponse:
-    metadata_list = get_all_metadata(conn, path_like=f"%{req.path}%")
+    metadata_list = get_all_metadata(conn, path_like=f"{req.path}")
     if len(metadata_list) == 0:
         raise HTTPException(status_code=404, detail="path not found")
     elif len(metadata_list) > 1:
@@ -179,7 +179,7 @@ def create_file(
         f.write(file.file.read())
 
     cursor = conn.cursor()
-    metadata = get_all_metadata(cursor, path_like=f"%{file.filename}%")
+    metadata = get_all_metadata(cursor, path_like=f"{file.filename}")
     if len(metadata) > 0:
         raise HTTPException(status_code=400, detail="file already exists")
     metadata = hash_file(abs_path, root_dir=server_settings.snapshot_folder)
@@ -196,7 +196,7 @@ def download_file(
     conn: sqlite3.Connection = Depends(get_db_connection),
     server_settings: ServerSettings = Depends(get_server_settings),
 ) -> FileResponse:
-    metadata_list = get_all_metadata(conn, path_like=f"%{req.path}%")
+    metadata_list = get_all_metadata(conn, path_like=f"{req.path}")
     if len(metadata_list) == 0:
         raise HTTPException(status_code=404, detail="path not found")
     elif len(metadata_list) > 1:

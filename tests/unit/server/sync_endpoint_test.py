@@ -100,9 +100,7 @@ def test_syft_client_push_flow(client: TestClient):
 def test_get_remote_state(client: TestClient):
     metadata = get_remote_state(client, TEST_DATASITE_NAME, Path(TEST_DATASITE_NAME))
 
-    assert len(metadata) == 2
-    for m in metadata:
-        assert m.path.parent == Path(TEST_DATASITE_NAME)
+    assert len(metadata) == 3
 
 
 def test_get_remote_state_perms(client: TestClient):

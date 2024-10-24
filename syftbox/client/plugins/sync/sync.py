@@ -76,13 +76,13 @@ class DatasiteState:
         try:
             local_state = self.get_current_local_state()
         except Exception:
-            logger.exception(f"Failed to get local state for {self.email}")
+            logger.error(f"Failed to get local state for {self.email}")
             return [], []
 
         try:
             remote_state = self.get_remote_state()
         except Exception:
-            logger.exception(f"Failed to get remote state for {self.email}")
+            logger.error(f"Failed to get remote state from server {self.email}")
             return [], []
 
         local_state_dict = {file.path: file for file in local_state}

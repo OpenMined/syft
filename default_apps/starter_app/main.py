@@ -12,6 +12,9 @@ default_apps = [
 
 def clone_apps():
     global default_apps
+    if os.getenv("SYFTBOX_DEFAULT_APPS", None) is not None:
+        default_apps = os.environ["SYFTBOX_DEFAULT_APPS"].strip().split(",")
+
     # Iterate over the list and clone each repository
     for url in default_apps:
         subprocess.run(["git", "clone", url])
