@@ -45,8 +45,12 @@ app.add_middleware(SessionMiddleware, secret_key="!secret")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
+# SERVER_URL = "http://localhost:9081"
+SERVER_URL = "http://bigquery.madhava-openmined-org.syftbox.localhost/"
+
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
-GOOGLE_CALLBACK_URL = "http://localhost:9081/auth/google/callback"
+GOOGLE_CALLBACK_URL = f"{SERVER_URL}/auth/google/callback"
+
 
 oauth2_google = OAuth2AuthorizationCodeBearer(
     authorizationUrl="https://accounts.google.com/o/oauth2/v2/auth",
