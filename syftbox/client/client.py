@@ -2,6 +2,7 @@ import argparse
 import atexit
 import contextlib
 import importlib
+import json
 import os
 import platform
 import subprocess
@@ -20,13 +21,20 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import Body, FastAPI, HTTPException, Request
-from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
+    RedirectResponse,
+)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from jinja2 import Template
 from loguru import logger
 from pydantic import BaseModel
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from typing_extensions import Any
 
 from syftbox import __version__
@@ -35,6 +43,7 @@ from syftbox.lib import (
     DEFAULT_CONFIG_PATH,
     ClientConfig,
     SharedState,
+    get_datasites,
     load_or_create_config,
 )
 from syftbox.lib.logger import zip_logs
@@ -349,10 +358,10 @@ app.add_middleware(
 )
 
 
-@app.get("/", response_class=HTMLResponse)
-async def plugin_manager(request: Request):
-    # Pass the request to the template to allow FastAPI to render it
-    return templates.TemplateResponse("index.html", {"request": request})
+# @app.get("/", response_class=HTMLResponse)
+# async def plugin_manager(request: Request):
+#     # Pass the request to the template to allow FastAPI to render it
+#     return templates.TemplateResponse("index.html", {"request": request})
 
 
 @app.get("/client_email")
@@ -372,11 +381,11 @@ def get_shared_state():
     return JSONResponse(content=app.shared_state.data)
 
 
-@app.get("/datasites")
-def list_datasites():
-    datasites = app.shared_state.get("my_datasites", [])
-    # Use jsonable_encoder to encode the datasites object
-    return JSONResponse(content={"datasites": jsonable_encoder(datasites)})
+# @app.get("/datasites")
+# def list_datasites():
+#     datasites = app.shared_state.get("my_datasites", [])
+#     # Use jsonable_encoder to encode the datasites object
+#     return JSONResponse(content={"datasites": jsonable_encoder(datasites)})
 
 
 # FastAPI Routes
@@ -484,6 +493,149 @@ async def file_operation(
             status_code=400,
             detail="Invalid operation. Use 'read', 'write', or 'append'",
         )
+
+
+@app.exception_handler(StarletteHTTPException)
+async def custom_404_handler(request: Request, exc: StarletteHTTPException):
+    if exc.status_code == 404:
+        headers = dict(request.headers)
+        print(json.dumps(headers, indent=4))  # Print headers to the console/logs
+
+        # Return a JSON response with the URL and headers
+        return JSONResponse(
+            status_code=404,
+            content={
+                "message": "Oops! This route does not exist.",
+                "requested_url": str(request.url),
+                "headers": headers,
+            },
+        )
+    # If it's not a 404, fallback to the default HTTPException handler
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+    )
+
+
+@app.get("/")
+async def get_ascii_art(request: Request):
+    # Access and print headers to the console
+    headers = dict(request.headers)
+    print(json.dumps(headers, indent=4))  # Print headers to the console/logs
+
+    # Optionally return headers as response to inspect via the browser or curl
+    return {"message": "your local syftbox mirror", "headers": headers}
+
+
+def get_file_list(directory: str | Path = ".") -> list[dict[str, Any]]:
+    # TODO rewrite with pathlib
+    directory = str(directory)
+
+    file_list = []
+    for item in os.listdir(directory):
+        item_path = os.path.join(directory, item)
+        is_dir = os.path.isdir(item_path)
+        size = os.path.getsize(item_path) if not is_dir else "-"
+        mod_time = datetime.fromtimestamp(os.path.getmtime(item_path)).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
+
+        file_list.append(
+            {"name": item, "is_dir": is_dir, "size": size, "mod_time": mod_time}
+        )
+
+    return sorted(file_list, key=lambda x: (not x["is_dir"], x["name"].lower()))
+
+
+@app.get("/datasites", response_class=HTMLResponse)
+async def list_datasites(request: Request):
+    client_config = app.shared_state.client_config
+
+    files = get_file_list(client_config.sync_folder)
+    datasites = []
+    for file in files:
+        if "@" in file["name"]:
+            datasites.append(file)
+
+    template_path = current_dir / "templates" / "datasites.html"
+    html = ""
+    with open(template_path) as f:
+        html = f.read()
+    template = Template(html)
+
+    html_content = template.render(
+        {
+            "request": request,
+            "files": datasites,
+            "current_path": "/",
+        }
+    )
+    return html_content
+
+
+@app.get("/datasites/{path:path}", response_class=HTMLResponse)
+async def browse_datasite(
+    request: Request,
+    path: str,
+):
+    if path == "":  # Check if path is empty (meaning "/datasites/")
+        return RedirectResponse(url="/datasites")
+
+    client_config = app.shared_state.client_config
+
+    snapshot_folder = str(client_config.sync_folder)
+    datasite_part = path.split("/")[0]
+    datasites = get_datasites(snapshot_folder)
+    if datasite_part in datasites:
+        slug = path[len(datasite_part) :]
+        if slug == "":
+            slug = "/"
+        datasite_path = os.path.join(snapshot_folder, datasite_part)
+        datasite_public = datasite_path + "/public"
+        if not os.path.exists(datasite_public):
+            return "No public datasite"
+
+        slug_path = os.path.abspath(datasite_public + slug)
+        if os.path.exists(slug_path) and os.path.isfile(slug_path):
+            if slug_path.endswith(".html") or slug_path.endswith(".htm"):
+                return FileResponse(slug_path)
+            elif slug_path.endswith(".md"):
+                with open(slug_path, "r") as file:
+                    content = file.read()
+                return PlainTextResponse(content)
+            else:
+                return FileResponse(slug_path, media_type="application/octet-stream")
+
+        # show directory
+        if not path.endswith("/"):
+            return RedirectResponse(url=f"{path}/")
+
+        index_file = os.path.abspath(slug_path + "/" + "index.html")
+        if os.path.exists(index_file):
+            with open(index_file, "r") as file:
+                html_content = file.read()
+            return HTMLResponse(content=html_content, status_code=200)
+
+        if os.path.isdir(slug_path):
+            files = get_file_list(slug_path)
+            template_path = current_dir / "templates" / "folder.html"
+            html = ""
+            with open(template_path) as f:
+                html = f.read()
+            template = Template(html)
+            html_content = template.render(
+                {
+                    "datasite": datasite_part,
+                    "request": request,
+                    "files": files,
+                    "current_path": path,
+                }
+            )
+            return html_content
+        else:
+            return f"Bad Slug {slug}"
+
+    return f"No Datasite {datasite_part} exists"
 
 
 def get_syftbox_src_path():

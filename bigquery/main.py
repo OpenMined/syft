@@ -473,6 +473,23 @@ async def download_query_mock(form: SubmitSQL = Form(...)):
         )
 
 
+@app.get("/form", response_class=HTMLResponse, include_in_schema=False)
+async def get_form_page(request: Request):
+    return templates.TemplateResponse("form.html", {"request": request})
+
+
+class Person(BaseModel):
+    name: str
+    age: int
+
+
+@app.post(
+    "/submit_form",
+)
+async def submit_form(form: Person = Form(...)):
+    return {"name": form.name, "age": form.age}
+
+
 def main() -> None:
     debug = True
     uvicorn.run(
