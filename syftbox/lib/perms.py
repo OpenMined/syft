@@ -100,7 +100,7 @@ class SyftPermission:
     def can_read_write(self, user: str) -> bool:
         return self.can_read(user) and self.can_write(user)
 
-    def save(self):
+    def save(self) -> Self:
         """Save a permissions file."""
 
         perms_path = SyftPermission.resolve(self.path)
@@ -116,11 +116,12 @@ class SyftPermission:
         lperms_path = SyftPermission.resolve(self.path, _PERMS_FILE_LEGACY)
         lperms_path.write_text(self.__perms.model_dump_json(by_alias=True, indent=4))
         # todo - end
+        return self
 
     #############  I/O methods #############
 
     @classmethod
-    def load(cls, path: PathLike) -> Permissions:
+    def load(cls, path: PathLike) -> Self:
         """Load a permissions file. Tries to load the legacy file first."""
 
         # todo - legacy perms
