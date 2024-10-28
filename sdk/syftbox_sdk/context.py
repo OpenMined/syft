@@ -5,7 +5,7 @@ from typing import Optional
 
 from syftbox_sdk.exception import ClientException
 from syftbox_sdk.permissions import EVERYONE, SyftPermission
-from syftbox_sdk.types import PathLike
+from syftbox_sdk.types import PathLike, UserLike, to_path
 
 DEFAULT_CONFIG_PATH = Path(Path.home(), ".syftbox", "client_config.json")
 
@@ -31,7 +31,7 @@ class SyftBoxContext:
 
     def __init__(self, data_dir: PathLike, email: str):
         """
-        To initialize a context, use `SyftBoxContext.load()`
+        To initialize a context, use `SyftBoxContext.load()` instead.
         """
         self.__data_dir = Path(data_dir).resolve()
         self.__email = email
@@ -83,15 +83,13 @@ class SyftBoxContext:
         """
         return Path(self.get_datasite(datasite) / "app_pipelines" / app_name)
 
-    def set_writable(self, path: PathLike, writers=EVERYONE) -> None:
+    def set_writable(self, path: PathLike, writers: UserLike = EVERYONE) -> None:
         """
         Set write permissions for a directory by creating a public permissions file.
 
         Args:
-            path (Path): Directory path to set permissions for.
-            writers (Union[List[str], EVERYONE]): List of email addresses with write permission,
-                                                or EVERYONE constant for public access.
-                                                Defaults to EVERYONE.
+            path    (PathLike): Directory path to set permissions for.
+            writers (UserLike): One ore more email addresses with write permission, Defaults to '*'.
 
         Examples:
             >>> ctx = SyftBoxContext("/data", "user@example.com")
@@ -112,10 +110,8 @@ class SyftBoxContext:
         Set read-only permissions for a directory by creating a private permissions file.
 
         Args:
-            path (Path): Directory path to set permissions for.
-            readers (Union[List[str], EVERYONE]): List of email addresses with read permission,
-                                                or EVERYONE constant for public access.
-                                                Defaults to EVERYONE.
+            path    (PathLike): Directory path to set permissions for.
+            readers (UserLike): List of email addresses with read permission, Defaults to '*'.
 
         Examples:
             >>> ctx = SyftBoxContext("/data", "user@example.com")
@@ -131,7 +127,7 @@ class SyftBoxContext:
         else:
             SyftPermission.readable(path, owner=self.__email, users=readers).save()
 
-    def make_dirs(self, *args) -> None:
+    def make_dirs(self, *args: PathLike) -> None:
         """
         Create multiple directories if they don't exist.
 
@@ -140,15 +136,15 @@ class SyftBoxContext:
 
         Examples:
             >>> ctx = SyftBoxContext("/data", "user@example.com")
-            >>> input_dir = ctx.get_app_data() / "input"
-            >>> output_dir = ctx.get_app_data() / "output"
+            >>> input_dir = ctx.get_app_data("app_name") / "input"
+            >>> output_dir = ctx.get_app_data("app_name", "other@openmined.org") / "output"
             >>> ctx.make_dirs(input_dir, output_dir)
         """
         for path in args:
-            path.mkdir(parents=True, exist_ok=True)
+            to_path(path).mkdir(parents=True, exist_ok=True)
 
     @staticmethod
-    def load() -> "SyftBoxContext":
+    def load(config_path: Optional[PathLike] = None) -> "SyftBoxContext":
         """
         Create a Context from the SyftBox config file.
 
@@ -166,12 +162,16 @@ class SyftBoxContext:
             >>> # With default config path (~/.syftbox/client_config.json)
             >>> ctx = SyftBoxContext.load()
             >>>
-            >>> # With custom config path via environment variable
+            >>> # With custom config
+            >>> import os
+            >>> ctx = SyftBoxContext.load("/custom/path/config.json")
+            >>>
+            >>> # With environment variable
             >>> import os
             >>> os.environ["SYFTBOX_CLIENT_CONFIG_PATH"] = "/custom/path/config.json"
             >>> ctx = SyftBoxContext.load()
         """
-        config_path = Path(os.getenv("SYFTBOX_CLIENT_CONFIG_PATH", DEFAULT_CONFIG_PATH))
+        config_path = config_path or Path(os.getenv("SYFTBOX_CLIENT_CONFIG_PATH", DEFAULT_CONFIG_PATH))
 
         if not config_path.exists():
             raise ClientException(f"Config file not found at {config_path}")
