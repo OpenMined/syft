@@ -38,7 +38,7 @@ class SyncDecisionType(Enum):
 
 
 def update_local(client: Client, local_syncstate: FileMetadata, remote_syncstate: FileMetadata):
-    diff = get_diff(client.server_client, local_syncstate.path, remote_syncstate.signature_bytes)
+    diff = get_diff(client.server_client, local_syncstate.path, local_syncstate.signature_bytes)
     abs_path = client.sync_folder / local_syncstate.path
     local_data = abs_path.read_bytes()
 

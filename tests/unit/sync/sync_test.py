@@ -172,6 +172,40 @@ def test_modify(server_client: TestClient, datasite_1: Client):
     assert (server_settings.snapshot_folder / datasite_1.email / "folder1" / "file.txt").read_text() == new_content
 
 
+def test_modify_and_pull(server_client: TestClient, datasite_1: Client, datasite_2: Client):
+    server_settings: ServerSettings = server_client.app_state["server_settings"]
+    sync_service_1 = SyncManager(datasite_1)
+    sync_service_2 = SyncManager(datasite_2)
+
+    # Setup initial state
+    tree = {
+        "folder1": {
+            "_.syftperm": SyftPermission.mine_with_public_write(datasite_1.email),
+            "file.txt": "content1",
+        },
+    }
+    create_dir_tree(Path(datasite_1.datasite_path), tree)
+    sync_service_1.run_single_thread()
+    sync_service_2.run_single_thread()
+
+    # modify the file
+    file_path = datasite_1.datasite_path / "folder1" / "file.txt"
+    new_content = fake.text(max_nb_chars=100_000)
+    file_path.write_text(new_content)
+
+    assert file_path.read_text() == new_content
+
+    sync_service_1.run_single_thread()
+
+    assert file_path.read_text() == new_content
+    assert (server_settings.snapshot_folder / datasite_1.email / "folder1" / "file.txt").read_text() == new_content
+
+    sync_service_2.run_single_thread()
+
+    assert file_path.read_text() == new_content
+    assert (Path(datasite_2.sync_folder) / datasite_1.email / "folder1" / "file.txt").read_text() == new_content
+
+
 def test_modify_with_conflict(server_client: TestClient, datasite_1: Client, datasite_2: Client):
     sync_service_1 = SyncManager(datasite_1)
     sync_service_2 = SyncManager(datasite_2)

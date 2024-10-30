@@ -7,6 +7,7 @@ import threading
 import time
 from datetime import datetime
 from types import SimpleNamespace
+from pathlib import Path
 
 from croniter import croniter
 from loguru import logger
@@ -97,7 +98,7 @@ def load_config(path: str) -> Optional[SimpleNamespace]:
 
 def run_apps(client_config):
     # create the directory
-    apps_path = str(client_config.sync_folder) + "/apps"
+    apps_path = str(Path(client_config.sync_folder) / "apps")
     os.makedirs(apps_path, exist_ok=True)
 
     # Copy default apps if they don't exist
