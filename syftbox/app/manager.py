@@ -50,9 +50,7 @@ Commands = namedtuple("Commands", ["description", "execute"])
 
 def make_commands() -> dict[str, Commands]:
     return {
-        "list": Commands(
-            "List all currently installed apps in your syftbox.", list_app
-        ),
+        "list": Commands("List all currently installed apps in your syftbox.", list_app),
         "install": Commands("Install a new app in your syftbox.", install),
         "uninstall": Commands("Uninstall a certain app.", uninstall_app),
         "update": Commands("Check for app updates.", update_app),
@@ -67,9 +65,7 @@ class CustomHelpFormatter(argparse.HelpFormatter):
                 commands = make_commands()
                 action.choices = commands.keys()
                 # Build help message with descriptions
-                action.help = "\n".join(
-                    [f"{cmd}: {commands[cmd].description}" for cmd in commands]
-                )
+                action.help = "\n".join([f"{cmd}: {commands[cmd].description}" for cmd in commands])
         super().add_arguments(actions)
 
 
@@ -82,13 +78,9 @@ def parse_args():
     commands = make_commands()
 
     # Add a subparser to the "app" parser to handle different actions
-    parser.add_argument(
-        "command", choices=commands.keys(), help="The command to execute"
-    )
+    parser.add_argument("command", choices=commands.keys(), help="The command to execute")
 
-    parser.add_argument(
-        "--config_path", type=str, default=DEFAULT_CONFIG_PATH, help="config path"
-    )
+    parser.add_argument("--config_path", type=str, default=DEFAULT_CONFIG_PATH, help="config path")
     args, remaining_args = parser.parse_known_args()
     return args, remaining_args
 
