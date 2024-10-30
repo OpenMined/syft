@@ -92,10 +92,10 @@ class SyftPermission:
         return user in self.__perms.owner
 
     def can_read(self, user: str) -> bool:
-        return EVERYONE in self.__perms.read or user in self.__perms.owner or user in self.__perms.write
+        return EVERYONE in self.__perms.read or user in self.__perms.owner
 
     def can_write(self, user: str) -> bool:
-        return EVERYONE in self.__perms.write or user in self.__perms.owner or user in self.__perms.write
+        return EVERYONE in self.__perms.write or user in self.__perms.owner
 
     def can_read_write(self, user: str) -> bool:
         return self.can_read(user) and self.can_write(user)
