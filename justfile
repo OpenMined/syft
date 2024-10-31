@@ -149,6 +149,13 @@ bump-version level="patch":
 
 # ---------------------------------------------------------------------------------------------------------------------
 
+[group('test')]
+test-e2e test_name:
+    chmod +x ./tests/e2e/{{ test_name }}/run.bash
+    bash ./tests/e2e/{{ test_name }}/run.bash
+
+# ---------------------------------------------------------------------------------------------------------------------
+
 # Build & Deploy syftbox to a remote server using SSH
 [group('deploy')]
 upload-dev keyfile remote="user@0.0.0.0": build
@@ -206,8 +213,7 @@ ssh keyfile remote="user@0.0.0.0":
 # remove all local files & directories
 [group('utils')]
 reset:
-    # 'users' is the old directory
-    rm -rf ./users ./.clients ./data ./dist *.whl
+    rm -rf ./.clients ./data ./dist ./.e2e
 
 [group('utils')]
 run-jupyter jupyter_args="":

@@ -260,9 +260,7 @@ async def logout(response: Response):
 
 
 @app.get("/users/me")
-async def get_current_user(
-    request: Request, user: dict = Depends(get_current_user_from_cookie)
-):
+async def get_current_user(request: Request, user: dict = Depends(get_current_user_from_cookie)):
     token = request.cookies.get("access_token")
     return {"email": user["email"], "name": user["name"], "token": token}
 
@@ -283,9 +281,7 @@ def custom_openapi():
         description="Here's a longer description of the custom **OpenAPI** schema",
         routes=app.routes,
     )
-    openapi_schema["info"]["x-logo"] = {
-        "url": "https://fastapi.tiangolo.com/img/logo-margin/logo-teal.png"
-    }
+    openapi_schema["info"]["x-logo"] = {"url": "https://fastapi.tiangolo.com/img/logo-margin/logo-teal.png"}
     app.openapi_schema = openapi_schema
     return app.openapi_schema
 
@@ -309,9 +305,7 @@ async def schema_live(token: str) -> list | dict:
 
     creds = settings["gce_service_account"]
     credentials = service_account.Credentials.from_service_account_info(creds)
-    scoped_credentials = credentials.with_scopes(
-        ["https://www.googleapis.com/auth/cloud-platform"]
-    )
+    scoped_credentials = credentials.with_scopes(["https://www.googleapis.com/auth/cloud-platform"])
 
     client = bigquery.Client(
         credentials=scoped_credentials,
@@ -388,9 +382,7 @@ async def save_query_mock(form: DownloadSQL = Form(...)) -> str:
 
     creds = settings["gce_service_account"]
     credentials = service_account.Credentials.from_service_account_info(creds)
-    scoped_credentials = credentials.with_scopes(
-        ["https://www.googleapis.com/auth/cloud-platform"]
-    )
+    scoped_credentials = credentials.with_scopes(["https://www.googleapis.com/auth/cloud-platform"])
 
     client = bigquery.Client(
         credentials=scoped_credentials,
@@ -403,9 +395,7 @@ async def save_query_mock(form: DownloadSQL = Form(...)) -> str:
         )
 
         if rows.total_rows > 1_000_000:
-            raise Exception(
-                public_message="Please only write queries that gather aggregate statistics"
-            )
+            raise Exception(public_message="Please only write queries that gather aggregate statistics")
 
         now = datetime.now().timestamp()
         full_path = path + "/" + f"{int(now)}.csv"
@@ -414,9 +404,7 @@ async def save_query_mock(form: DownloadSQL = Form(...)) -> str:
 
     except Exception as e:
         output = f"got exception e: {type(e)} {str(e)}"
-        raise Exception(
-            public_message=f"An error occured executing the API call {output}"
-        )
+        raise Exception(public_message=f"An error occured executing the API call {output}")
 
 
 @app.get(
@@ -435,9 +423,7 @@ async def download_query_mock(form: SubmitSQL = Form(...)):
 
     creds = settings["gce_service_account"]
     credentials = service_account.Credentials.from_service_account_info(creds)
-    scoped_credentials = credentials.with_scopes(
-        ["https://www.googleapis.com/auth/cloud-platform"]
-    )
+    scoped_credentials = credentials.with_scopes(["https://www.googleapis.com/auth/cloud-platform"])
 
     client = bigquery.Client(
         credentials=scoped_credentials,
@@ -450,9 +436,7 @@ async def download_query_mock(form: SubmitSQL = Form(...)):
         )
 
         if rows.total_rows > 1_000_000:
-            raise Exception(
-                public_message="Please only write queries that gather aggregate statistics"
-            )
+            raise Exception(public_message="Please only write queries that gather aggregate statistics")
 
         now = int(datetime.now().timestamp())
         df = rows.to_dataframe()
@@ -462,15 +446,11 @@ async def download_query_mock(form: SubmitSQL = Form(...)):
             df.to_csv(tmp.name, index=False)
             tmp_path = tmp.name
 
-        return FileResponse(
-            tmp_path, media_type="application/octet-stream", filename=f"{int(now)}.csv"
-        )
+        return FileResponse(tmp_path, media_type="application/octet-stream", filename=f"{int(now)}.csv")
 
     except Exception as e:
         output = f"got exception e: {type(e)} {str(e)}"
-        raise Exception(
-            public_message=f"An error occured executing the API call {output}"
-        )
+        raise Exception(public_message=f"An error occured executing the API call {output}")
 
 
 @app.get("/form", response_class=HTMLResponse, include_in_schema=False)

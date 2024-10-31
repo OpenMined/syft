@@ -35,9 +35,10 @@ from jinja2 import Template
 from loguru import logger
 from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from typing_extensions import Any
+from typing_extensions import Any, Optional
 
 from syftbox import __version__
+from syftbox.client.plugins.sync.manager import SyncManager
 from syftbox.client.utils.error_reporting import make_error_report
 from syftbox.lib import (
     DEFAULT_CONFIG_PATH,
@@ -53,7 +54,7 @@ class CustomFastAPI(FastAPI):
     loaded_plugins: dict
     running_plugins: dict
     scheduler: Any
-    shared_state: dict
+    shared_state: SharedState
     job_file: str
     watchdog: Any
     job_file: str
@@ -120,7 +121,7 @@ def load_plugins(client_config: ClientConfig) -> dict[str, Plugin]:
     loaded_plugins = {}
     if os.path.exists(PLUGINS_DIR) and os.path.isdir(PLUGINS_DIR):
         for item in os.listdir(PLUGINS_DIR):
-            if item.endswith(".py") and not item.startswith("__"):
+            if item.endswith(".py") and not item.startswith("__") and "sync" not in item:
                 plugin_name = item[:-3]
                 try:
                     module = importlib.import_module(f"plugins.{plugin_name}")
@@ -196,6 +197,9 @@ def run_plugin(plugin_name, *args, **kwargs):
 
 
 def start_plugin(app: CustomFastAPI, plugin_name: str):
+    if "sync" in plugin_name:
+        return
+
     if plugin_name not in app.loaded_plugins:
         raise HTTPException(
             status_code=400,
@@ -241,9 +245,7 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Run the web application with plugins.",
     )
-    parser.add_argument(
-        "--config_path", type=str, default=DEFAULT_CONFIG_PATH, help="config path"
-    )
+    parser.add_argument("--config_path", type=str, default=DEFAULT_CONFIG_PATH, help="config path")
 
     parser.add_argument("--debug", action="store_true", help="debug mode")
 
@@ -256,6 +258,9 @@ def parse_args():
         default="https://syftbox.openmined.org",
         help="Server",
     )
+
+    parser.add_argument("--no_open_sync_folder", action="store_true", help="no open sync folder")
+
     subparsers = parser.add_subparsers(dest="command", help="Sub-command help")
     start_parser = subparsers.add_parser("report", help="Generate an error report")
     start_parser.add_argument(
@@ -268,28 +273,10 @@ def parse_args():
     return parser.parse_args()
 
 
-# def start_watchdog(app) -> FSWatchdog:
-#     def sync_on_event(event: FileSystemEvent):
-#         run_plugin("sync", event)
-
-#     watch_dir = Path(app.shared_state.client_config.sync_folder)
-#     watch_dir.mkdir(parents=True, exist_ok=True)
-#     event_handler = AnyFileSystemEventHandler(
-#         watch_dir,
-#         callbacks=[sync_on_event],
-#         ignored=WATCHDOG_IGNORE,
-#     )
-#     watchdog = FSWatchdog(watch_dir, event_handler)
-#     watchdog.start()
-#     return watchdog
-
-
 @contextlib.asynccontextmanager
-async def lifespan(app: CustomFastAPI, client_config: ClientConfig | None = None):
+async def lifespan(app: CustomFastAPI, client_config: Optional[ClientConfig] = None):
     # Startup
-    logger.info(
-        f"> Starting SyftBox Client: {__version__} Python {platform.python_version()}"
-    )
+    logger.info(f"> Starting SyftBox Client: {__version__} Python {platform.python_version()}")
 
     config_path = os.environ.get("SYFTBOX_CLIENT_CONFIG_PATH")
     if config_path:
@@ -303,6 +290,8 @@ async def lifespan(app: CustomFastAPI, client_config: ClientConfig | None = None
         client_config = load_or_create_config(args)
         close_client_config = True
     app.shared_state = SharedState(client_config=client_config)
+
+    logger.info(f"Connecting to {client_config.server_url}")
 
     # Clear the lock file on the first run if it exists
     job_file = client_config.config_path.replace(".json", ".sql")
@@ -320,20 +309,25 @@ async def lifespan(app: CustomFastAPI, client_config: ClientConfig | None = None
     app.scheduler = scheduler
     app.running_plugins = {}
     app.loaded_plugins = load_plugins(client_config)
-    logger.info("> Loaded plugins:", sorted(list(app.loaded_plugins.keys())))
-    # app.watchdog = start_watchdog(app)
-    print("client_config.autorun_plugins???", client_config.autorun_plugins)
+    logger.info(f"> Loaded plugins: {sorted(list(app.loaded_plugins.keys()))}")
+
     logger.info(f"> Starting autorun plugins: {sorted(client_config.autorun_plugins)}")
     for plugin in client_config.autorun_plugins:
         start_plugin(app, plugin)
+
+    start_syncing(app)
 
     yield  # This yields control to run the application
 
     logger.info("> Shutting down...")
     scheduler.shutdown()
-    # app.watchdog.stop()
     if close_client_config:
         client_config.close()
+
+
+def start_syncing(app: CustomFastAPI):
+    manager = SyncManager(app.shared_state.client_config)
+    manager.start()
 
 
 def stop_scheduler(app: FastAPI):
@@ -536,13 +530,9 @@ def get_file_list(directory: str | Path = ".") -> list[dict[str, Any]]:
         item_path = os.path.join(directory, item)
         is_dir = os.path.isdir(item_path)
         size = os.path.getsize(item_path) if not is_dir else "-"
-        mod_time = datetime.fromtimestamp(os.path.getmtime(item_path)).strftime(
-            "%Y-%m-%d %H:%M:%S"
-        )
+        mod_time = datetime.fromtimestamp(os.path.getmtime(item_path)).strftime("%Y-%m-%d %H:%M:%S")
 
-        file_list.append(
-            {"name": item, "is_dir": is_dir, "size": size, "mod_time": mod_time}
-        )
+        file_list.append({"name": item, "is_dir": is_dir, "size": size, "mod_time": mod_time})
 
     return sorted(file_list, key=lambda x: (not x["is_dir"], x["name"].lower()))
 
@@ -649,7 +639,8 @@ def get_syftbox_src_path():
 def main() -> None:
     args = parse_args()
     client_config = load_or_create_config(args)
-    open_sync_folder(client_config.sync_folder)
+    if not args.no_open_sync_folder:
+        open_sync_folder(client_config.sync_folder)
     error_config = make_error_report(client_config)
 
     if args.command == "report":
@@ -664,8 +655,8 @@ def main() -> None:
     os.environ["SYFTBOX_DATASITE"] = client_config.email
     os.environ["SYFTBOX_CLIENT_CONFIG_PATH"] = client_config.config_path
 
-    logger.info("Dev Mode: ", os.environ.get("SYFTBOX_DEV"))
-    logger.info("Wheel: ", os.environ.get("SYFTBOX_WHEEL"))
+    logger.info(f"Dev Mode:  {os.environ.get('SYFTBOX_DEV')}")
+    logger.info(f"Wheel: {os.environ.get('SYFTBOX_WHEEL')}")
 
     debug = True if args.debug else False
     port = client_config.port

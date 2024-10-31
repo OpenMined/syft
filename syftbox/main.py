@@ -43,9 +43,7 @@ def print_debug():
                     "ram": f"{psutil.virtual_memory().total / (1024**3):.2f} GB",
                 },
                 "operating_system": {
-                    "name": "macOS"
-                    if platform.system() == "Darwin"
-                    else platform.system(),
+                    "name": "macOS" if platform.system() == "Darwin" else platform.system(),
                     "version": platform.release(),
                 },
                 "python": {
@@ -59,11 +57,7 @@ def print_debug():
                 "client_config_path": config_path,
                 "client_config": client_config,
             },
-            "syftbox_env": {
-                key: value
-                for key, value in os.environ.items()
-                if key.startswith("SYFT")
-            },
+            "syftbox_env": {key: value for key, value in os.environ.items() if key.startswith("SYFT")},
         }
         logger.info(yaml.dump(debug_info, default_flow_style=False))
     except Exception as e:
@@ -85,21 +79,13 @@ def main():
     subparsers.add_parser("server", help="Run the Syftbox server")
 
     # Define the install
-    app_parser = subparsers.add_parser(
-        "app", help="Manage SyftBox apps.", description="Manages SyftBox Apps"
-    )
+    app_parser = subparsers.add_parser("app", help="Manage SyftBox apps.", description="Manages SyftBox Apps")
 
-    app_parser = subparsers.add_parser(
-        "version", help="Show SyftBox version", description="Shows the version"
-    )
+    app_parser = subparsers.add_parser("version", help="Show SyftBox version", description="Shows the version")
 
-    app_parser = subparsers.add_parser(
-        "debug", help="Show SyftBox debug info", description="Shows the debug info"
-    )
+    app_parser = subparsers.add_parser("debug", help="Show SyftBox debug info", description="Shows the debug info")
 
-    app_parser = subparsers.add_parser(
-        "path", help="Get Syftbox Import Path", description="Prints the python path"
-    )
+    app_parser = subparsers.add_parser("path", help="Get Syftbox Import Path", description="Prints the python path")
 
     args, remaining_args = parser.parse_known_args()
 

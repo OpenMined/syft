@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import shutil
@@ -5,17 +6,19 @@ import subprocess
 import threading
 import time
 from datetime import datetime
+from pathlib import Path
 from types import SimpleNamespace
 
 from croniter import croniter
 from loguru import logger
-from typing_extensions import Any
+from typing_extensions import Any, Optional, Union
 
 from syftbox.lib import (
     SyftPermission,
-    get_file_hash,
     perm_file_path,
 )
+
+BOOTSTRAPPED = False
 
 
 def find_and_run_script(task_path, extra_args):
@@ -33,11 +36,7 @@ def find_and_run_script(task_path, extra_args):
             has_shebang = first_line.startswith("#!")
 
         # Prepare the command based on whether there's a shebang or not
-        command = (
-            [script_path] + extra_args
-            if has_shebang
-            else ["/bin/bash", script_path] + extra_args
-        )
+        command = [script_path] + extra_args if has_shebang else ["/bin/bash", script_path] + extra_args
 
         try:
             result = subprocess.run(
@@ -51,8 +50,8 @@ def find_and_run_script(task_path, extra_args):
 
             # logger.info("✅ Script run.sh executed successfully.")
             return result
-        except Exception as e:
-            logger.info("Error running shell script", e)
+        except subprocess.CalledProcessError as e:
+            logger.info(f"Error running shell script: {str(e.stderr)}")
     else:
         raise FileNotFoundError(f"run.sh not found in {task_path}")
 
@@ -60,9 +59,7 @@ def find_and_run_script(task_path, extra_args):
 DEFAULT_SCHEDULE = 10000
 DESCRIPTION = "Runs Apps"
 RUNNING_APPS = {}
-DEFAULT_APPS_PATH = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "..", "default_apps")
-)
+DEFAULT_APPS_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "default_apps"))
 
 
 def copy_default_apps(apps_path):
@@ -83,18 +80,16 @@ def copy_default_apps(apps_path):
             logger.info(f"Copied default app: {app}")
 
 
-def dict_to_namespace(data) -> SimpleNamespace | list | Any:
+def dict_to_namespace(data) -> Union[SimpleNamespace, list, Any]:
     if isinstance(data, dict):
-        return SimpleNamespace(
-            **{key: dict_to_namespace(value) for key, value in data.items()}
-        )
+        return SimpleNamespace(**{key: dict_to_namespace(value) for key, value in data.items()})
     elif isinstance(data, list):
         return [dict_to_namespace(item) for item in data]
     else:
         return data
 
 
-def load_config(path: str) -> None | SimpleNamespace:
+def load_config(path: str) -> Optional[SimpleNamespace]:
     try:
         with open(path, "r") as f:
             data = json.load(f)
@@ -103,9 +98,9 @@ def load_config(path: str) -> None | SimpleNamespace:
         return None
 
 
-def run_apps(client_config):
+def bootstrap(client_config):
     # create the directory
-    apps_path = client_config.sync_folder + "/" + "apps"
+    apps_path = str(Path(client_config.sync_folder) / "apps")
     os.makedirs(apps_path, exist_ok=True)
 
     # Copy default apps if they don't exist
@@ -124,6 +119,17 @@ def run_apps(client_config):
             logger.error("Failed to create perm file")
             logger.exception(e)
 
+
+def run_apps(client_config):
+    # create the directory
+    apps_path = str(Path(client_config.sync_folder) / "apps")
+
+    global BOOTSTRAPPED
+    if not BOOTSTRAPPED:
+        logger.info("Bootstrapping apps")
+        bootstrap(client_config)
+        BOOTSTRAPPED = True
+
     apps = os.listdir(apps_path)
     for app in apps:
         app_path = os.path.abspath(apps_path + "/" + app)
@@ -141,11 +147,16 @@ def run_apps(client_config):
                 RUNNING_APPS[app] = thread
 
 
+def get_file_hash(file_path, digest="md5") -> str:
+    with open(file_path, "rb") as f:
+        return hashlib.file_digest(f, digest)
+
+
 def output_published(app_output, published_output) -> bool:
     return (
         os.path.exists(app_output)
         and os.path.exists(published_output)
-        and get_file_hash(app_output) == get_file_hash(published_output)
+        and get_file_hash(app_output, "md5") == get_file_hash(published_output, "md5")
     )
 
 
@@ -169,15 +180,12 @@ def run_custom_app_config(client_config, app_config, path):
     elif getattr(app_config.app.run, "interval", None) is not None:
         interval = app_config.app.run.interval
     else:
-        raise Exception(
-            "There's no schedule configuration. Please add schedule or interval in your app config.json"
-        )
+        raise Exception("There's no schedule configuration. Please add schedule or interval in your app config.json")
 
     while True:
         current_time = datetime.now()
-        logger.info(
-            f"👟 Running {app_name} at scheduled time {current_time.strftime('%Y-%m-%d %H:%M:%S')}"
-        )
+        logger.info(f"👟 Running {app_name} at scheduled time {current_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"Running command: {app_config.app.run.command}")
         try:
             result = subprocess.run(
                 app_config.app.run.command,
@@ -190,8 +198,7 @@ def run_custom_app_config(client_config, app_config, path):
             logger.info(result.stdout)
             logger.error(result.stderr)
         except subprocess.CalledProcessError as e:
-            logger.error(f"Error running {app_name}: {e}")
-            logger.error(e.stderr)
+            logger.error(f"Error running {app_name}: {e.stderr}")
 
         if cron_iter is not None:
             # Schedule the next exection

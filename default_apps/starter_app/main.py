@@ -1,18 +1,32 @@
-import json
 import os
 import shutil
 import subprocess
 from pathlib import Path
 
-# Load the JSON data from a file
-with open("default_apps.json", "r") as file:
-    repo_urls = json.load(file)
+DEFAULT_APPS = [
+    "https://github.com/OpenMined/ring",
+    "https://github.com/OpenMined/github_app_updater",
+    "https://github.com/OpenMined/logged_in",
+]
 
 
 def clone_apps():
+    apps = DEFAULT_APPS
+
+    # this is needed for E2E or integration testing to only install only select apps
+    # DO NOT MERGE IT WITH DEFAULT_APPS
+    env_apps = os.getenv("SYFTBOX_DEFAULT_APPS", None)
+    if env_apps:
+        print(f"SYFTBOX_DEFAULT_APPS={env_apps}")
+        apps = env_apps.strip().split(",")
+
+    print("Installing", apps)
+
     # Iterate over the list and clone each repository
-    for url in repo_urls:
+    for url in apps:
         subprocess.run(["git", "clone", url])
+
+    print("Done")
 
 
 if __name__ == "__main__":

@@ -10,7 +10,8 @@ from datetime import datetime
 from pathlib import Path
 
 import uvicorn
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, Request
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
@@ -20,55 +21,22 @@ from fastapi.responses import (
 )
 from jinja2 import Template
 from loguru import logger
-from typing_extensions import Any, Optional
+from typing_extensions import Any, Optional, Union
 
 from syftbox.__version__ import __version__
 from syftbox.lib import (
     Jsonable,
-    PermissionTree,
-    bintostr,
-    filter_read_state,
     get_datasites,
-    hash_dir,
-    strtobin,
-)
-from syftbox.server.models import (
-    DirStateRequest,
-    DirStateResponse,
-    ListDatasitesResponse,
-    ReadRequest,
-    ReadResponse,
-    WriteRequest,
-    WriteResponse,
 )
 from syftbox.server.settings import ServerSettings, get_server_settings
+
+from .sync import db, hash
+from .sync.router import router as sync_router
 
 current_dir = Path(__file__).parent
 
 
-def load_list(cls, filepath: str) -> list[Any]:
-    try:
-        with open(filepath) as f:
-            data = f.read()
-            d = json.loads(data)
-            ds = []
-            for di in d:
-                ds.append(cls(**di))
-            return ds
-    except Exception as e:
-        logger.info(f"Unable to load list file: {filepath}. {e}")
-    return None
-
-
-def save_list(obj: Any, filepath: str) -> None:
-    dicts = []
-    for d in obj:
-        dicts.append(d.to_dict())
-    with open(filepath, "w") as f:
-        f.write(json.dumps(dicts))
-
-
-def load_dict(cls, filepath: str) -> list[Any]:
+def load_dict(cls, filepath: str) -> Optional[dict[str, Any]]:
     try:
         with open(filepath) as f:
             data = f.read()
@@ -148,11 +116,9 @@ def create_folders(folders: list[str]) -> None:
 
 
 @contextlib.asynccontextmanager
-async def lifespan(app: FastAPI, settings: ServerSettings | None = None):
+async def lifespan(app: FastAPI, settings: Optional[ServerSettings] = None):
     # Startup
-    logger.info(
-        f"> Starting SyftBox Server {__version__}. Python {platform.python_version()}"
-    )
+    logger.info(f"> Starting SyftBox Server {__version__}. Python {platform.python_version()}")
     if settings is None:
         settings = ServerSettings()
     logger.info(settings)
@@ -165,6 +131,21 @@ async def lifespan(app: FastAPI, settings: ServerSettings | None = None):
     logger.info("> Loading Users")
     logger.info(users)
 
+    # might take very long as snapshot folder grows
+    logger.info(f"> Collecting Files from {settings.snapshot_folder.absolute()}")
+    files = hash.collect_files(settings.snapshot_folder.absolute())
+    logger.info("> Hashing files")
+    metadata = hash.hash_files(files, settings.snapshot_folder)
+    logger.info(f"> Updating file hashes at {settings.file_db_path.absolute()}")
+    con = db.get_db(settings.file_db_path.absolute())
+    cur = con.cursor()
+    for m in metadata:
+        db.save_file_metadata(cur, m)
+
+    cur.close()
+    con.commit()
+    con.close()
+
     yield {
         "server_settings": settings,
         "users": users,
@@ -174,6 +155,9 @@ async def lifespan(app: FastAPI, settings: ServerSettings | None = None):
 
 
 app = FastAPI(lifespan=lifespan)
+app.include_router(sync_router)
+app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
+
 # Define the ASCII art
 ascii_art = rf"""
  ____         __ _   ____
@@ -212,7 +196,7 @@ async def get_wheel(path: str):
     return filename
 
 
-def get_file_list(directory: str | Path = ".") -> list[dict[str, Any]]:
+def get_file_list(directory: Union[str, Path] = ".") -> list[dict[str, Any]]:
     # TODO rewrite with pathlib
     directory = str(directory)
 
@@ -221,21 +205,15 @@ def get_file_list(directory: str | Path = ".") -> list[dict[str, Any]]:
         item_path = os.path.join(directory, item)
         is_dir = os.path.isdir(item_path)
         size = os.path.getsize(item_path) if not is_dir else "-"
-        mod_time = datetime.fromtimestamp(os.path.getmtime(item_path)).strftime(
-            "%Y-%m-%d %H:%M:%S"
-        )
+        mod_time = datetime.fromtimestamp(os.path.getmtime(item_path)).strftime("%Y-%m-%d %H:%M:%S")
 
-        file_list.append(
-            {"name": item, "is_dir": is_dir, "size": size, "mod_time": mod_time}
-        )
+        file_list.append({"name": item, "is_dir": is_dir, "size": size, "mod_time": mod_time})
 
     return sorted(file_list, key=lambda x: (not x["is_dir"], x["name"].lower()))
 
 
 @app.get("/datasites", response_class=HTMLResponse)
-async def list_datasites(
-    request: Request, server_settings: ServerSettings = Depends(get_server_settings)
-):
+async def list_datasites(request: Request, server_settings: ServerSettings = Depends(get_server_settings)):
     files = get_file_list(server_settings.snapshot_folder)
     template_path = current_dir / "templates" / "datasites.html"
     html = ""
@@ -318,139 +296,22 @@ async def browse_datasite(
 
 
 @app.post("/register")
-async def register(request: Request, users: Users = Depends(get_users)):
+async def register(
+    request: Request,
+    users: Users = Depends(get_users),
+    server_settings: ServerSettings = Depends(get_server_settings),
+):
     data = await request.json()
     email = data["email"]
     token = users.create_user(email)
-    logger.info(f"> {email} registering: {token}")
+
+    # create datasite snapshot folder
+    datasite_folder = Path(server_settings.snapshot_folder) / email
+    os.makedirs(datasite_folder, exist_ok=True)
+
+    logger.info(f"> {email} registering: {token}, snapshot folder: {datasite_folder}")
+
     return JSONResponse({"status": "success", "token": token}, status_code=200)
-
-
-@app.post("/write", response_model=WriteResponse)
-async def write(
-    request: WriteRequest,
-    server_settings: ServerSettings = Depends(get_server_settings),
-) -> WriteResponse:
-    try:
-        email = request.email
-        change = request.change
-        reason = "ok"
-
-        change.sync_folder = os.path.abspath(str(server_settings.snapshot_folder))
-        result = True
-        accepted = True
-        if change.newer():
-            if change.kind_write:
-                if request.is_directory:
-                    # Handle empty directory
-                    os.makedirs(change.full_path, exist_ok=True)
-                    result = True
-                else:
-                    bin_data = strtobin(request.data)
-                    result = change.write(bin_data)
-            elif change.kind_delete:
-                if change.hash_equal_or_none():
-                    result = change.delete()
-                else:
-                    reason = f"> 🔥 {change.kind} hash doesnt match so ignore {change}"
-                    logger.info(reason)
-                    accepted = False
-            else:
-                raise Exception(f"Unknown type of change kind. {change.kind}")
-        else:
-            reason = f"> 🔥 {change.kind} is older so ignore {change}"
-            logger.info(reason)
-            accepted = False
-
-        if result:
-            logger.info(f"> {email} {change.kind}: {change.internal_path}")
-            return WriteResponse(
-                status="success",
-                change=change,
-                accepted=accepted,
-                reason=reason,
-            )
-        return WriteResponse(
-            status="error",
-            change=change,
-            accepted=accepted,
-            reason=reason,
-        ), 400
-    except Exception as e:
-        logger.info("Exception writing", e)
-        raise HTTPException(
-            status_code=400,
-            detail=f"Exception writing {e}",
-        )
-
-
-@app.post("/read", response_model=ReadResponse)
-async def read(
-    request: ReadRequest, server_settings: ServerSettings = Depends(get_server_settings)
-) -> ReadResponse:
-    email = request.email
-    change = request.change
-    change.sync_folder = os.path.abspath(str(server_settings.snapshot_folder))
-    logger.info(f"> {email} {change.kind}: {change.internal_path}")
-    # TODO: handle permissions, create and delete
-    data = None
-    if change.kind_write and not change.is_directory():
-        data = bintostr(change.read())
-    return ReadResponse(
-        status="success",
-        change=change.model_dump(mode="json"),
-        data=data,
-        is_directory=change.is_directory(),
-    )
-
-
-@app.post("/dir_state", response_model=DirStateResponse)
-async def dir_state(
-    request: DirStateRequest,
-    server_settings: ServerSettings = Depends(get_server_settings),
-) -> DirStateResponse:
-    try:
-        email = request.email
-        sub_path = request.sub_path
-        snapshot_folder = str(server_settings.snapshot_folder)
-        full_path = os.path.join(snapshot_folder, sub_path)
-        remote_dir_state = hash_dir(snapshot_folder, sub_path)
-
-        # get the top level perm file
-        try:
-            perm_tree = PermissionTree.from_path(
-                full_path, raise_on_corrupted_files=True
-            )
-        except Exception as e:
-            print(f"Failed to parse permission tree: {full_path}")
-            raise e
-
-        # filter the read state for this user by the perm tree
-        read_state = filter_read_state(email, remote_dir_state, perm_tree)
-        remote_dir_state.tree = read_state
-
-        if remote_dir_state:
-            return DirStateResponse(
-                sub_path=sub_path,
-                dir_state=remote_dir_state,
-                status="success",
-            )
-        raise HTTPException(status_code=400, detail={"status": "error"})
-    except Exception as e:
-        logger.exception("Failed to run /dir_state", e)
-
-
-@app.get("/list_datasites", response_model=ListDatasitesResponse)
-async def datasites(
-    server_settings: ServerSettings = Depends(get_server_settings),
-) -> ListDatasitesResponse:
-    datasites = get_datasites(server_settings.snapshot_folder)
-    if isinstance(datasites, list):
-        return ListDatasitesResponse(
-            datasites=datasites,
-            status="success",
-        )
-    raise HTTPException(status_code=400, detail={"status": "error"})
 
 
 @app.get("/install.sh")
@@ -511,9 +372,7 @@ def main() -> None:
 
     uvicorn_config["ssl_keyfile"] = args.ssl_keyfile if args.ssl_keyfile else None
     uvicorn_config["ssl_certfile"] = args.ssl_certfile if args.ssl_certfile else None
-    uvicorn_config["ssl_keyfile_password"] = (
-        args.ssl_keyfile_password if args.ssl_keyfile_password else None
-    )
+    uvicorn_config["ssl_keyfile_password"] = args.ssl_keyfile_password if args.ssl_keyfile_password else None
 
     uvicorn.run(**uvicorn_config)
 

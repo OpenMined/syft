@@ -23,11 +23,7 @@ def find_and_run_script(task_path, extra_args):
             has_shebang = first_line.startswith("#!")
 
         # Prepare the command based on whether there's a shebang or not
-        command = (
-            [script_path] + extra_args
-            if has_shebang
-            else ["/bin/bash", script_path] + extra_args
-        )
+        command = [script_path] + extra_args if has_shebang else ["/bin/bash", script_path] + extra_args
 
         # Start the process and save the PID to the file
         with open(pid_file_path, "w") as pid_file:
@@ -50,9 +46,7 @@ def find_and_run_script(task_path, extra_args):
 def kill_process_by_path(script_path):
     # Use `ps` to list all processes and their command lines
     try:
-        result = subprocess.run(
-            ["ps", "aux"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
-        )
+        result = subprocess.run(["ps", "aux"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
         for line in result.stdout.splitlines():
             if script_path in line:

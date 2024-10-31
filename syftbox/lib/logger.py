@@ -1,9 +1,13 @@
+import sys
 from pathlib import Path
 from shutil import make_archive
 
 from loguru import logger
 
 from syftbox.lib.lib import DEFAULT_LOGS_PATH
+
+logger.remove()
+logger.add(sys.stderr, diagnose=False, backtrace=False)
 
 # Configure Loguru to write logs to a file with rotation
 logger.add(
