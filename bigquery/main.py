@@ -51,7 +51,8 @@ templates = Jinja2Templates(directory="templates")
 # SERVER_URL = "http://bigquery-openmined-org.syftbox.openmined.dev/bigquery/"
 # SERVER_URL = "http://localhost/bigquery"
 # SERVER_URL = "http://localhost:9081/bigquery"
-SERVER_URL = "https://bigquery-openmined-org.syftbox.openmined.dev/bigquery"
+DOMAIN = "bigquery-openmined-org.syftbox.openmined.dev"
+SERVER_URL = f"https://{DOMAIN}/bigquery"
 
 
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
@@ -254,6 +255,7 @@ async def google_callback(request: Request):
         value=access_token,
         httponly=True,
         max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        domain=DOMAIN,
     )
 
     return response
