@@ -29,6 +29,7 @@ dependencies = [
     "python-multipart>=0.0.12",
     "rich>=13.9.2",
     "croniter>=3.0.0",
+    "crossplane>=0.5.8",
 ]
 
 [project.optional-dependencies]

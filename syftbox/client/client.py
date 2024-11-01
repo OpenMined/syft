@@ -2,7 +2,7 @@ import argparse
 import atexit
 import contextlib
 import importlib
-import json
+import importlib.util
 import os
 import platform
 import subprocess
@@ -14,28 +14,20 @@ from datetime import datetime
 from functools import partial
 from pathlib import Path
 
+import crossplane
 import uvicorn
+import yaml
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from apscheduler.schedulers.background import BackgroundScheduler
-from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
-from fastapi import Body, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import (
-    FileResponse,
-    HTMLResponse,
-    JSONResponse,
-    PlainTextResponse,
-    RedirectResponse,
-)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from jinja2 import Template
 from loguru import logger
-from pydantic import BaseModel
-from starlette.exceptions import HTTPException as StarletteHTTPException
+from pydantic import BaseModel, create_model
 from typing_extensions import Any, Optional
+from watchdog.events import FileSystemEventHandler
+from watchdog.observers import Observer
 
 from syftbox import __version__
 from syftbox.client.plugins.sync.manager import SyncManager
@@ -44,7 +36,6 @@ from syftbox.lib import (
     DEFAULT_CONFIG_PATH,
     ClientConfig,
     SharedState,
-    get_datasites,
     load_or_create_config,
 )
 from syftbox.lib.logger import zip_logs
@@ -61,6 +52,7 @@ class CustomFastAPI(FastAPI):
 
 
 current_dir = Path(__file__).parent
+proxy_file = current_dir / "../../proxy/client_nginx.conf"
 # Initialize FastAPI app and scheduler
 
 templates = Jinja2Templates(directory=str(current_dir / "templates"))
@@ -102,16 +94,6 @@ def open_sync_folder(folder_path):
         logger.error(f"Failed to open folder {folder_path}: {e}")
 
 
-def process_folder_input(user_input, default_path):
-    if not user_input:
-        return default_path
-    if "/" not in user_input:
-        # User only provided a folder name, use it with the default parent path
-        parent_path = os.path.dirname(default_path)
-        return os.path.join(parent_path, user_input)
-    return os.path.expanduser(user_input)
-
-
 def initialize_shared_state(client_config: ClientConfig) -> SharedState:
     shared_state = SharedState(client_config=client_config)
     return shared_state
@@ -146,27 +128,6 @@ def load_plugins(client_config: ClientConfig) -> dict[str, Plugin]:
                     logger.info(e)
 
     return loaded_plugins
-
-
-def generate_key_pair() -> tuple[bytes, bytes]:
-    private_key = rsa.generate_private_key(
-        public_exponent=65537,
-        key_size=2048,
-        backend=default_backend(),
-    )
-    public_key = private_key.public_key()
-
-    private_pem = private_key.private_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PrivateFormat.PKCS8,
-        encryption_algorithm=serialization.NoEncryption(),
-    )
-    public_pem = public_key.public_bytes(
-        encoding=serialization.Encoding.PEM,
-        format=serialization.PublicFormat.SubjectPublicKeyInfo,
-    )
-
-    return private_pem, public_pem
 
 
 def is_valid_datasite_name(name):
@@ -273,6 +234,289 @@ def parse_args():
     return parser.parse_args()
 
 
+app = FastAPI()
+loaded_routes = {}
+watched_files = {}
+observer = Observer()
+
+
+def load_python_file(file_path: str):
+    """
+    Loads a Python file as a module and returns the module object.
+    """
+    try:
+        file_path = Path(file_path).resolve()
+        module_name = file_path.stem  # Use the file name (without extension) as the module name
+
+        # Create a module specification from the file location
+        spec = importlib.util.spec_from_file_location(module_name, file_path)
+        with open(file_path) as f:
+            data = f.read()
+            print("CODE", data)
+        if spec and spec.loader:
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            print(f"Loaded module: {module}")
+            return module
+        else:
+            raise HTTPException(status_code=500, detail=f"Could not load module from {file_path}")
+
+    except Exception as e:
+        print(f"Failed to load module {file_path}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error loading module {file_path}: {str(e)}")
+
+
+def load_routes_from_yaml(yaml_path: str):
+    """
+    Loads routes from a YAML file and binds them to the FastAPI app or updates the Nginx configuration if the route is a service.
+    """
+    yaml_dir = Path(yaml_path).parent  # Get the directory of the YAML file
+    route_path_parent = str(yaml_dir).split(str(app.shared_state.client_config.datasite_path))[-1]
+    print("route_path_parent", route_path_parent)
+
+    with open(yaml_path, "r") as file:
+        route_config = yaml.safe_load(file)
+
+    for route_path, route_info in route_config.get("routes", {}).items():
+        # Check if the route is defined as a service
+        if "service" in route_info:
+            service_name = route_info["service"]
+            route = route_path_parent
+            port = route_info.get("port", 80)  # Default to port 80 if not specified
+            print(f"Detected service route. Adding Nginx route for service '{service_name}' on port {port}.")
+
+            # Call the function to add an Nginx route
+            add_nginx_route(proxy_file, route, port)
+            # Keep track of the added service route
+            loaded_routes[yaml_path] = {
+                "route_info": route_info,
+                "route_path": f"{route}",
+                "module_path": None,  # No Python file for a service route
+            }
+            continue  # Skip adding to FastAPI since it's an Nginx route
+
+        # Ensure route_path starts with a leading slash for FastAPI routes
+        if not route_path.startswith("/"):
+            route_path = route_path_parent + "/" + route_path
+        print("route_path", route_path)
+
+        # Construct the full path to the Python file
+        file_path = (yaml_dir / route_info["file"]).resolve()
+
+        # Load the module using the helper function
+        endpoint_module = load_python_file(str(file_path))
+
+        # Add the Python module to the watched files list and set up a watcher if not already watched
+        if str(file_path) not in watched_files:
+            watched_files[str(file_path)] = yaml_path
+
+        for method, method_info in route_info.get("methods", {}).items():
+            # Create a Pydantic model for form validation if specified for the method
+            form_model = None
+            if "form" in method_info:
+                form_fields = {
+                    field_name: (eval(field_type), ...) for field_name, field_type in method_info["form"].items()
+                }
+                form_model = create_model(f"{route_path.strip('/').replace('/', '_')}_{method}_Form", **form_fields)
+
+            # Define the route handler
+            async def route_handler(request: Request, form_data: form_model = Depends() if form_model else None):
+                if hasattr(endpoint_module, "handler"):
+                    return await endpoint_module.handler(request, form_data)
+                else:
+                    raise HTTPException(
+                        status_code=500, detail=f"Module {route_info['file']} does not have a 'handler' function"
+                    )
+
+            # Add the route to the FastAPI app
+            app.add_api_route(route_path, route_handler, methods=[method], name=f"{route_path.strip('/')}_{method}")
+
+        # Keep track of the added route path
+        loaded_routes[yaml_path] = {"route_info": route_info, "route_path": route_path, "module_path": str(file_path)}
+
+
+def remove_route(yaml_path: str):
+    """
+    Removes a route and its file watcher based on the specified YAML path.
+    If the route is defined as a service, it calls `remove_route` for Nginx.
+    Otherwise, it removes the route from the FastAPI app.
+    """
+    global loaded_routes, watched_files
+
+    if yaml_path not in loaded_routes:
+        raise ValueError(f"No routes found for {yaml_path}")
+
+    route_info = loaded_routes[yaml_path]["route_info"]
+    route_path = loaded_routes[yaml_path]["route_path"]
+    module_path = loaded_routes[yaml_path]["module_path"]
+
+    # Determine if the route is a service
+    is_service = "service" in route_info
+
+    if is_service:
+        service_name = route_info["service"]
+        print(f"Detected service route. Removing Nginx route for service '{service_name}'.")
+        remove_nginx_route(proxy_file, service_name)
+    else:
+        print("Detected Python route. Removing FastAPI route.")
+        # Remove route from FastAPI app
+        print("Routes before removal:", [route.path for route in app.router.routes])
+        app.router.routes = [route for route in app.router.routes if route.path != route_path]
+        print("Routes after removal:", [route.path for route in app.router.routes])
+
+    # Remove the Python file from the watched files list if present
+    if module_path in watched_files:
+        del watched_files[module_path]
+
+    # Remove the route from the loaded routes dictionary
+    del loaded_routes[yaml_path]
+
+    print(f"Route removed for path: {route_path}")
+
+
+def update_route(yaml_path: str):
+    print("calling update route on", yaml_path)
+    """
+    Updates a route by removing the old route and reloading it from the YAML path.
+    """
+    try:
+        print("removing file?")
+        remove_route(yaml_path)
+    except ValueError:
+        print("did remove fail?")
+        pass  # Route may not exist yet, so ignore error
+    load_routes_from_yaml(yaml_path)
+
+
+def add_route_watcher(datasite_path: str):
+    """
+    Adds a watcher to monitor changes in the routes YAML files and their associated Python modules.
+    """
+
+    class RouteChangeHandler(FileSystemEventHandler):
+        def on_created(self, event):
+            if event.src_path.endswith("routes.yaml"):
+                update_route(event.src_path)
+            elif event.src_path in watched_files:
+                print(f"Detected change in watched file: {event.src_path}")
+                # Find and reload any YAML that references this file
+                for yaml_path, route_data in list(loaded_routes.items()):  # Use a static copy for safe iteration
+                    if event.src_path == route_data["module_path"]:
+                        update_route(yaml_path)
+
+        def on_deleted(self, event):
+            if event.src_path.endswith("routes.yaml"):
+                try:
+                    remove_route(event.src_path)
+                except ValueError:
+                    pass  # Ignore if route was not previously loaded
+            elif event.src_path in watched_files:
+                print(f"Detected deletion of watched file: {event.src_path}")
+                # Remove related routes if a Python module is deleted
+                for yaml_path, route_data in list(loaded_routes.items()):  # Use a static copy for safe iteration
+                    if event.src_path == route_data["module_path"]:
+                        remove_route(yaml_path)
+
+        def on_modified(self, event):
+            if event.src_path.endswith("routes.yaml"):
+                update_route(event.src_path)
+            elif event.src_path in watched_files:
+                print(f"Detected modification in watched file: {event.src_path}")
+                # Find and reload any YAML that references this file
+                for yaml_path, route_data in list(loaded_routes.items()):  # Use a static copy for safe iteration
+                    if event.src_path == route_data["module_path"]:
+                        update_route(yaml_path)
+
+    event_handler = RouteChangeHandler()
+    observer.schedule(event_handler, datasite_path, recursive=True)
+    observer.start()
+
+    # Run the observer in a background thread
+    def stop_observer_on_shutdown():
+        observer.stop()
+        observer.join()
+
+    app.add_event_handler("shutdown", stop_observer_on_shutdown)
+
+
+def parse_nginx_conf(nginx_conf_path):
+    """
+    Parses the existing NGINX configuration file and returns the parsed structure.
+    """
+    payload = crossplane.parse(nginx_conf_path)
+    if payload["status"] != "ok" or not payload["config"]:
+        raise Exception(f"Error parsing NGINX config: {payload['errors']}")
+    return payload["config"][0]["parsed"]
+
+
+def save_nginx_conf(nginx_conf_path, parsed_config):
+    """
+    Saves the modified configuration back to the NGINX configuration file.
+    """
+    modified_config = crossplane.build(parsed_config)
+    with open(nginx_conf_path, "w") as f:
+        f.write(modified_config)
+    print(f"Updated configuration saved to {nginx_conf_path.resolve()}")
+
+
+def add_nginx_route(nginx_conf_path, route, port):
+    """
+    Adds a new route to the NGINX configuration.
+    """
+    parsed_config = parse_nginx_conf(nginx_conf_path)
+    route_path = f"/{route}".replace("//", "/")
+
+    new_location_block = {
+        "directive": "location",
+        "args": [route_path],
+        "block": [
+            {"directive": "proxy_pass", "args": [f"http://host.docker.internal:{port}"]},
+            {"directive": "proxy_set_header", "args": ["Host", "$host"]},
+            {"directive": "proxy_set_header", "args": ["X-Real-IP", "$remote_addr"]},
+            {"directive": "proxy_set_header", "args": ["X-Forwarded-For", "$proxy_add_x_forwarded_for"]},
+            {"directive": "proxy_set_header", "args": ["X-Forwarded-Proto", "$scheme"]},
+        ],
+    }
+
+    for block in parsed_config:
+        if block["directive"] == "http":
+            for sub_block in block["block"]:
+                if sub_block["directive"] == "server":
+                    existing_locations = [
+                        loc["args"][0] for loc in sub_block["block"] if loc["directive"] == "location"
+                    ]
+                    if route_path not in existing_locations:
+                        sub_block["block"].append(new_location_block)
+                        print(f"Added new location block for {route_path}")
+                        save_nginx_conf(nginx_conf_path, parsed_config)
+                        return
+                    else:
+                        print(f"Location block for {route_path} already exists.")
+                        return
+
+
+def remove_nginx_route(nginx_conf_path, service_name):
+    """
+    Removes a route from the NGINX configuration.
+    """
+    parsed_config = parse_nginx_conf(nginx_conf_path)
+
+    for block in parsed_config:
+        if block["directive"] == "http":
+            for sub_block in block["block"]:
+                if sub_block["directive"] == "server":
+                    sub_block["block"] = [
+                        loc
+                        for loc in sub_block["block"]
+                        if not (loc["directive"] == "location" and loc["args"][0] == f"/{service_name}")
+                    ]
+                    print(f"Removed location block for /{service_name}")
+                    save_nginx_conf(nginx_conf_path, parsed_config)
+                    return
+
+    print(f"Location block for /{service_name} not found.")
+
+
 @contextlib.asynccontextmanager
 async def lifespan(app: CustomFastAPI, client_config: Optional[ClientConfig] = None):
     # Startup
@@ -290,6 +534,12 @@ async def lifespan(app: CustomFastAPI, client_config: Optional[ClientConfig] = N
         client_config = load_or_create_config(args)
         close_client_config = True
     app.shared_state = SharedState(client_config=client_config)
+
+    print("> client_config.datasite_path", client_config.datasite_path)
+    for yaml_file in Path(client_config.datasite_path).rglob("routes.yaml"):
+        print("YAML FILE", yaml_file)
+        update_route(str(yaml_file))
+    add_route_watcher(client_config.datasite_path)
 
     logger.info(f"Connecting to {client_config.server_url}")
 
@@ -351,296 +601,36 @@ app.add_middleware(
     allow_headers=["*"],  # Allows all headers
 )
 
+# @app.get("/")
+# async def get_ascii_art(request: Request):
+#     # Access and print headers to the console
+#     headers = dict(request.headers)
+#     print(json.dumps(headers, indent=4))  # Print headers to the console/logs
 
-# @app.get("/", response_class=HTMLResponse)
-# async def plugin_manager(request: Request):
-#     # Pass the request to the template to allow FastAPI to render it
-#     return templates.TemplateResponse("index.html", {"request": request})
-
-
-@app.get("/client_email")
-def get_client_email():
-    try:
-        email = app.shared_state.client_config.email
-        return JSONResponse(content={"email": email})
-    except AttributeError as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error accessing client email: {e!s}",
-        )
+#     # Optionally return headers as response to inspect via the browser or curl
+#     return {"message": "your local syftbox mirror", "headers": headers}
 
 
-@app.get("/state")
-def get_shared_state():
-    return JSONResponse(content=app.shared_state.data)
-
-
-# @app.get("/datasites")
-# def list_datasites():
-#     datasites = app.shared_state.get("my_datasites", [])
-#     # Use jsonable_encoder to encode the datasites object
-#     return JSONResponse(content={"datasites": jsonable_encoder(datasites)})
-
-
-# FastAPI Routes
-@app.get("/plugins")
-def list_plugins():
-    plugins = [
-        {
-            "name": plugin_name,
-            "default_schedule": plugin.schedule,
-            "is_running": plugin_name in app.running_plugins,
-            "description": plugin.description,
-        }
-        for plugin_name, plugin in app.loaded_plugins.items()
-    ]
-    return {"plugins": plugins}
-
-
-@app.post("/launch")
-def launch_plugin(plugin_request: PluginRequest, request: Request):
-    return start_plugin(request.app, plugin_request.plugin_name)
-
-
-@app.get("/running")
-def list_running_plugins():
-    running = {
-        name: {
-            "is_running": data["job"].next_run_time is not None,
-            "run_time": time.time() - data["start_time"],
-            "schedule": data["schedule"],
-        }
-        for name, data in app.running_plugins.items()
-    }
-    return {"running_plugins": running}
-
-
-@app.post("/kill")
-def kill_plugin(request: PluginRequest):
-    plugin_name = request.plugin_name
-
-    if plugin_name not in app.running_plugins:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Plugin {plugin_name} is not running",
-        )
-
-    try:
-        app.scheduler.remove_job(plugin_name)
-        plugin_module = app.loaded_plugins[plugin_name].module
-        if hasattr(plugin_module, "stop"):
-            plugin_module.stop()
-        del app.running_plugins[plugin_name]
-        return {"message": f"Plugin {plugin_name} stopped successfully"}
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to stop plugin {plugin_name}: {e!s}",
-        )
-
-
-@app.post("/file_operation")
-async def file_operation(
-    operation: str = Body(...),
-    file_path: str = Body(...),
-    content: str = Body(None),
-):
-    full_path = Path(app.shared_state.client_config.sync_folder) / file_path
-
-    # Ensure the path is within the SyftBox directory
-    if not full_path.resolve().is_relative_to(
-        Path(app.shared_state.client_config.sync_folder),
-    ):
-        raise HTTPException(
-            status_code=403,
-            detail="Access to files outside SyftBox directory is not allowed",
-        )
-
-    if operation == "read":
-        if not full_path.is_file():
-            raise HTTPException(status_code=404, detail="File not found")
-        return FileResponse(full_path)
-
-    if operation in ["write", "append"]:
-        if content is None:
-            raise HTTPException(
-                status_code=400,
-                detail="Content is required for write or append operation",
-            )
-
-        # Ensure the directory exists
-        full_path.parent.mkdir(parents=True, exist_ok=True)
-
-        try:
-            mode = "w" if operation == "write" else "a"
-            with open(full_path, mode) as f:
-                f.write(content)
-            return JSONResponse(content={"message": f"File {operation}ed successfully"})
-        except Exception as e:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to {operation} file: {e!s}",
-            )
-
-    else:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid operation. Use 'read', 'write', or 'append'",
-        )
-
-
-@app.exception_handler(StarletteHTTPException)
-async def custom_404_handler(request: Request, exc: StarletteHTTPException):
-    if exc.status_code == 404:
-        headers = dict(request.headers)
-        print(json.dumps(headers, indent=4))  # Print headers to the console/logs
-
-        # Return a JSON response with the URL and headers
-        return JSONResponse(
-            status_code=404,
-            content={
-                "message": "Oops! This route does not exist.",
-                "requested_url": str(request.url),
-                "headers": headers,
-            },
-        )
-    # If it's not a 404, fallback to the default HTTPException handler
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={"detail": exc.detail},
-    )
+@app.get("/routes-info")
+async def get_loaded_routes_info():
+    routes_info = []
+    for route in app.router.routes:
+        if hasattr(route, "path") and hasattr(route, "methods"):
+            routes_info.append({"path": route.path, "methods": list(route.methods), "name": route.name})
+    return {"loaded_routes": routes_info}
 
 
 @app.get("/")
-async def get_ascii_art(request: Request):
-    # Access and print headers to the console
-    headers = dict(request.headers)
-    print(json.dumps(headers, indent=4))  # Print headers to the console/logs
-
-    # Optionally return headers as response to inspect via the browser or curl
-    return {"message": "your local syftbox mirror", "headers": headers}
-
-
-def get_file_list(directory: str | Path = ".") -> list[dict[str, Any]]:
-    # TODO rewrite with pathlib
-    directory = str(directory)
-
-    file_list = []
-    for item in os.listdir(directory):
-        item_path = os.path.join(directory, item)
-        is_dir = os.path.isdir(item_path)
-        size = os.path.getsize(item_path) if not is_dir else "-"
-        mod_time = datetime.fromtimestamp(os.path.getmtime(item_path)).strftime("%Y-%m-%d %H:%M:%S")
-
-        file_list.append({"name": item, "is_dir": is_dir, "size": size, "mod_time": mod_time})
-
-    return sorted(file_list, key=lambda x: (not x["is_dir"], x["name"].lower()))
-
-
-@app.get("/datasites", response_class=HTMLResponse)
-async def list_datasites(request: Request):
-    client_config = app.shared_state.client_config
-
-    files = get_file_list(client_config.sync_folder)
-    datasites = []
-    for file in files:
-        if "@" in file["name"]:
-            datasites.append(file)
-
-    template_path = current_dir / "templates" / "datasites.html"
-    html = ""
-    with open(template_path) as f:
-        html = f.read()
-    template = Template(html)
-
-    html_content = template.render(
-        {
-            "request": request,
-            "files": datasites,
-            "current_path": "/",
-        }
-    )
-    return html_content
-
-
-@app.get("/datasites/{path:path}", response_class=HTMLResponse)
-async def browse_datasite(
-    request: Request,
-    path: str,
-):
-    if path == "":  # Check if path is empty (meaning "/datasites/")
-        return RedirectResponse(url="/datasites")
-
-    client_config = app.shared_state.client_config
-
-    snapshot_folder = str(client_config.sync_folder)
-    datasite_part = path.split("/")[0]
-    datasites = get_datasites(snapshot_folder)
-    if datasite_part in datasites:
-        slug = path[len(datasite_part) :]
-        if slug == "":
-            slug = "/"
-        datasite_path = os.path.join(snapshot_folder, datasite_part)
-        datasite_public = datasite_path + "/public"
-        if not os.path.exists(datasite_public):
-            return "No public datasite"
-
-        slug_path = os.path.abspath(datasite_public + slug)
-        if os.path.exists(slug_path) and os.path.isfile(slug_path):
-            if slug_path.endswith(".html") or slug_path.endswith(".htm"):
-                return FileResponse(slug_path)
-            elif slug_path.endswith(".md"):
-                with open(slug_path, "r") as file:
-                    content = file.read()
-                return PlainTextResponse(content)
-            else:
-                return FileResponse(slug_path, media_type="application/octet-stream")
-
-        # show directory
-        if not path.endswith("/"):
-            return RedirectResponse(url=f"{path}/")
-
-        index_file = os.path.abspath(slug_path + "/" + "index.html")
-        if os.path.exists(index_file):
-            with open(index_file, "r") as file:
-                html_content = file.read()
-            return HTMLResponse(content=html_content, status_code=200)
-
-        if os.path.isdir(slug_path):
-            files = get_file_list(slug_path)
-            template_path = current_dir / "templates" / "folder.html"
-            html = ""
-            with open(template_path) as f:
-                html = f.read()
-            template = Template(html)
-            html_content = template.render(
-                {
-                    "datasite": datasite_part,
-                    "request": request,
-                    "files": files,
-                    "current_path": path,
-                }
-            )
-            return html_content
-        else:
-            return f"Bad Slug {slug}"
-
-    return f"No Datasite {datasite_part} exists"
-
-
-def get_syftbox_src_path():
-    import importlib.util
-
-    module_name = "syftbox"
-    spec = importlib.util.find_spec(module_name)
-    return spec.origin
+async def test(request: Request):
+    return "test"
 
 
 def main() -> None:
     args = parse_args()
     client_config = load_or_create_config(args)
     if not args.no_open_sync_folder:
-        open_sync_folder(client_config.sync_folder)
+        pass
+        # open_sync_folder(client_config.sync_folder)
     error_config = make_error_report(client_config)
 
     if args.command == "report":
@@ -684,3 +674,9 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+# TODO: fix remove routes to use route not service name
+# bind to service name and supply random port
+# force overwrite add so that ports change etc
+# nginx conf in correct order
+# rewrite ^/bigquery/?(.*)$ /$1 break;

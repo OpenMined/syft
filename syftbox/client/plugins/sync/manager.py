@@ -2,8 +2,6 @@ import time
 from threading import Thread
 from typing import Optional
 
-from loguru import logger
-
 from syftbox.client.plugins.sync.consumer import SyncConsumer
 from syftbox.client.plugins.sync.endpoints import get_datasite_states
 from syftbox.client.plugins.sync.exceptions import FatalSyncError
@@ -35,8 +33,8 @@ class SyncManager:
                 try:
                     manager.run_single_thread()
                     time.sleep(manager.sync_interval)
-                except FatalSyncError as e:
-                    logger.error(f"Syncing encountered a fatal error: {e}")
+                except FatalSyncError:
+                    # logger.error(f"Syncing encountered a fatal error: {e}")
                     break
 
         self.is_stop_requested = False
@@ -53,8 +51,8 @@ class SyncManager:
     def get_datasite_states(self) -> list[DatasiteState]:
         try:
             remote_datasite_states = get_datasite_states(self.client.server_client, email=self.client.email)
-        except Exception as e:
-            logger.error(f"Failed to retrieve datasites from server, only syncing own datasite. Reason: {e}")
+        except Exception:
+            # logger.error(f"Failed to retrieve datasites from server, only syncing own datasite. Reason: {e}")
             remote_datasite_states = {}
 
         # Ensure we are always syncing own datasite
@@ -72,11 +70,12 @@ class SyncManager:
             permission_changes, file_changes = datasite.get_out_of_sync_files()
             total = len(permission_changes) + len(file_changes)
             if total != 0:
-                logger.debug(
-                    f"Enqueuing {len(permission_changes)} permissions and {len(file_changes)} files for {datasite.email}"
-                )
-        except Exception as e:
-            logger.error(f"Failed to get out of sync files for {datasite.email}. Reason: {e}")
+                pass
+                # logger.debug(
+                #     f"Enqueuing {len(permission_changes)} permissions and {len(file_changes)} files for {datasite.email}"
+                # )
+        except Exception:
+            # logger.error(f"Failed to get out of sync files for {datasite.email}. Reason: {e}")
             permission_changes, file_changes = [], []
 
         for change in permission_changes + file_changes:
@@ -86,8 +85,8 @@ class SyncManager:
         # NOTE first implementation will be unthreaded and just loop through all datasites
 
         datasite_states = self.get_datasite_states()
-        logger.info(f"Syncing {len(datasite_states)} datasites")
-        logger.debug(f"Datasites: {', '.join([datasite.email for datasite in datasite_states])}")
+        # logger.info(f"Syncing {len(datasite_states)} datasites")
+        # logger.debug(f"Datasites: {', '.join([datasite.email for datasite in datasite_states])}")
 
         for datasite_state in datasite_states:
             self.enqueue_datasite_changes(datasite_state)

@@ -45,8 +45,14 @@ app.add_middleware(SessionMiddleware, secret_key="!secret")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
-# SERVER_URL = "http://localhost:9081"
-SERVER_URL = "http://bigquery.madhava-openmined-org.syftbox.localhost/"
+
+# SERVER_URL = "http://bigquery-.madhava-openmined-org.syftbox.localhost/"
+# SERVER_URL = "http://localhost/bigquery/auth/google/callback"
+# SERVER_URL = "http://bigquery-openmined-org.syftbox.openmined.dev/bigquery/"
+# SERVER_URL = "http://localhost/bigquery"
+# SERVER_URL = "http://localhost:9081/bigquery"
+SERVER_URL = "https://bigquery-openmined-org.syftbox.openmined.dev/bigquery"
+
 
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 GOOGLE_CALLBACK_URL = f"{SERVER_URL}/auth/google/callback"
@@ -118,17 +124,19 @@ def validate_token(token: str):
 async def home(request: Request, user: dict = Depends(get_current_user_from_cookie)):
     logged_in_html = ""
     if user:
-        logged_in_html = f'Hello {user["name"]}, <a href="/logout">Logout</a>'
+        logged_in_html = f'Hello {user["name"]}, <a href="/bigquery/logout">Logout</a>'
     else:
-        logged_in_html = '<a href="/auth/google">Login</a>'
+        logged_in_html = '<a href="/bigquery/auth/google">Login</a>'
 
     output = f"""
 <h1>Big Query</h1>
 {logged_in_html}
 <br />
-<a href="/users/me">Account</a>
+<a href="/bigquery/users/me">Account</a>
 </br>
-<a href="/sql">Submit SQL</a>
+<a href="/bigquery/sql">Submit SQL</a>
+<br />Client ID: {settings.google_auth_client_id}
+<br />CALLBACK URL: {GOOGLE_CALLBACK_URL}
 """
 
     return HTMLResponse(output)
@@ -240,7 +248,7 @@ async def google_callback(request: Request):
     # Generate JWT token for the user
     access_token = create_access_token({"sub": email, "name": name})
 
-    response = RedirectResponse(url="/")
+    response = RedirectResponse(url="/bigquery")
     response.set_cookie(
         key="access_token",
         value=access_token,
@@ -253,7 +261,7 @@ async def google_callback(request: Request):
 
 @app.get("/logout")
 async def logout(response: Response):
-    response = RedirectResponse(url="/")
+    response = RedirectResponse(url="/bigquery")
     # Clear the cookie by setting it with an empty value and expiry in the past
     response.delete_cookie(key="access_token")
     return response
@@ -458,6 +466,11 @@ async def get_form_page(request: Request):
     return templates.TemplateResponse("form.html", {"request": request})
 
 
+# @app.get("/bigquery")
+# async def bigquery(request: Request):
+#     return "bigquery"
+
+
 class Person(BaseModel):
     name: str
     age: int
@@ -470,10 +483,14 @@ async def submit_form(form: Person = Form(...)):
     return {"name": form.name, "age": form.age}
 
 
+main_app = FastAPI()
+main_app.mount("/bigquery", app)
+
+
 def main() -> None:
     debug = True
     uvicorn.run(
-        "main:app" if debug else app,
+        "main:main_app" if debug else main_app,
         host="0.0.0.0",
         port=9081,
         log_level="debug" if debug else "info",
