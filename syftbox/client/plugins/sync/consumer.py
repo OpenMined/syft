@@ -304,9 +304,9 @@ class SyncDecisionTuple(BaseModel):
         in_sync = current_remote_syncstate == current_local_syncstate
         conflict = local_modified and remote_modified and not in_sync
 
-        logger.debug(
-            f"local_modified: {local_modified}, remote_modified: {remote_modified}, in_sync: {in_sync}, conflict: {conflict}"
-        )
+        # logger.debug(
+        #     f"local_modified: {local_modified}, remote_modified: {remote_modified}, in_sync: {in_sync}, conflict: {conflict}"
+        # )
 
         if in_sync:
             return cls(
@@ -467,9 +467,9 @@ class SyncConsumer:
 
     def process_filechange(self, item: SyncQueueItem) -> None:
         decisions = self.get_decisions(item)
-        logger.debug(
-            f"Processing {item.data.path} with decisions {decisions.local_decision.operation}, {decisions.remote_decision.operation}"
-        )
+        # logger.debug(
+        #     f"Processing {item.data.path} with decisions {decisions.local_decision.operation}, {decisions.remote_decision.operation}"
+        # )
         self.process_decision(item, decisions)
 
     def get_current_local_syncstate(self, path: Path) -> Optional[FileMetadata]:

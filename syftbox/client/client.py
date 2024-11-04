@@ -322,7 +322,8 @@ def load_routes_from_yaml(yaml_path: str):
             # Define the route handler
             async def route_handler(request: Request, form_data: form_model = Depends() if form_model else None):
                 if hasattr(endpoint_module, "handler"):
-                    return await endpoint_module.handler(request, form_data)
+                    response = await endpoint_module.handler(request, form_data)
+                    return response
                 else:
                     raise HTTPException(
                         status_code=500, detail=f"Module {route_info['file']} does not have a 'handler' function"
