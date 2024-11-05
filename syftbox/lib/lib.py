@@ -1,19 +1,14 @@
 from __future__ import annotations
 
-import base64
-import hashlib
 import json
 import os
 import platform
 import re
-import threading
-import zlib
 from dataclasses import dataclass, field
 from pathlib import Path
 from threading import Lock
 
 import httpx
-import requests
 from loguru import logger
 from typing_extensions import Any, Optional, Self, Union
 
@@ -34,7 +29,6 @@ DEFAULT_LOGS_PATH = os.path.join(DEFAULT_CONFIG_FOLDER, "logs", "syftbox.log")
 USER_GROUP_GLOBAL = "GLOBAL"
 
 ICON_FILE = "Icon"  # special
-IGNORE_FILES = []
 
 
 def perm_file_path(path: str) -> str:
@@ -231,53 +225,6 @@ class SyftPermission(Jsonable):
         return string
 
 
-def bintostr(binary_data):
-    return base64.b85encode(zlib.compress(binary_data)).decode("utf-8")
-
-
-def strtobin(encoded_data):
-    return zlib.decompress(base64.b85decode(encoded_data.encode("utf-8")))
-
-
-def get_symlink(file_path) -> str:
-    return os.readlink(file_path)
-
-
-def is_symlink(file_path) -> bool:
-    return os.path.islink(file_path)
-
-
-# def symlink_to_syftlink(file_path):
-#     return SyftLink.from_path(file_path)
-
-
-# def convert_to_symlink(path):
-#     if not is_symlink(path):
-#         raise Exception(f"Cant convert a non symlink {path}")
-#     abs_path = get_symlink(path)
-#     syft_link = symlink_to_syftlink(abs_path)
-#     return str(syft_link)
-
-
-def ignore_dirs(directory: str, root: str, ignore_folders=None) -> bool:
-    if ignore_folders is not None:
-        for ignore_folder in ignore_folders:
-            if root.endswith(ignore_folder):
-                return True
-    return False
-
-
-def ignore_file(directory: str, root: str, filename: str) -> bool:
-    if directory == root:
-        if filename.startswith(ICON_FILE):
-            return True
-        if filename in IGNORE_FILES:
-            return True
-    if filename == ".DS_Store":
-        return True
-    return False
-
-
 def get_datasites(sync_folder: Union[str, Path]) -> list[str]:
     sync_folder = str(sync_folder.resolve()) if isinstance(sync_folder, Path) else sync_folder
     datasites = []
@@ -404,47 +351,11 @@ def filter_metadata(
     return filtered_metadata
 
 
-class ResettableTimer:
-    def __init__(self, timeout, callback, *args, **kwargs):
-        self.timeout = timeout
-        self.callback = callback
-        self.args = args
-        self.kwargs = kwargs
-        self.timer = None
-        self.lock = threading.Lock()
-
-    def _run_callback(self):
-        with self.lock:
-            self.timer = None
-        self.callback(*self.args, **self.kwargs)
-
-    def start(self, *args, **kwargs):
-        with self.lock:
-            if self.timer:
-                self.timer.cancel()
-
-            # If new arguments are passed in start, they will overwrite the initial ones
-            if args or kwargs:
-                self.args = args
-                self.kwargs = kwargs
-
-            self.timer = threading.Timer(self.timeout, self._run_callback)
-            self.timer.start()
-
-    def cancel(self):
-        with self.lock:
-            if self.timer:
-                self.timer.cancel()
-                self.timer = None
-
-
 class SharedState:
     def __init__(self, client_config: ClientConfig):
         self.data = {}
         self.lock = Lock()
         self.client_config = client_config
-        self.timers: dict[str:ResettableTimer] = {}
-        self.fs_events = []
 
     @property
     def sync_folder(self) -> str:
@@ -466,57 +377,6 @@ class SharedState:
             return []
 
         return [folder for folder in os.listdir(syft_folder) if os.path.isdir(os.path.join(syft_folder, folder))]
-
-
-def get_root_data_path() -> Path:
-    # get the PySyft / data directory to share datasets between notebooks
-    # on Linux and MacOS the directory is: ~/.syft/data"
-    # on Windows the directory is: C:/Users/$USER/.syft/data
-
-    data_dir = Path.home() / ".syft" / "data"
-    data_dir.mkdir(parents=True, exist_ok=True)
-
-    return data_dir
-
-
-def autocache(url: str, extension: Optional[str] = None, cache: bool = True) -> Optional[Path]:
-    try:
-        data_path = get_root_data_path()
-        file_hash = hashlib.sha256(url.encode("utf8")).hexdigest()
-        filename = file_hash
-        if extension:
-            filename += f".{extension}"
-        file_path = data_path / filename
-        if os.path.exists(file_path) and cache:
-            return file_path
-        return download_file(url, file_path)
-    except Exception as e:
-        logger.info(f"Failed to autocache: {url}. {e}")
-        return None
-
-
-def download_file(url: str, full_path: Union[str, Path]) -> Optional[Path]:
-    full_path = Path(full_path)
-    if not full_path.exists():
-        r = requests.get(url, allow_redirects=True, verify=verify_tls())  # nosec
-        if not r.ok:
-            logger.info(f"Got {r.status_code} trying to download {url}")
-            return None
-        full_path.parent.mkdir(parents=True, exist_ok=True)
-        full_path.write_bytes(r.content)
-    return full_path
-
-
-def verify_tls() -> bool:
-    return not str_to_bool(str(os.environ.get("IGNORE_TLS_ERRORS", "0")))
-
-
-def str_to_bool(bool_str: Optional[str]) -> bool:
-    result = False
-    bool_str = str(bool_str).lower()
-    if bool_str == "true" or bool_str == "1":
-        result = True
-    return result
 
 
 def validate_email(email: str) -> bool:
@@ -568,37 +428,9 @@ class Client(Jsonable):
         return Path(self.sync_folder) / self.email
 
     @property
-    def manifest_path(self) -> Path:
-        return os.path.join(self.datasite_path, "public/manifest/manifest.json")
-
-    def get_datasites(self: str) -> list[str]:
-        datasites = []
-        folders = os.listdir(self.sync_folder)
-        for folder in folders:
-            if "@" in folder:
-                datasites.append(folder)
-        return datasites
-
-    def use(self):
-        os.environ["SYFTBOX_CURRENT_CLIENT"] = self.config_path
-        os.environ["SYFTBOX_SYNC_DIR"] = self.sync_folder
-        logger.info(f"> Setting Sync Dir to: {self.sync_folder}")
-
-    def create_folder(self, path: str, permission: SyftPermission):
-        os.makedirs(path, exist_ok=True)
-        permission.save(path)
-
-    @property
     def root_dir(self) -> Path:
         root_dir = Path(os.path.abspath(os.path.dirname(self.file_path) + "/../"))
         return root_dir
-
-    def create_public_folder(self, path: str):
-        full_path = self.root_dir / path
-        os.makedirs(str(full_path), exist_ok=True)
-        public_read = SyftPermission.mine_with_public_read(email=self.datasite)
-        public_read.save(full_path)
-        return Path(full_path)
 
     @classmethod
     def load(cls, filepath: Optional[int] = None) -> Self:

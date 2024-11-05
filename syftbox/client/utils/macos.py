@@ -17,9 +17,11 @@ def search_icon_file(src_path: Path) -> Optional[Path]:
         if "Icon" in file_path.name and "\r" in file_path.name:
             return file_path
 
+    return None
+
 
 # if you knew the pain of this function
-def find_icon_file(src_path: Path) -> Path:
+def find_icon_file(src_path: Path) -> Path | None:
     # First attempt to find the Icon\r file
     icon_file = search_icon_file(src_path)
     if icon_file:
@@ -43,6 +45,8 @@ def find_icon_file(src_path: Path) -> Path:
     except subprocess.CalledProcessError:
         raise RuntimeError("Failed to unzip icon.zip using macOS CLI tool.")
 
+    return None
+
 
 def copy_icon_file(icon_folder: str, dest_folder: str) -> None:
     # a flag to disable icons
@@ -56,6 +60,8 @@ def copy_icon_file(icon_folder: str, dest_folder: str) -> None:
     dest_path = Path(dest_folder)
     icon_path = Path(icon_folder)
     src_icon_path = find_icon_file(icon_path)
+    if not src_icon_path:
+        return
     if not dest_path.exists():
         raise FileNotFoundError(f"Destination folder '{dest_folder}' does not exist.")
 

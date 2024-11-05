@@ -155,7 +155,7 @@ def apply_diffs(
 
     new_metadata = hash_file(temp_path)
 
-    if new_metadata.hash != req.expected_hash:
+    if not new_metadata or new_metadata.hash != req.expected_hash:
         raise HTTPException(status_code=400, detail="expected_hash mismatch")
 
     # move temp path to real path and update db
@@ -196,6 +196,8 @@ def create_file(
     conn: sqlite3.Connection = Depends(get_db_connection),
     server_settings: ServerSettings = Depends(get_server_settings),
 ) -> JSONResponse:
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="filename cannot be empty")
     if "%" in file.filename:
         raise HTTPException(status_code=400, detail="filename cannot contain '%'")
 
@@ -223,7 +225,8 @@ def create_file(
 
     # create a new metadata for db entry
     metadata = hash_file(abs_path, root_dir=server_settings.snapshot_folder)
-    save_file_metadata(cursor, metadata)
+    if metadata:
+        save_file_metadata(cursor, metadata)
     conn.commit()
     cursor.close()
 

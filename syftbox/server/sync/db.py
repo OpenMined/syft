@@ -3,7 +3,7 @@ import shutil
 import sqlite3
 import tempfile
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 from loguru import logger
 
@@ -33,7 +33,7 @@ def get_db(path: Path) -> sqlite3.Connection:
     return conn
 
 
-def save_file_metadata(conn: sqlite3.Connection | sqlite3.Cursor, metadata: FileMetadata):
+def save_file_metadata(conn: Union[sqlite3.Connection | sqlite3.Cursor], metadata: FileMetadata):
     # Insert the metadata into the database or update if a conflict on 'path' occurs
     conn.execute(
         """
@@ -55,17 +55,19 @@ def save_file_metadata(conn: sqlite3.Connection | sqlite3.Cursor, metadata: File
     )
 
 
-def delete_file_metadata(conn: sqlite3.Connection, path: str):
+def delete_file_metadata(conn: Union[sqlite3.Connection | sqlite3.Cursor], path: str):
     cur = conn.execute("DELETE FROM file_metadata WHERE path = ?", (path,))
     # get number of changes
     if cur.rowcount != 1:
         raise ValueError(f"Failed to delete metadata for {path}.")
 
 
-def get_all_metadata(conn: sqlite3.Connection, path_like: Optional[str] = None) -> list[FileMetadata]:
+def get_all_metadata(
+    conn: Union[sqlite3.Connection | sqlite3.Cursor], path_like: Optional[str] = None
+) -> list[FileMetadata]:
     query = "SELECT * FROM file_metadata"
-    params = ()
 
+    params = None
     if path_like:
         if "%" in path_like:
             raise ValueError("we don't support % in paths")
@@ -74,7 +76,10 @@ def get_all_metadata(conn: sqlite3.Connection, path_like: Optional[str] = None) 
         query += " WHERE path LIKE ? ESCAPE '\\' "
         params = (escaped_path,)
 
-    cursor = conn.execute(query, params)
+    if params:
+        cursor = conn.execute(query, params)
+    else:
+        cursor = conn.execute(query)
     # would be nice to paginate
     return [
         FileMetadata(
@@ -88,7 +93,7 @@ def get_all_metadata(conn: sqlite3.Connection, path_like: Optional[str] = None) 
     ]
 
 
-def get_one_metadata(conn: sqlite3.Connection, path: str) -> FileMetadata:
+def get_one_metadata(conn: Union[sqlite3.Connection | sqlite3.Cursor], path: str) -> FileMetadata:
     cursor = conn.execute("SELECT * FROM file_metadata WHERE path = ?", (path,))
     rows = cursor.fetchall()
     if len(rows) == 0 or len(rows) > 1:
@@ -103,7 +108,9 @@ def get_one_metadata(conn: sqlite3.Connection, path: str) -> FileMetadata:
     )
 
 
-def get_all_datasites(conn: sqlite3.Connection) -> list[str]:
+def get_all_datasites(
+    conn: Union[sqlite3.Connection | sqlite3.Cursor],
+) -> list[str]:
     # INSTR(path, '/'): Finds the position of the first slash in the path.
     cursor = conn.execute(
         """SELECT DISTINCT SUBSTR(path, 1, INSTR(path, '/') - 1) AS root_folder
@@ -114,7 +121,11 @@ def get_all_datasites(conn: sqlite3.Connection) -> list[str]:
 
 
 def move_with_transaction(
-    conn: sqlite3.Connection, *, origin_path: Path, metadata: FileMetadata, server_settings: ServerSettings
+    conn: sqlite3.Connection,
+    *,
+    origin_path: Path,
+    metadata: FileMetadata,
+    server_settings: ServerSettings,
 ):
     """The file system and database do not share transactions,
     so this operation is not atomic.

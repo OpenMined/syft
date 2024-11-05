@@ -17,7 +17,7 @@ def hash_file(file_path: Path, root_dir: Optional[Path] = None) -> Optional[File
     try:
         if file_path.stat().st_size > 100_000_000:
             logger.warning("File too large: %s", file_path)
-            return str(file_path), None
+            return None
 
         with open(file_path, "rb") as f:
             # not ideal for large files
