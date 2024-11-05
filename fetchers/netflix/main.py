@@ -66,3 +66,21 @@ print("Sleeping just in case")
 time.sleep(10)
 
 driver.quit()
+
+
+# Copy the downloaded file to another path
+try:
+    datasite_path = "/Users/madhavajay/dev/syft/.clients/bigquery@openmined.org/sync/bigquery@openmined.org/netflix"
+    import shutil
+
+    # Ensure destination folder exists
+    os.makedirs(datasite_path, exist_ok=True)
+
+    files = os.listdir(output_dir)
+    for file_name in files:
+        full_file_path = os.path.join(output_dir, file_name)
+        if os.path.isfile(full_file_path):  # Only copy files, not directories
+            shutil.copy(full_file_path, datasite_path)
+            print(f"File {file_name} copied to {datasite_path}")
+except Exception as e:
+    print(f"Error copying files: {e}")

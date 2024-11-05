@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -385,7 +385,7 @@
           const matchingDataPoint = data.find(
             (d) =>
               Math.abs(new Date(d.timestamp) - currentSlot.timestamp) <
-              intervalMillis / 2
+              intervalMillis / 2,
           );
 
           if (matchingDataPoint) {
@@ -396,7 +396,7 @@
               .filter((d) => new Date(d.timestamp) < currentSlot.timestamp)
               .pop();
             const nextData = data.find(
-              (d) => new Date(d.timestamp) > currentSlot.timestamp
+              (d) => new Date(d.timestamp) > currentSlot.timestamp,
             );
 
             if (previousData && nextData) {
@@ -426,12 +426,12 @@
         const timeSinceLastUpdate = now - lastUpdated;
         const timeUntilNextUpdate = Math.max(
           0,
-          60000 - (timeSinceLastUpdate % 60000)
+          60000 - (timeSinceLastUpdate % 60000),
         );
         const secondsRemaining = Math.ceil(timeUntilNextUpdate / 1000);
 
         document.getElementById(
-          "countdown"
+          "countdown",
         ).textContent = `${secondsRemaining}s`;
 
         // Enable refresh button if at least 5 seconds have passed since last update
@@ -468,7 +468,7 @@
 
         const now = new Date();
         const startTime = new Date(
-          now.getTime() - hoursToShow * 60 * 60 * 1000
+          now.getTime() - hoursToShow * 60 * 60 * 1000,
         );
 
         // Create array of minute slots for the specified hours
@@ -486,7 +486,7 @@
           const timestamp = new Date(d.timestamp);
           if (timestamp >= startTime && timestamp <= now) {
             const minuteIndex = Math.floor(
-              (timestamp - startTime) / (60 * 1000)
+              (timestamp - startTime) / (60 * 1000),
             );
             if (minuteIndex >= 0 && minuteIndex < totalMinutes) {
               hourlySlots[minuteIndex] = {
@@ -507,7 +507,7 @@
         // Filter and interpolate data for the last 48 hours for the full history chart
         const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000);
         const filteredData = heartRateData.filter(
-          (d) => new Date(d.timestamp) >= fortyEightHoursAgo
+          (d) => new Date(d.timestamp) >= fortyEightHoursAgo,
         );
         const interpolatedData = interpolateData(filteredData, 15); // Interpolate every 15 minutes
 
@@ -518,10 +518,10 @@
             day: "numeric",
             hour: "2-digit",
             minute: "2-digit",
-          })
+          }),
         );
         heartRateChart.data.datasets[0].data = interpolatedData.map(
-          (d) => d.value
+          (d) => d.value,
         );
         heartRateChart.update("none");
 
@@ -529,7 +529,7 @@
         const hourlyData = getHourlyData(heartRateData, 3);
         hourlyHeartRateChart.data.labels = hourlyData.map((d) => d.timestamp);
         hourlyHeartRateChart.data.datasets[0].data = hourlyData.map(
-          (d) => d.value
+          (d) => d.value,
         );
         hourlyHeartRateChart.update("none");
       }
