@@ -68,7 +68,7 @@ class User(Jsonable):
 class Users:
     def __init__(self, path: Path) -> None:
         self.path = path
-        self.users = {}
+        self.users: dict[str, User] = {}
         self.load()
 
     def load(self):
@@ -109,10 +109,10 @@ def get_users(request: Request) -> Users:
     return request.state.users
 
 
-def create_folders(folders: list[str]) -> None:
+def create_folders(folders: list[Path]) -> None:
     for folder in folders:
-        if not os.path.exists(folder):
-            os.makedirs(folder, exist_ok=True)
+        if not folder.exists():
+            folder.mkdir(parents=True, exist_ok=True)
 
 
 @contextlib.asynccontextmanager

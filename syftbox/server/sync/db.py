@@ -12,8 +12,8 @@ from syftbox.server.sync.models import FileMetadata
 
 
 # @contextlib.contextmanager
-def get_db(path: str):
-    conn = sqlite3.connect(path, check_same_thread=False)
+def get_db(path: Path) -> sqlite3.Connection:
+    conn = sqlite3.connect(path.as_posix(), check_same_thread=False)
 
     with conn:
         conn.execute("PRAGMA cache_size=10000;")
@@ -33,7 +33,7 @@ def get_db(path: str):
     return conn
 
 
-def save_file_metadata(conn: sqlite3.Connection, metadata: FileMetadata):
+def save_file_metadata(conn: sqlite3.Connection | sqlite3.Cursor, metadata: FileMetadata):
     # Insert the metadata into the database or update if a conflict on 'path' occurs
     conn.execute(
         """

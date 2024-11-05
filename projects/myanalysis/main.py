@@ -19,9 +19,7 @@ def input_reader(private: bool = False):
     from syftbox.lib import sy_path
 
     inputs = {}
-    inputs["trade_data"] = pd.read_csv(
-        sy_path("./inputs/trade_data/trade_mock.csv", resolve_private=private)
-    )
+    inputs["trade_data"] = pd.read_csv(sy_path("./inputs/trade_data/trade_mock.csv", resolve_private=private))
     return inputs
 
 

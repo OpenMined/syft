@@ -7,7 +7,7 @@ from pathlib import Path
 
 import py_fast_rsync
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse
 from loguru import logger
 
 from syftbox.lib.lib import PermissionTree, SyftPermission, filter_metadata
@@ -270,7 +270,7 @@ async def get_files(
     req: BatchFileRequest,
     conn: sqlite3.Connection = Depends(get_db_connection),
     server_settings: ServerSettings = Depends(get_server_settings),
-) -> StreamingResponse:
+) -> Response:
     all_metadata = []
     for path in req.paths:
         try:
