@@ -1,4 +1,4 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -6,6 +6,7 @@
     <title>Personal Heart Rate Monitor</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-annotation/3.0.1/chartjs-plugin-annotation.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <!-- Previous CSS styles remain exactly the same -->
     <style>
       body {
@@ -291,14 +292,14 @@
         </div>
       </div>
       <div>
-        <div class="graph-title">This Hour</div>
+        <div class="graph-title">Last 3 Hours</div>
         <div class="graph-container">
           <canvas id="hourlyHeartRateChart"></canvas>
         </div>
       </div>
       <br />
       <div>
-        <div class="graph-title">Last 12 Hours</div>
+        <div class="graph-title">Last 48 Hours</div>
         <div class="graph-container">
           <canvas id="heartRateChart"></canvas>
         </div>
@@ -360,6 +361,59 @@
           },
         },
       };
+      function interpolateData(data, intervalMinutes = 15) {
+        // Create an array of timestamps at the specified interval for the last 48 hours
+        const now = new Date();
+        const startTime = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+        const intervalMillis = intervalMinutes * 60 * 1000;
+        const interpolatedData = [];
+
+        for (
+          let time = startTime.getTime();
+          time <= now.getTime();
+          time += intervalMillis
+        ) {
+          interpolatedData.push({
+            timestamp: new Date(time),
+            value: null,
+          });
+        }
+
+        // Populate the array with actual data and interpolate missing values
+        for (let i = 0; i < interpolatedData.length; i++) {
+          const currentSlot = interpolatedData[i];
+          const matchingDataPoint = data.find(
+            (d) =>
+              Math.abs(new Date(d.timestamp) - currentSlot.timestamp) <
+              intervalMillis / 2
+          );
+
+          if (matchingDataPoint) {
+            currentSlot.value = matchingDataPoint.value;
+          } else {
+            // Find the two closest data points for interpolation
+            const previousData = data
+              .filter((d) => new Date(d.timestamp) < currentSlot.timestamp)
+              .pop();
+            const nextData = data.find(
+              (d) => new Date(d.timestamp) > currentSlot.timestamp
+            );
+
+            if (previousData && nextData) {
+              const previousTime = new Date(previousData.timestamp).getTime();
+              const nextTime = new Date(nextData.timestamp).getTime();
+              const timeFraction =
+                (currentSlot.timestamp.getTime() - previousTime) /
+                (nextTime - previousTime);
+              currentSlot.value =
+                previousData.value +
+                timeFraction * (nextData.value - previousData.value);
+            }
+          }
+        }
+
+        return interpolatedData;
+      }
 
       function updateCountdown() {
         const now = new Date();
@@ -372,12 +426,12 @@
         const timeSinceLastUpdate = now - lastUpdated;
         const timeUntilNextUpdate = Math.max(
           0,
-          60000 - (timeSinceLastUpdate % 60000),
+          60000 - (timeSinceLastUpdate % 60000)
         );
         const secondsRemaining = Math.ceil(timeUntilNextUpdate / 1000);
 
         document.getElementById(
-          "countdown",
+          "countdown"
         ).textContent = `${secondsRemaining}s`;
 
         // Enable refresh button if at least 5 seconds have passed since last update
@@ -409,21 +463,18 @@
         }
       }
 
-      function getHourlyData(data) {
+      function getHourlyData(data, hoursToShow = 3) {
         if (!data.length) return [];
 
         const now = new Date();
-        const currentHour = new Date(
-          now.getFullYear(),
-          now.getMonth(),
-          now.getDate(),
-          now.getHours(),
+        const startTime = new Date(
+          now.getTime() - hoursToShow * 60 * 60 * 1000
         );
 
-        // Create array of 60 minute slots
-        let hourlySlots = Array.from({ length: 60 }, (_, i) => {
-          let slotTime = new Date(currentHour);
-          slotTime.setMinutes(i);
+        // Create array of minute slots for the specified hours
+        const totalMinutes = hoursToShow * 60;
+        let hourlySlots = Array.from({ length: totalMinutes }, (_, i) => {
+          let slotTime = new Date(startTime.getTime() + i * 60 * 1000);
           return {
             timestamp: slotTime,
             value: null,
@@ -433,12 +484,16 @@
         // Fill in actual data points
         data.forEach((d) => {
           const timestamp = new Date(d.timestamp);
-          if (timestamp >= currentHour && timestamp <= now) {
-            const minutes = timestamp.getMinutes();
-            hourlySlots[minutes] = {
-              timestamp: timestamp,
-              value: d.value,
-            };
+          if (timestamp >= startTime && timestamp <= now) {
+            const minuteIndex = Math.floor(
+              (timestamp - startTime) / (60 * 1000)
+            );
+            if (minuteIndex >= 0 && minuteIndex < totalMinutes) {
+              hourlySlots[minuteIndex] = {
+                timestamp: timestamp,
+                value: d.value,
+              };
+            }
           }
         });
 
@@ -449,31 +504,38 @@
         if (!heartRateChart || !hourlyHeartRateChart || !heartRateData.length)
           return;
 
-        // Update full history chart
-        heartRateChart.data.labels = heartRateData.map((d) =>
-          new Date(d.timestamp).toLocaleTimeString(),
+        // Filter and interpolate data for the last 48 hours for the full history chart
+        const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000);
+        const filteredData = heartRateData.filter(
+          (d) => new Date(d.timestamp) >= fortyEightHoursAgo
         );
-        heartRateChart.data.datasets[0].data = heartRateData.map(
-          (d) => d.value,
+        const interpolatedData = interpolateData(filteredData, 15); // Interpolate every 15 minutes
+
+        // Update full history chart (48 hours)
+        heartRateChart.data.labels = interpolatedData.map((d) =>
+          new Date(d.timestamp).toLocaleString("en-US", {
+            month: "short",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+        );
+        heartRateChart.data.datasets[0].data = interpolatedData.map(
+          (d) => d.value
         );
         heartRateChart.update("none");
 
-        // Update hourly chart
-        const hourlyData = getHourlyData(heartRateData);
-        hourlyHeartRateChart.data.labels = hourlyData.map((d) =>
-          new Date(d.timestamp).toLocaleTimeString("en-US", {
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-        );
+        // Update 3-hour chart with actual timestamps
+        const hourlyData = getHourlyData(heartRateData, 3);
+        hourlyHeartRateChart.data.labels = hourlyData.map((d) => d.timestamp);
         hourlyHeartRateChart.data.datasets[0].data = hourlyData.map(
-          (d) => d.value,
+          (d) => d.value
         );
         hourlyHeartRateChart.update("none");
       }
 
       function initializeCharts() {
-        // Initialize full history chart
+        // Initialize 48-hour history chart
         const ctx = document.getElementById("heartRateChart").getContext("2d");
         heartRateChart = new Chart(ctx, {
           type: "line",
@@ -481,7 +543,7 @@
             labels: [],
             datasets: [
               {
-                label: "Heart Rate",
+                label: "Heart Rate (Last 48 Hours)",
                 data: [],
                 borderColor: "rgb(255, 99, 132)",
                 backgroundColor: "rgba(255, 99, 132, 0.2)",
@@ -490,10 +552,24 @@
               },
             ],
           },
-          options: defaultOptions,
+          options: {
+            ...defaultOptions,
+            scales: {
+              ...defaultOptions.scales,
+              x: {
+                ...defaultOptions.scales.x,
+                ticks: {
+                  color: "white",
+                  maxRotation: 45,
+                  minRotation: 45,
+                  maxTicksLimit: 24, // Show approximately one tick every 2 hours
+                },
+              },
+            },
+          },
         });
 
-        // Initialize hourly chart
+        // Initialize 3-hour chart
         const hourlyCtx = document
           .getElementById("hourlyHeartRateChart")
           .getContext("2d");
@@ -503,7 +579,7 @@
             labels: [],
             datasets: [
               {
-                label: "Heart Rate (Last Hour)",
+                label: "Heart Rate (Last 3 Hours)",
                 data: [],
                 borderColor: "rgb(75, 192, 192)",
                 backgroundColor: "rgba(75, 192, 192, 0.2)",
@@ -518,39 +594,23 @@
             scales: {
               ...defaultOptions.scales,
               x: {
-                ...defaultOptions.scales.x,
-                min: 0,
-                max: 59,
+                type: "time",
+                time: {
+                  unit: "minute",
+                  stepSize: 15,
+                  displayFormats: {
+                    minute: "HH:mm",
+                  },
+                },
+                grid: {
+                  color: "rgba(255, 255, 255, 0.1)",
+                },
                 ticks: {
                   color: "white",
                   maxRotation: 45,
                   minRotation: 45,
-                  callback: function (value) {
-                    return value % 5 === 0 ? value + "m" : "";
-                  },
-                },
-              },
-            },
-            plugins: {
-              ...defaultOptions.plugins,
-              annotation: {
-                annotations: {
-                  currentTime: {
-                    type: "line",
-                    xMin: 0,
-                    xMax: 0,
-                    borderColor: "rgba(255, 255, 255, 0.5)",
-                    borderWidth: 2,
-                    borderDash: [5, 5],
-                    label: {
-                      display: true,
-                      content: "Now",
-                      position: "top",
-                      backgroundColor: "rgba(255, 255, 255, 0.3)",
-                      color: "white",
-                      padding: 4,
-                    },
-                  },
+                  autoSkip: true,
+                  maxTicksLimit: 13, // Show a tick every 15 minutes
                 },
               },
             },
