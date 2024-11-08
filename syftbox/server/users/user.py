@@ -22,6 +22,7 @@ class UserManager:
         self.users: dict[str, User] = {}
 
     def get_user(self, email: str) -> User | None:
+        print(self.users)
         return self.users.get(email)
 
     def create_token_for_user(self, email: str) -> User:

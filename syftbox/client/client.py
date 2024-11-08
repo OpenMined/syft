@@ -1,6 +1,7 @@
 import argparse
 import atexit
 import importlib
+import json
 import os
 import platform
 import sys
@@ -11,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+import requests
 import uvicorn
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -32,6 +34,8 @@ from syftbox.client.fsevents import (
 )
 from syftbox.client.utils import macos
 from syftbox.lib import ClientConfig, SharedState, validate_email
+from syftbox.server.users.secret_constants import CLIENT_ID, CLIENT_SECRET, KEYCLOAK_REALM, KEYCLOAK_URL
+from getpass import getpass
 
 current_dir = Path(__file__).parent
 # Initialize FastAPI app and scheduler
@@ -77,10 +81,50 @@ def load_or_create_config(args) -> ClientConfig:
         # config_path = get_user_input("Path to config file?", DEFAULT_CONFIG_PATH)
         config_path = os.path.abspath(os.path.expanduser(config_path))
         client_config = ClientConfig(config_path=config_path)
+    
+    password = None
+    if args.register:
+        print("Welcome to SyftBox! You are trying to register a new user.")
+            
+        if args.email:
+            client_config.email = args.email
+        else:
+            email = get_user_input("Login email: ")
+            if not validate_email(email):
+                raise Exception(f"Invalid email: {email}")
+            client_config.email = email
 
-    if args.sync_folder:
-        sync_folder = os.path.abspath(os.path.expanduser(args.sync_folder))
-        client_config.sync_folder = sync_folder
+        firstName = get_user_input("First Name: ")
+        lastName = get_user_input("Last Name: ")
+        
+        while True:
+            password = getpass("Password: ")
+            verify_password = getpass("Verify password: ")
+            if password == verify_password:
+                print(f"Password verified!\n"
+                    "You will receive an email to confirm your account within 24 hours.\n" 
+                    "Configuration will continue as normal.")
+                data = {
+                    "email": client_config.email,
+                    "password": password,
+                    "firstName": firstName,
+                    "lastName": lastName, 
+                }
+                response = requests.post(
+                    f"{client_config.server_url}/users/register",
+                    json=data)
+                print(response.status_code, response.text)
+                break
+            print("Passwords do not match. Please try again!")
+        
+    else:
+        if args.email:
+            client_config.email = args.email
+        if client_config.email is None:
+            email = get_user_input("What is your email address for login? ")
+            if not validate_email(email):
+                raise Exception(f"Invalid email: {email}")
+            client_config.email = email
 
     if client_config.sync_folder is None:
         sync_folder = get_user_input(
@@ -88,6 +132,10 @@ def load_or_create_config(args) -> ClientConfig:
             DEFAULT_SYNC_FOLDER,
         )
         sync_folder = os.path.abspath(os.path.expanduser(sync_folder))
+        client_config.sync_folder = sync_folder
+
+    if args.sync_folder:
+        sync_folder = os.path.abspath(os.path.expanduser(args.sync_folder))
         client_config.sync_folder = sync_folder
 
     if args.server:
@@ -99,15 +147,6 @@ def load_or_create_config(args) -> ClientConfig:
     if platform.system() == "Darwin":
         macos.copy_icon_file(ICON_FOLDER, client_config.sync_folder)
 
-    if args.email:
-        client_config.email = args.email
-
-    if client_config.email is None:
-        email = get_user_input("What is your email address? ")
-        if not validate_email(email):
-            raise Exception(f"Invalid email: {email}")
-        client_config.email = email
-
     if args.port:
         client_config.port = args.port
 
@@ -118,6 +157,26 @@ def load_or_create_config(args) -> ClientConfig:
     email_token = os.environ.get("EMAIL_TOKEN", None)
     if email_token:
         client_config.email_token = email_token
+    else:
+        if password is None:
+            password = getpass("No token provided. What is your password? ")
+        data = {
+            "client_id": CLIENT_ID,
+            "client_secret": CLIENT_SECRET,
+            "username": client_config.email,
+            "password": password,
+            "grant_type": "password"
+        }
+
+        resp = requests.post(f"{KEYCLOAK_URL}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/token", data=data)
+        if resp.status_code == 200:
+            email_token = resp.json()['access_token']
+            print(email_token)
+            client_config.email_token = email_token
+            os.environ["EMAIL_TOKEN"] = email_token
+        else:
+            raise Exception(f"Token request returned code {resp.status_code} with message {resp.text}")
+            
 
     client_config.save(args.config_path)
     return client_config
@@ -275,6 +334,7 @@ def parse_args():
         "--config_path", type=str, default=DEFAULT_CONFIG_PATH, help="config path"
     )
     parser.add_argument("--sync_folder", type=str, help="sync folder path")
+    parser.add_argument("--register", action="store_true", help="register new user")
     parser.add_argument("--email", type=str, help="email")
     parser.add_argument("--port", type=int, default=8080, help="Port number")
     parser.add_argument(

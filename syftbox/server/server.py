@@ -7,10 +7,13 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Annotated, Optional
 
+from fastapi.security import OAuth2AuthorizationCodeBearer
+import jwt
+import requests
 import uvicorn
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
@@ -33,9 +36,10 @@ from syftbox.lib import (
     strtobin,
 )
 from syftbox.server.settings import ServerSettings, get_server_settings
+from syftbox.server.users.secret_constants import CLIENT_ID, CLIENT_SECRET, KEYCLOAK_REALM, KEYCLOAK_URL
 from syftbox.server.users.user import UserManager
 
-from .users.router import user_router
+from .users.router import create_admin_token, user_router
 
 current_dir = Path(__file__).parent
 
@@ -418,6 +422,47 @@ async def datasites(request: Request, server_settings: ServerSettings = Depends(
         return JSONResponse({"status": "success"} | response_json, status_code=200)
     return JSONResponse({"status": "error"}, status_code=400)
 
+@app.post('/invite')
+async def invite(email: str, firstName: str, lastName: str):
+    admin_token = create_admin_token()
+    headers = {
+        'Authorization': f'Bearer {admin_token}',
+        'Content-Type': 'application/json'
+    }
+    
+    payload = {
+        'firstName': firstName,
+        'lastName': lastName,
+        'email': email,
+        'enabled': "true",
+        'username': email,
+        "requiredActions": [
+            "UPDATE_PASSWORD",
+            "UPDATE_PROFILE"
+        ]
+    }
+    resp = requests.post(f"{KEYCLOAK_URL}/admin/realms/{KEYCLOAK_REALM}/users", headers=headers, data=json.dumps(payload))
+    if resp.status_code == 201:
+        resp = requests.get(f"{KEYCLOAK_URL}/admin/realms/{KEYCLOAK_REALM}/users", headers=headers)
+        content = resp.json()
+        for user in content:
+            if user['username'] == email:
+                user_id = user['id']
+                actions = [
+                    "UPDATE_PASSWORD",
+                    "UPDATE_PROFILE"
+                ]
+
+                resp = requests.put(
+                            f"{KEYCLOAK_URL}/admin/realms/{KEYCLOAK_REALM}/users/{user_id}/execute-actions-email?client_id={CLIENT_ID}", 
+                            headers=headers, 
+                            data=json.dumps(actions)
+                        )
+                return resp.status_code, resp.text
+                
+        return f'error user {email} not found after creation'
+    else:
+        return resp.status_code, resp.text
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run FastAPI server")
