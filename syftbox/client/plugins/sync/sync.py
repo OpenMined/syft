@@ -66,7 +66,7 @@ class DatasiteState:
 
     def get_current_local_state(self) -> list[FileMetadata]:
         return hash_dir(
-            self.path, root_dir=self.client.workspace.datasites, include_hidden=False, include_symlinks=False
+            self.path, root_dir=self.client.workspace.datasites, include_hidden=True, include_symlinks=False
         )
 
     def get_remote_state(self) -> list[FileMetadata]:
