@@ -82,4 +82,4 @@ class SyftBoxUser(FastHttpUser):
 
     @task
     def download(self):
-        endpoints.download(self.client, self.filepath.relative_to(self.client.workspace.datasites.absolute))
+        endpoints.download(self.client, self.filepath.relative_to(self.client.workspace.datasites.absolute()))
