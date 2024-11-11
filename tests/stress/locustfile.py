@@ -1,12 +1,18 @@
+import os
+import random
 import uuid
 from pathlib import Path
 
 from locust import FastHttpUser, between, task
 
 from syftbox.client.plugins.sync import consumer, endpoints
+from syftbox.lib.workspace import SyftWorkspace
 from syftbox.server.sync.hash import hash_file
 
 file_name = Path("loadtest.txt")
+
+PERCENTAGE_LARGE_FILES = 20
+LARGE_FILE_SIZE_MB = 20
 
 
 class SyftBoxUser(FastHttpUser):
@@ -20,18 +26,20 @@ class SyftBoxUser(FastHttpUser):
         self.remote_state: dict[str, list[endpoints.FileMetadata]] = {}
 
         # patch client for update_remote function
-        self.client.sync_folder = Path(".")
+        workspace = SyftWorkspace(Path("."))
+        self.client.workspace = workspace
         self.client.server_client = self.client
 
         self.filepath = self.init_file()
 
     def init_file(self) -> Path:
         # create a file on local and send to server
-        filepath = self.client.sync_folder / file_name
+        filepath = self.client.workspace.datasites / self.email / file_name
         filepath.parent.mkdir(parents=True, exist_ok=True)
+        contents = bytes.fromhex(uuid.uuid4().hex)
         filepath.touch()
-        filepath.write_text(uuid.uuid4().hex)
-        local_syncstate = hash_file(filepath.absolute(), root_dir=filepath.parent.absolute())
+        filepath.write_bytes(contents)
+        local_syncstate = hash_file(filepath.absolute(), root_dir=self.client.workspace.datasites.absolute())
         try:
             endpoints.create(self.client, local_syncstate.path, filepath.read_bytes())
         except endpoints.SyftServerError:
@@ -57,8 +65,13 @@ class SyftBoxUser(FastHttpUser):
 
     @task
     def apply_diff(self):
-        self.filepath.write_text(uuid.uuid4().hex)
-        local_syncstate = hash_file(self.filepath, root_dir=self.client.sync_folder)
+        if random.randint(0, 100) < PERCENTAGE_LARGE_FILES:
+            contents = os.urandom(LARGE_FILE_SIZE_MB * 1024 * 1024)
+        else:
+            contents = bytes.fromhex(uuid.uuid4().hex)
+
+        self.filepath.write_bytes(contents)
+        local_syncstate = hash_file(self.filepath, root_dir=self.client.workspace.datasites)
         remote_syncstate = endpoints.get_metadata(self.client, local_syncstate.path)
 
         consumer.update_remote(
@@ -69,4 +82,4 @@ class SyftBoxUser(FastHttpUser):
 
     @task
     def download(self):
-        endpoints.download(self.client, self.filepath)
+        endpoints.download(self.client, self.filepath.relative_to(self.client.workspace.datasites.absolute))
