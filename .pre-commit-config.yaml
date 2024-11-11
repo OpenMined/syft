@@ -25,6 +25,7 @@ repos:
         always_run: true
       - id: name-tests-test
         always_run: true
+        exclude: "tests/.*(e2e|stress|fixtures)"
       - id: requirements-txt-fixer
         always_run: true
       - id: mixed-line-ending

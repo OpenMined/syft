@@ -22,9 +22,7 @@ prefs = {
     "download.prompt_for_download": False,
 }
 chrome_options.add_experimental_option("prefs", prefs)
-chrome_options.add_argument(
-    "--headless"
-)  # Run in headless mode, comment this if you want to see the browser window
+chrome_options.add_argument("--headless")  # Run in headless mode, comment this if you want to see the browser window
 chrome_service = Service(chrome_driver_path)  # Set the path to your ChromeDriver
 
 driver = webdriver.Chrome(service=chrome_service, options=chrome_options)

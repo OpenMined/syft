@@ -1,4 +1,3 @@
-import argparse
 import contextlib
 import json
 import os
@@ -9,7 +8,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-import uvicorn
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import (
@@ -24,7 +22,7 @@ from loguru import logger
 from typing_extensions import Any, Optional, Union
 
 from syftbox.__version__ import __version__
-from syftbox.lib import (
+from syftbox.lib.lib import (
     Jsonable,
     get_datasites,
 )
@@ -115,6 +113,23 @@ def create_folders(folders: list[str]) -> None:
             os.makedirs(folder, exist_ok=True)
 
 
+def init_db(settings: ServerSettings) -> None:
+    # might take very long as snapshot folder grows
+    logger.info(f"> Collecting Files from {settings.snapshot_folder.absolute()}")
+    files = hash.collect_files(settings.snapshot_folder.absolute())
+    logger.info("> Hashing files")
+    metadata = hash.hash_files(files, settings.snapshot_folder)
+    logger.info(f"> Updating file hashes at {settings.file_db_path.absolute()}")
+    con = db.get_db(settings.file_db_path.absolute())
+    cur = con.cursor()
+    for m in metadata:
+        db.save_file_metadata(cur, m)
+
+    cur.close()
+    con.commit()
+    con.close()
+
+
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI, settings: Optional[ServerSettings] = None):
     # Startup
@@ -131,20 +146,7 @@ async def lifespan(app: FastAPI, settings: Optional[ServerSettings] = None):
     logger.info("> Loading Users")
     logger.info(users)
 
-    # might take very long as snapshot folder grows
-    logger.info(f"> Collecting Files from {settings.snapshot_folder.absolute()}")
-    files = hash.collect_files(settings.snapshot_folder.absolute())
-    logger.info("> Hashing files")
-    metadata = hash.hash_files(files, settings.snapshot_folder)
-    logger.info(f"> Updating file hashes at {settings.file_db_path.absolute()}")
-    con = db.get_db(settings.file_db_path.absolute())
-    cur = con.cursor()
-    for m in metadata:
-        db.save_file_metadata(cur, m)
-
-    cur.close()
-    con.commit()
-    con.close()
+    init_db(settings)
 
     yield {
         "server_settings": settings,
@@ -325,57 +327,3 @@ async def info():
     return {
         "version": __version__,
     }
-
-
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run FastAPI server")
-    parser.add_argument(
-        "--port",
-        type=int,
-        default=5001,
-        help="Port to run the server on (default: 5001)",
-    )
-    parser.add_argument(
-        "--debug",
-        action="store_true",
-        help="Run the server in debug mode with hot reloading",
-    )
-    parser.add_argument(
-        "--ssl-keyfile",
-        type=str,
-        help="Path to SSL key file for HTTPS",
-    )
-    parser.add_argument(
-        "--ssl-keyfile-password",
-        type=str,
-        help="SSL key file password for HTTPS",
-    )
-    parser.add_argument(
-        "--ssl-certfile",
-        type=str,
-        help="Path to SSL certificate file for HTTPS",
-    )
-
-    args = parser.parse_args()
-    return args
-
-
-def main() -> None:
-    args = parse_args()
-    uvicorn_config = {
-        "app": "syftbox.server.server:app" if args.debug else app,
-        "host": "0.0.0.0",
-        "port": args.port,
-        "log_level": "debug" if args.debug else "info",
-        "reload": args.debug,
-    }
-
-    uvicorn_config["ssl_keyfile"] = args.ssl_keyfile if args.ssl_keyfile else None
-    uvicorn_config["ssl_certfile"] = args.ssl_certfile if args.ssl_certfile else None
-    uvicorn_config["ssl_keyfile_password"] = args.ssl_keyfile_password if args.ssl_keyfile_password else None
-
-    uvicorn.run(**uvicorn_config)
-
-
-if __name__ == "__main__":
-    main()

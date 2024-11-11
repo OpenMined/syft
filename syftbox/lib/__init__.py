@@ -1,5 +1,3 @@
 from syftbox import __version__
-from syftbox.lib.exceptions import *  # noqa: F403
-from syftbox.lib.lib import *  # noqa: F403
-
-from .logger import logger
+from syftbox.lib.client_shim import Client
+from syftbox.lib.lib import SyftPermission

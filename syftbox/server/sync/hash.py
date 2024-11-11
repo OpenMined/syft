@@ -2,6 +2,7 @@ import base64
 import hashlib
 import re
 from concurrent.futures import ProcessPoolExecutor
+from datetime import datetime, timezone
 from functools import partial
 from pathlib import Path
 from typing import Optional, Union
@@ -34,7 +35,7 @@ def hash_file(file_path: Path, root_dir: Optional[Path] = None) -> Optional[File
             hash=hashlib.sha256(data).hexdigest(),
             signature=base64.b85encode(signature.calculate(data)),
             file_size=len(data),
-            last_modified=file_path.stat().st_mtime,
+            last_modified=datetime.fromtimestamp(file_path.stat().st_mtime, timezone.utc),
         )
     except Exception:
         logger.error(f"Failed to hash file {file_path}")

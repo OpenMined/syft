@@ -32,6 +32,17 @@ def list_datasites(client: httpx.Client) -> list[str]:
     return data
 
 
+def get_datasite_states(client: httpx.Client, email: str) -> dict[str, list[FileMetadata]]:
+    response = client.post(
+        "/sync/datasite_states",
+        headers={"email": email},
+    )
+
+    data = handle_json_response("/sync/datasite_states", response)
+
+    return {email: [FileMetadata(**item) for item in metadata_list] for email, metadata_list in data.items()}
+
+
 def get_remote_state(client: httpx.Client, email: str, path: Path) -> list[FileMetadata]:
     response = client.post(
         "/sync/dir_state",
@@ -42,10 +53,17 @@ def get_remote_state(client: httpx.Client, email: str, path: Path) -> list[FileM
     )
 
     response_data = handle_json_response("/dir_state", response)
-    return [FileMetadata(**item) for item in response_data]
+    metadata_list = [FileMetadata(**item) for item in response_data]
+    for item in metadata_list:
+        if not hasattr(client, "metadata_cache"):
+            client.metadata_cache = {}
+        client.metadata_cache[item.path] = item
+    return metadata_list
 
 
 def get_metadata(client: httpx.Client, path: Path) -> FileMetadata:
+    if hasattr(client, "metadata_cache") and path in client.metadata_cache:
+        return client.metadata_cache[path]
     response = client.post(
         "/sync/get_metadata",
         json={
@@ -55,9 +73,7 @@ def get_metadata(client: httpx.Client, path: Path) -> FileMetadata:
 
     response_data = handle_json_response("/sync/get_metadata", response)
 
-    if len(response_data) == 0:
-        raise SyftNotFound(f"[/sync/get_metadata] not found on server: {path}")
-    return FileMetadata(**response_data[0])
+    return FileMetadata(**response_data)
 
 
 def get_diff(client: httpx.Client, path: Path, signature: bytes) -> DiffResponse:
@@ -115,4 +131,13 @@ def download(client: httpx.Client, path: Path) -> bytes:
     if response.status_code != 200:
         raise SyftNotFound(f"[/sync/download] not found on server: {path}, {response.text}")
 
+    return response.content
+
+
+def download_bulk(client: httpx.Client, paths: list[str]) -> bytes:
+    response = client.post(
+        "/sync/download_bulk",
+        json={"paths": paths},
+    )
+    response.raise_for_status()
     return response.content

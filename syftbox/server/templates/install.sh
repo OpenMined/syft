@@ -153,7 +153,6 @@ install_syftbox() {
     fi
 }
 
-
 check_python_version() {
     # Try python3, if it exists; otherwise, fall back to python
     py=$(get_python_command)
@@ -163,18 +162,56 @@ check_python_version() {
         return 1
     fi
 
-    # Check if the python version is >= 3.10
+    # Check if the python version is >= 3.9
     py_valid_ver=$($py -c "import sys; print((sys.version_info[:2] >= ($REQ_PYTHON_MAJOR, $REQ_PYTHON_MINOR)))")
 
-    # Check if Python version not is greater than or equal to 3.10
+    # Check if Python version not is greater than or equal to 3.9
     if [ "$py_valid_ver" = "False" ]; then
         err "SyftBox requires Python $REQ_PYTHON_MAJOR.$REQ_PYTHON_MINOR or higher, found $($py -V). Please upgrade your Python installation and retry."
     fi
 }
 
+show_debug_and_exit() {
+    need_python
+    py=$(get_python_command)
+    echo
+    warn "SYFTBOX INSTALLER DEBUG REPORT"
+    echo
+    info System
+    echo "SHELL           : $SHELL"
+    echo "LANG            : $LANG"
+    echo "LD_LIBRARY_PATH : $LD_LIBRARY_PATH"
+    echo "PATH            : $PATH"
+    echo "PWD             : $(pwd)"
+    echo
+    info "Python"
+    echo "Alias           : $py"
+    echo "Version         : $($py -V)"
+    echo "which           : $(which $py)"
+    echo "python env vars"
+    env | grep -E "(PYTHON|PIP)" || echo "-"
+    echo
+    info "Python Virtual Environment"
+    env | grep -E "(VIRTUAL_ENV|VENV)" || echo "-"
+    echo
+    info "Conda Environment"
+    env | grep CONDA || echo "-"
+    echo
+    info "Python Runtime"
+    $py -c '
+import sys; \
+print("sys.version      :", sys.version); \
+print("sys.executable   :", sys.executable); \
+print("sys.prefix       :", sys.prefix); \
+print("sys.base_prefix  :", sys.base_prefix); \
+print("sys.path"); \
+[print("-", p) for p in sys.path];'
+    exit 0
+}
 
 pre_install() {
-    # check if python version is >= 3.10, if uv is not managing python
+
+    # check if python version is >= 3.9, if uv is not managing python
     if [ $MANAGED_PYTHON -eq 0 ]
     then check_python_version
     fi
@@ -245,6 +282,9 @@ do_install() {
                 ;;
             --managed-python|managed-python)
                 MANAGED_PYTHON=1
+                ;;
+            --debug|debug)
+                show_debug_and_exit
                 ;;
             *)
                 ;;

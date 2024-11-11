@@ -5,7 +5,7 @@ from loguru import logger
 
 from syftbox.lib.lib import SyftPermission
 
-DirTree = Mapping[str, "Union[str, DirTree]"]
+DirTree = Mapping[str, "Union[str, bytes, SyftPermission, DirTree]"]
 
 
 def create_dir_tree(base_path: Path, tree: DirTree) -> None:
@@ -15,6 +15,8 @@ def create_dir_tree(base_path: Path, tree: DirTree) -> None:
 
         if isinstance(content, str):
             local_path.write_text(content)
+        elif isinstance(content, bytes):
+            local_path.write_bytes(content)
         elif isinstance(content, SyftPermission):
             content.save(path=str(local_path))
         elif isinstance(content, dict):

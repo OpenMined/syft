@@ -4,7 +4,7 @@ from typing import Optional
 import pathspec
 from loguru import logger
 
-from syftbox.lib import Client
+from syftbox.lib.types import PathLike, to_path
 
 IGNORE_FILENAME = "_.syftignore"
 
@@ -42,15 +42,18 @@ Icon
 """
 
 
-def create_default_ignore_file(client: Client) -> None:
-    ignore_file = Path(client.sync_folder) / IGNORE_FILENAME
+def create_default_ignore_file(dir: PathLike) -> None:
+    """Create a default _.syftignore file in the dir"""
+    ignore_file = to_path(dir) / IGNORE_FILENAME
     if not ignore_file.is_file():
         logger.info(f"Creating default ignore file: {ignore_file}")
+        ignore_file.parent.mkdir(parents=True, exist_ok=True)
         ignore_file.write_text(DEFAULT_IGNORE)
 
 
-def get_ignore_rules(client: Client) -> Optional[pathspec.PathSpec]:
-    ignore_file = Path(client.sync_folder) / IGNORE_FILENAME
+def get_ignore_rules(dir: PathLike) -> Optional[pathspec.PathSpec]:
+    """Get the ignore rules from the _.syftignore file in the dir"""
+    ignore_file = to_path(dir) / IGNORE_FILENAME
     if ignore_file.is_file():
         with open(ignore_file) as f:
             lines = f.readlines()
@@ -58,8 +61,9 @@ def get_ignore_rules(client: Client) -> Optional[pathspec.PathSpec]:
     return None
 
 
-def filter_ignored_paths(client: Client, paths: list[Path]) -> list[Path]:
-    ignore_rules = get_ignore_rules(client)
+def filter_ignored_paths(dir: PathLike, paths: list[Path]) -> list[Path]:
+    """Filter out paths that are ignored by the _.syftignore file in the dir"""
+    ignore_rules = get_ignore_rules(dir)
     if ignore_rules is None:
         return paths
 

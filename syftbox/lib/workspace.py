@@ -1,8 +1,4 @@
-from pathlib import Path
-
-from typing_extensions import Union
-
-DEFAULT_WORKSPACE_DIR = Path("~/.syftbox")
+from syftbox.lib.types import PathLike, to_path
 
 
 class SyftWorkspace:
@@ -10,37 +6,35 @@ class SyftWorkspace:
     A Syft workspace is a directory structure for everything stored by the client.
     Each workspace is expected to be unique for a client.
 
-    syft_root_dir/
-    ├── config/                      <-- syft client configuration
-    │   └── config.json
-    ├── plugin/                      <-- workspace for plugins to store data
-    │   └── sync/
-    │       └── changelog.txt
-    └── sync/                        <-- everything under this gets sync'd
-        ├── apps/
-        │   └── fedflix
-        └── datasites/
-            ├── alice@acme.org
-            └── bob@acme.org
+    ```txt
+        data_dir/
+        ├── apps/                       <-- installed apps
+        ├── plugins/                    <-- plugins data
+        └── datasites/                  <-- synced datasites
+            ├── user1@openmined.org/
+            │   └── apps_pipeline/
+            └── user2@openmined.org/
+                └── apps_pipeline/
+    ```
     """
 
-    def __init__(self, root_dir: Union[Path, str] = DEFAULT_WORKSPACE_DIR):
-        self.root_dir = Path(root_dir).expanduser()
+    def __init__(self, data_dir: PathLike):
+        self.data_dir = to_path(data_dir)
+        """Path to the root directory of the workspace."""
 
-        # config dir
-        self.config_dir = self.root_dir / "config"
+        # datasites dir
+        self.datasites = self.data_dir / "datasites"
+        """Path to the directory containing datasites."""
 
         # plugins dir
-        self.plugins_dir = self.root_dir / "plugins"
+        """Path to the directory containing plugins."""
+        self.plugins = self.data_dir / "plugins"
 
-        # sync dirs
-        self.sync_dir = self.root_dir / "sync"
-        self.datasites_dir = self.sync_dir / "datasites"
-        self.apps_dir = self.sync_dir / "apps"
+        # apps dir
+        self.apps = self.data_dir / "apps"
+        """Path to the directory containing apps."""
 
     def mkdirs(self):
-        self.config_dir.mkdir(parents=True, exist_ok=True)
-        self.sync_dir.mkdir(parents=True, exist_ok=True)
-        self.datasites_dir.mkdir(parents=True, exist_ok=True)
-        self.plugins_dir.mkdir(parents=True, exist_ok=True)
-        self.apps_dir.mkdir(parents=True, exist_ok=True)
+        self.datasites.mkdir(parents=True, exist_ok=True)
+        self.plugins.mkdir(parents=True, exist_ok=True)
+        self.apps.mkdir(parents=True, exist_ok=True)

@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from fastapi import Request
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing_extensions import Self, Union
 
@@ -18,7 +19,12 @@ class ServerSettings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="SYFTBOX_")
 
-    data_folder: Path = Path("data").resolve()
+    data_folder: Path = Field(default=Path("data").resolve())
+    """Absolute path to the server data folder"""
+
+    @field_validator("data_folder", mode="after")
+    def data_folder_abs(cls, v):
+        return Path(v).expanduser().resolve()
 
     @property
     def folders(self) -> list[Path]:

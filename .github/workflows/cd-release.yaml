@@ -35,6 +35,10 @@ jobs:
 
   deploy-syftbox:
     needs: [call-pr-tests]
+    if: |
+      always() &&
+      (needs.call-pr-tests.result == 'success' || needs.call-pr-tests.result == 'skipped')
+
     # runs-on: ubuntu-latest
     runs-on: syftbox-sh-linux-x64
 

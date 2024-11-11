@@ -168,6 +168,8 @@ cython_debug/
 data/
 users/
 .clients/
+.server/
+.e2e/
 keys/
 backup/
 netflix_data/
@@ -182,3 +184,5 @@ experimental/
 *.db
 notebooks/
 dev_space/
+
+!tests/**/.env

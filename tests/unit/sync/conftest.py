@@ -1,4 +1,3 @@
-import time
 from collections.abc import Generator
 from functools import partial
 from pathlib import Path
@@ -6,61 +5,59 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from syftbox.client.plugins.create_datasite import run as run_create_datasite_plugin
-from syftbox.client.plugins.init import run as run_init_plugin
-from syftbox.lib.lib import ClientConfig, SharedState, perm_file_path
+from syftbox.client.base import SyftClientInterface
+from syftbox.lib.client_config import SyftClientConfig
+from syftbox.lib.datasite import create_datasite
+from syftbox.lib.workspace import SyftWorkspace
 from syftbox.server.server import app as server_app
 from syftbox.server.server import lifespan as server_lifespan
 from syftbox.server.settings import ServerSettings
 
 
-def wait_for_datasite_setup(client_config: ClientConfig, timeout=5):
-    print("waiting for datasite setup...")
+class MockClient(SyftClientInterface):
+    def __init__(self, config, workspace, server_client):
+        self.config = config
+        self.workspace = workspace
+        self.server_client = server_client
 
-    perm_file = perm_file_path(str(client_config.datasite_path))
+    @property
+    def email(self):
+        return self.config.email
 
-    t0 = time.time()
-    while time.time() - t0 < timeout:
-        perm_file_exists = Path(perm_file).exists()
-        is_registered = client_config.is_registered
-        if perm_file_exists and is_registered:
-            print("Datasite setup complete")
-            return
-        time.sleep(1)
+    @property
+    def datasite(self):
+        return Path(self.workspace.datasites, self.config.email)
 
-    raise TimeoutError("Datasite setup took too long")
+    @property
+    def all_datasites(self) -> list[str]:
+        """List all datasites in the workspace"""
+        return [d.name for d in self.workspace.datasites.iterdir() if (d.is_dir() and "@" in d.name)]
 
 
-def setup_datasite(tmp_path: Path, server_client: TestClient, email: str) -> ClientConfig:
-    client_path = tmp_path / email
-    client_path.unlink(missing_ok=True)
-    client_path.mkdir(parents=True)
-
-    client_config = ClientConfig(
-        config_path=str(client_path / "client_config.json"),
-        sync_folder=str(client_path / "sync"),
+def setup_datasite(tmp_path: Path, server_client: TestClient, email: str) -> SyftClientInterface:
+    syft_path = tmp_path / email
+    config = SyftClientConfig(
+        path=syft_path / "config.json",
+        data_dir=syft_path,
         email=email,
         server_url=str(server_client.base_url),
-        autorun_plugins=[],
+        client_url="http://localhost:8080",
     )
-
-    client_config._server_client = server_client
-
-    shared_state = SharedState(client_config=client_config)
-    run_init_plugin(shared_state)
-    run_create_datasite_plugin(shared_state)
-    wait_for_datasite_setup(client_config)
-    return client_config
+    config.save()
+    ws = SyftWorkspace(config.data_dir)
+    ws.mkdirs()
+    create_datasite(ws.datasites, email)
+    return MockClient(config, ws, server_client)
 
 
-@pytest.fixture(scope="function")
-def datasite_1(tmp_path: Path, server_client: TestClient) -> ClientConfig:
+@pytest.fixture()
+def datasite_1(tmp_path: Path, server_client: TestClient) -> SyftClientInterface:
     email = "user_1@openmined.org"
     return setup_datasite(tmp_path, server_client, email)
 
 
-@pytest.fixture(scope="function")
-def datasite_2(tmp_path: Path, server_client: TestClient) -> ClientConfig:
+@pytest.fixture()
+def datasite_2(tmp_path: Path, server_client: TestClient) -> SyftClientInterface:
     email = "user_2@openmined.org"
     return setup_datasite(tmp_path, server_client, email)
 
@@ -75,5 +72,5 @@ def server_client(tmp_path: Path) -> Generator[TestClient, None, None]:
     lifespan_with_settings = partial(server_lifespan, settings=settings)
     server_app.router.lifespan_context = lifespan_with_settings
 
-    with TestClient(server_app) as client:
+    with TestClient(server_app, base_url="http://localhost:5001") as client:
         yield client

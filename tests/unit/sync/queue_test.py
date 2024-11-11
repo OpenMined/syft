@@ -3,8 +3,13 @@ from pathlib import Path
 from queue import Empty
 
 import pytest
+from pydantic import BaseModel
 
 from syftbox.client.plugins.sync.queue import SyncQueue, SyncQueueItem
+
+
+class MockFileChangeInfo(BaseModel):  # noqa: F821
+    path: Path
 
 
 def test_sync_queue():
@@ -15,20 +20,20 @@ def test_sync_queue():
     paths = [Path(f"file_{i}.txt") for i in range(n)]
     priorities = [random.uniform(0, 1000) for _ in range(n)]
     priorities[0] = int(priorities[0])  # int and float should both work
-    items = [SyncQueueItem(priority, path) for path, priority in zip(paths, priorities)]
+    items = [SyncQueueItem(priority, MockFileChangeInfo(path=path)) for path, priority in zip(paths, priorities)]
     items_sorted = sorted(items, key=lambda x: x.priority)
 
     for item in items:
         queue.put(item)
 
     assert not queue.empty()
-    assert queue.dedupe_set == set(paths)
+    assert set(queue.all_items.keys()) == set(paths)
 
     for item in items_sorted:
         assert queue.get() == item
 
     assert queue.empty()
-    assert queue.dedupe_set == set()
+    assert len(queue.all_items) == 0
     with pytest.raises(Empty):
         queue.get(block=False)
 
@@ -38,15 +43,15 @@ def test_sync_queue_dedupe():
 
     path = Path("file.txt")
 
-    queue.put(SyncQueueItem(1, path))
-    assert queue.dedupe_set == {path}
+    queue.put(SyncQueueItem(1, MockFileChangeInfo(path=path)))
+    assert set(queue.all_items.keys()) == {path}
     assert not queue.empty()
 
     for _ in range(10):
-        queue.put(SyncQueueItem(random.random(), path))
+        queue.put(SyncQueueItem(random.random(), MockFileChangeInfo(path=path)))
 
-    assert queue.dedupe_set == {path}
+    assert set(queue.all_items.keys()) == {path}
 
     queue.get()
-    assert queue.dedupe_set == set()
+    assert len(queue.all_items) == 0
     assert queue.empty()

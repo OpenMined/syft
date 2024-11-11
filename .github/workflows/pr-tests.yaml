@@ -1,4 +1,4 @@
-name: PR Tests
+name: Tests - PR
 
 on:
   workflow_dispatch:
@@ -7,7 +7,6 @@ on:
 
   pull_request:
     branches:
-      - dev
       - main
 
 concurrency:
@@ -15,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  pr-tests:
+  unit:
     strategy:
       max-parallel: 99
       matrix:
@@ -78,3 +77,65 @@ jobs:
           TOX_PYTHON: python${{ matrix.python-version }}
         run: |
           tox -e syft.test.unit
+
+  integration:
+    strategy:
+      max-parallel: 99
+      matrix:
+        runner: [syftbox-sh-linux-x64, sh-macos-arm64]
+        python-version: ["3.12", "3.9"]
+      fail-fast: false
+
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.4.25"
+
+      - name: Get uv cache dir
+        id: pip-cache
+        shell: bash
+        run: |
+          echo "dir=$(uv cache dir)" >> $GITHUB_OUTPUT
+
+      - name: Load github cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pip-cache.outputs.dir }}
+          key: pr-uv-${{ runner.os }}-py${{ matrix.python-version }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            pr-uv-${{ runner.os }}-py${{ matrix.python-version }}
+
+      - name: Set up Python ${{ matrix.python-version }}
+        if: startsWith(matrix.runner, 'syftbox-sh-linux')
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # challenge here is actions/setup-python@v5 requires write access to /Users/runner/hostedtoolcache
+      # but current custom macos runner does not allow writing to that dir (even sudo won't work)
+      # so we need to use this weird way to install python on macos
+      - name: Set up Python ${{ matrix.python-version }} (uv managed)
+        if: startsWith(matrix.runner, 'syftbox-sh-mac')
+        run: |
+          uv python install ${{ matrix.python-version }}
+          uv venv --python ${{ matrix.python-version }} .venv${{ matrix.python-version }}
+          uv tool update-shell
+          source $HOME/.profile
+          source .venv${{ matrix.python-version }}/bin/activate
+
+      - name: Install tox
+        run: |
+          # explicitly define which python version to use
+          # else we may end up picking system default which is not the same as the actions/setup-python
+          uv tool install tox --with tox-uv --python ${{ matrix.python-version }}
+          tox --version
+
+      - name: Run Integration tests
+        env:
+          TOX_PYTHON: python${{ matrix.python-version }}
+        run: |
+          tox -e syft.test.integration

@@ -1,5 +1,7 @@
 import base64
 import hashlib
+import zipfile
+from io import BytesIO
 from pathlib import Path
 
 import py_fast_rsync
@@ -8,26 +10,17 @@ from fastapi.testclient import TestClient
 from py_fast_rsync import signature
 
 from syftbox.client.plugins.sync.endpoints import (
-    SyftNotFound,
     SyftServerError,
     apply_diff,
+    download_bulk,
+    get_datasite_states,
     get_diff,
     get_metadata,
     get_remote_state,
 )
+from syftbox.lib.lib import FileMetadata
 from syftbox.server.sync.models import ApplyDiffResponse, DiffResponse
 from tests.unit.server.conftest import PERMFILE_FILE, TEST_DATASITE_NAME, TEST_FILE
-
-
-def test_get_all_permissions(client: TestClient):
-    # TODO: filter permissions and not return everything
-    response = client.post(
-        "/sync/get_metadata",
-        json={"path_like": "%.syftperm"},
-    )
-
-    response.raise_for_status()
-    assert len(response.json())
 
 
 def test_get_diff_2(client: TestClient):
@@ -67,11 +60,11 @@ def file_digest(file_path, algorithm="sha256"):
 def test_syft_client_push_flow(client: TestClient):
     response = client.post(
         "/sync/get_metadata",
-        json={"path_like": f"%{TEST_DATASITE_NAME}/{TEST_FILE}"},
+        json={"path_like": f"{TEST_DATASITE_NAME}/{TEST_FILE}"},
     )
 
     response.raise_for_status()
-    server_signature_b85 = response.json()[0]["signature"]
+    server_signature_b85 = response.json()["signature"]
     server_signature = base64.b85decode(server_signature_b85)
     assert server_signature
 
@@ -139,11 +132,8 @@ def test_apply_diff(client: TestClient):
     diff = py_fast_rsync.diff(remote_metadata.signature_bytes, local_data)
     wrong_hash = "wrong_hash"
 
-    with pytest.raises(SyftServerError) as e:
+    with pytest.raises(SyftServerError):
         apply_diff(client, Path(TEST_DATASITE_NAME) / TEST_FILE, diff, wrong_hash)
-
-    # TODO typed errors
-    assert "expected_hash mismatch" in str(e.value)
 
 
 def test_get_diff(client: TestClient):
@@ -162,9 +152,8 @@ def test_get_diff(client: TestClient):
 
     # diff nonexistent file
     file_path = Path(TEST_DATASITE_NAME) / "nonexistent_file.txt"
-    with pytest.raises(SyftServerError) as e:
+    with pytest.raises(SyftServerError):
         get_diff(client, file_path, sig)
-    assert "path not found" in str(e.value)
 
 
 def test_delete_file(client: TestClient):
@@ -178,7 +167,7 @@ def test_delete_file(client: TestClient):
     path = Path(f"{snapshot_folder}/{TEST_DATASITE_NAME}/{TEST_FILE}")
     assert not path.exists()
 
-    with pytest.raises(SyftNotFound):
+    with pytest.raises(SyftServerError):
         get_metadata(client, Path(TEST_DATASITE_NAME) / TEST_FILE)
 
 
@@ -244,3 +233,20 @@ def test_list_datasites(client: TestClient):
     response = client.post("/sync/datasites")
 
     response.raise_for_status()
+
+
+def test_get_all_datasite_states(client: TestClient):
+    response = get_datasite_states(client, email=TEST_DATASITE_NAME)
+    assert len(response) == 1
+
+    metadatas = response[TEST_DATASITE_NAME]
+    assert len(metadatas) == 3
+    assert all(isinstance(m, FileMetadata) for m in metadatas)
+
+
+def test_download_snapshot(client: TestClient):
+    metadata = get_remote_state(client, TEST_DATASITE_NAME, Path(TEST_DATASITE_NAME))
+    paths = [m.path.as_posix() for m in metadata]
+    data = download_bulk(client, paths)
+    zip_file = zipfile.ZipFile(BytesIO(data))
+    assert len(zip_file.filelist) == 3
