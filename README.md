@@ -108,3 +108,7 @@ Client2:
 ```
 ./scripts/andrew.sh
 ```
+
+# Tools
+
+For benchmarking, see [Benchmarks](./tests/stress/README.md)
