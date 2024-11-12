@@ -1,15 +1,12 @@
 from pathlib import Path
 from typing import Annotated, Optional
 
-import uvicorn
 from typer import Context, Option, Typer
-
-from syftbox.client.cli import VERBOSE_OPTS
-from syftbox.server.server import app as fastapi_app
 
 app = Typer(
     name="SyftBox Server",
     pretty_exceptions_enable=False,
+    add_completion=False,
     context_settings={"help_option_names": ["-h", "--help"]},
 )
 
@@ -28,6 +25,12 @@ WORKERS_OPTS = Option(
     "-w", "--workers",
     rich_help_panel=SERVER_PANEL,
     help="Number of worker processes",
+)
+VERBOSE_OPTS = Option(
+    "-v", "--verbose",
+    is_flag=True,
+    rich_help_panel=SERVER_PANEL,
+    help="Enable verbose mode",
 )
 RELOAD_OPTS = Option(
     "--reload", "--debug",
@@ -63,6 +66,11 @@ def server(
     if ctx.invoked_subcommand is not None:
         # If a subcommand is being invoked, just return
         return
+
+    # lazy import to improve CLI startup performance
+    import uvicorn
+
+    from syftbox.server.server import app as fastapi_app
 
     uvicorn.run(
         app=fastapi_app,

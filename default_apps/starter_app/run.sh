@@ -6,5 +6,7 @@ if [ ! -d .venv ]; then
     uv venv
 fi
 . .venv/bin/activate
-python main.py
+
+echo "Running 'starter_app' with $(python3 --version) at '$(which python3)'"
+python3 main.py
 deactivate

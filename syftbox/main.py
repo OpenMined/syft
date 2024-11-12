@@ -30,6 +30,8 @@ def version():
 @app.command(rich_help_panel="General Options")
 def debug(config_path: Annotated[Optional[Path], CONFIG_OPTS] = None):
     """Print SyftBox debug data"""
+
+    # lazy import to improve CLI startup performance
     from syftbox.lib.debug import debug_report_yaml
 
     try:

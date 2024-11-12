@@ -14,6 +14,7 @@ from loguru import logger
 from typing_extensions import Any, Optional, Union
 
 from syftbox.client.base import SyftClientInterface
+from syftbox.lib.client_config import CONFIG_PATH_ENV
 
 DEFAULT_INTERVAL = 10
 RUNNING_APPS = {}
@@ -21,39 +22,84 @@ DEFAULT_APPS_PATH = Path(os.path.join(os.path.dirname(__file__), "..", "..", "..
 EVENT = threading.Event()
 
 
-def find_and_run_script(task_path, extra_args):
-    script_path = os.path.join(task_path, "run.sh")
-    env = os.environ.copy()  # Copy the current environment
+def path_without_virtualenvs() -> str:
+    env_path = os.getenv("PATH", "")
+    if not env_path:
+        return env_path
+
+    venv_hints = [
+        f"env{os.sep}bin",
+        f"env{os.sep}Scripts",
+        "conda",
+        ".virtualenvs",
+        "pyenv",
+    ]
+
+    # activated venv will have VIRTUAL_ENV and VIRTUAL_ENV/bin in PATH
+    # so axe it
+    env_venv = os.getenv("VIRTUAL_ENV", "")
+    if env_venv:
+        venv_hints.append(env_venv)
+
+    cleaned_path = [
+        entry for entry in env_path.split(os.pathsep) if not any(hint in entry.lower() for hint in venv_hints)
+    ]
+
+    return os.pathsep.join(cleaned_path)
+
+
+def get_clean_env():
+    clean_env = {}
+
+    essential_vars = {
+        "PATH",
+        "HOME",
+        "USER",
+        "TEMP",
+        "TMP",
+        "TMPDIR",
+        "SHELL",
+        "LANG",
+        "LC_ALL",
+        "SYSTEMROOT",  # Windows specific
+    }
+
+    # Copy essential and SYFTBOX_* variables
+    for key, value in os.environ.items():
+        if key in essential_vars or key.startswith("SYFTBOX_"):
+            clean_env[key] = value
+
+    return clean_env
+
+
+def find_and_run_script(app_path: Path, extra_args: list, config_path: Path):
+    script_path = os.path.join(app_path, "run.sh")
+
+    clean_env = get_clean_env()
+    clean_env.update(
+        {
+            "PATH": path_without_virtualenvs(),
+            CONFIG_PATH_ENV: str(config_path),
+        }
+    )
 
     # Check if the script exists
     if os.path.isfile(script_path):
         # Set execution bit (+x)
         os.chmod(script_path, os.stat(script_path).st_mode | 0o111)
 
-        # Check if the script has a shebang
-        with open(script_path, "r") as script_file:
-            first_line = script_file.readline().strip()
-            has_shebang = first_line.startswith("#!")
-
         # Prepare the command based on whether there's a shebang or not
-        command = [script_path] + extra_args if has_shebang else ["/bin/bash", script_path] + extra_args
-
-        try:
-            result = subprocess.run(
-                command,
-                cwd=task_path,
-                check=True,
-                capture_output=True,
-                text=True,
-                env=env,
-            )
-
-            # logger.info("✅ Script run.sh executed successfully.")
-            return result
-        except subprocess.CalledProcessError as e:
-            logger.info(f"Error running shell script: {str(e.stderr)}")
+        command = ["sh", script_path] + extra_args
+        return subprocess.run(
+            command,
+            cwd=app_path,
+            check=True,
+            capture_output=True,
+            text=True,
+            env=clean_env,
+        )
     else:
-        raise FileNotFoundError(f"run.sh not found in {task_path}")
+        raise FileNotFoundError(f"run.sh not found in {app_path}")
 
 
 def copy_default_apps(apps_path: Path):
@@ -102,7 +148,7 @@ def bootstrap(client: SyftClientInterface):
     copy_default_apps(apps_path)
 
 
-def run_apps(apps_path: Path):
+def run_apps(apps_path: Path, client_config: Path):
     # create the directory
 
     for app in apps_path.iterdir():
@@ -110,12 +156,12 @@ def run_apps(apps_path: Path):
         if app_path.is_dir():
             app_config = load_config(app_path / "config.json")
             if app_config is None:
-                run_app(app_path)
+                run_app(app_path, client_config)
             elif RUNNING_APPS.get(app, None) is None:
                 logger.info("⏱  Scheduling a  new app run.")
                 thread = threading.Thread(
                     target=run_custom_app_config,
-                    args=(app_config, app_path),
+                    args=(app_config, app_path, client_config),
                 )
                 thread.start()
                 RUNNING_APPS[os.path.basename(app)] = thread
@@ -134,15 +180,17 @@ def output_published(app_output, published_output) -> bool:
     )
 
 
-def run_custom_app_config(app_config: SimpleNamespace, path: Path):
-    env = os.environ.copy()
-    app_name = os.path.basename(path)
-
+def run_custom_app_config(app_config: SimpleNamespace, app_path: Path, client_config: Path):
+    app_name = os.path.basename(app_path)
+    clean_env = {
+        "PATH": path_without_virtualenvs(),
+        CONFIG_PATH_ENV: str(client_config),
+    }
     # Update environment with any custom variables in app_config
     app_envs = getattr(app_config.app, "env", {})
     if not isinstance(app_envs, dict):
         app_envs = vars(app_envs)
-    env.update(app_envs)
+    clean_env.update(app_envs)
 
     # Retrieve the cron-style schedule from app_config
     cron_iter = None
@@ -163,16 +211,17 @@ def run_custom_app_config(app_config: SimpleNamespace, path: Path):
         try:
             result = subprocess.run(
                 app_config.app.run.command,
-                cwd=path,
+                cwd=app_path,
                 check=True,
                 capture_output=True,
                 text=True,
-                env=env,
+                env=clean_env,
             )
-            logger.info(result.stdout)
-            logger.error(result.stderr)
+            logger.info(f"App '{app_name}' ran sucessfully.\nstdout:\n{result.stdout}stderr:\n{result.stderr}")
         except subprocess.CalledProcessError as e:
-            logger.error(f"Error running {app_name}: {e.stderr}")
+            logger.warning(f"Error running '{app_name}'", e)
+        except Exception as e:
+            logger.error(f"Error running '{app_name}'", e)
 
         if cron_iter is not None:
             # Schedule the next exection
@@ -186,24 +235,18 @@ def run_custom_app_config(app_config: SimpleNamespace, path: Path):
         time.sleep(time_to_wait)
 
 
-def run_app(path: Path):
-    app_name = os.path.basename(path)
+def run_app(app_path: Path, config_path: Path):
+    app_name = os.path.basename(app_path)
 
     extra_args = []
     try:
-        logger.info(f"👟 Running {app_name} app", end="")
-        result = find_and_run_script(path, extra_args)
-        if hasattr(result, "returncode"):
-            if "Already generated" not in str(result.stdout):
-                logger.info("\n")
-                logger.info(result.stdout)
-            else:
-                logger.info(" - no change")
-            exit_code = result.returncode
-            if exit_code != 0:
-                logger.info(f"Error running: {app_name}", result.stdout, result.stderr)
+        logger.info(f"Running '{app_name}' app")
+        result = find_and_run_script(app_path, extra_args, config_path)
+        logger.info(f"App '{app_name}' ran sucessfully.\nstdout:\n{result.stdout}stderr:\n{result.stderr}")
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        logger.warning(f"Error running '{app_name}'", e)
     except Exception as e:
-        logger.info(f"Failed to run. {e}")
+        logger.error(f"Error running '{app_name}'", e)
 
 
 class AppRunner:
@@ -216,10 +259,13 @@ class AppRunner:
     def start(self):
         def run():
             bootstrap(self.client)
-            os.environ["SYFTBOX_CLIENT_CONFIG_PATH"] = str(self.client.config.path)
+
             while not self.__event.is_set():
                 try:
-                    run_apps(apps_path=self.client.workspace.apps)
+                    run_apps(
+                        apps_path=self.client.workspace.apps,
+                        client_config=self.client.config.path,
+                    )
                 except Exception as e:
                     logger.error(f"Error running apps: {e}")
                 time.sleep(self.interval)

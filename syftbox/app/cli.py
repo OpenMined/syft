@@ -1,4 +1,3 @@
-import os
 import sys
 from pathlib import Path
 
@@ -6,6 +5,7 @@ from rich import print as rprint
 from typer import Argument, Exit, Option, Typer
 from typing_extensions import Annotated
 
+from syftbox import __version__
 from syftbox.app.manager import install_app, list_app, uninstall_app
 from syftbox.client.plugins.apps import find_and_run_script
 from syftbox.lib.client_config import SyftClientConfig
@@ -25,6 +25,12 @@ CONFIG_OPTS = Option("-c", "--config", "--config_path", help="Path to the SyftBo
 REPO_ARGS = Argument(..., show_default=False, help="SyftBox App git repo URL")
 BRANCH_OPTS = Option("-b", "--branch", help="git branch name")
 UNINSTALL_ARGS = Argument(..., show_default=False, help="Name of the SyftBox App to uninstall")
+APP_ENV_SCRIPT = """
+if [ ! -d .venv ]; then
+    uv venv .venv
+fi
+. .venv/bin/activate
+"""
 
 
 @app.command()
@@ -75,30 +81,34 @@ def uninstall(
 
 @app.command()
 def run(
-    app_path: Path,
+    app_name: str,
     config_path: Annotated[Path, CONFIG_OPTS] = DEFAULT_CONFIG_PATH,
 ):
     """Uninstall a Syftbox app"""
-    os.environ["SYFTBOX_CLIENT_CONFIG_PATH"] = str(config_path)
-    abs_path = os.path.abspath(app_path)
-    print("abs_path", abs_path)
-    app_name = os.path.basename(abs_path)
-    print("app name", app_name)
+
+    workspace = get_workspace(config_path)
 
     extra_args = []
     try:
-        rprint(f"[bold cyan]Running {app_name} app[/bold cyan]")
-        result = find_and_run_script(abs_path, extra_args)
-        if hasattr(result, "returncode"):
-            exit_code = result.returncode
-            if exit_code != 0:
-                rprint(f"[bold red]Error:[/bold red] '{app_name}' {result.stdout} {result.stderr}")
-                raise Exit(1)
-            else:
-                rprint(f"[bold cyan]stdout:[/bold cyan] '{app_name}'\n\n{result.stdout}")
+        rprint(f"Running [bold]'{app_name}'[/bold]\nLocation: '{workspace.apps}'\n")
+        result = find_and_run_script(str(workspace.apps / app_name), extra_args, str(config_path))
+        rprint("[bold yellow]stdout:[/bold yellow]")
+        print(result.stdout)
+        rprint("[bold yellow]stderr:[/bold yellow]")
+        print(result.stderr)
     except Exception as e:
-        rprint(f"[bold red]Error:[/bold red] {e}")
+        rprint("[bold red]Error:[/bold red]", e)
         raise Exit(1)
+
+
+@app.command(rich_help_panel="General Options")
+def env(with_syftbox: bool = False):
+    """Setup virtual env for app. With option to install syftbox matching client version"""
+
+    script = APP_ENV_SCRIPT
+    if with_syftbox:
+        script += f"\nuv pip install -U syftbox=={__version__}"
+    print(script)
 
 
 # @app.command()
