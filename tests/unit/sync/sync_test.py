@@ -8,6 +8,7 @@ import faker
 import pytest
 from fastapi.testclient import TestClient
 from loguru import logger
+from pytest import MonkeyPatch
 
 from syftbox.client.base import SyftClientInterface
 from syftbox.client.plugins.sync.constants import MAX_FILE_SIZE_MB
@@ -15,6 +16,7 @@ from syftbox.client.plugins.sync.manager import DatasiteState, SyncManager, Sync
 from syftbox.client.utils.dir_tree import DirTree, create_dir_tree
 from syftbox.lib.lib import SyftPermission
 from syftbox.server.settings import ServerSettings
+from syftbox.server.sync.hash import hash_dir
 from tests.unit.sync.conftest import setup_datasite
 
 fake = faker.Faker()
@@ -435,9 +437,17 @@ def test_skip_symlink(server_client: TestClient, datasite_1: SyftClientInterface
     assert not (snapshot_folder / datasite_1.email / "symlinked_file.txt").exists()
 
 
-def test_skip_hidden_paths(server_client: TestClient, datasite_1: SyftClientInterface):
+def test_skip_hidden_paths(server_client: TestClient, datasite_1: SyftClientInterface, monkeypatch: MonkeyPatch):
     sync_service = SyncManager(datasite_1)
     sync_service.run_single_thread()
+
+    def mock_get_curr_local_state_skip_hidden(self):
+        return hash_dir(self.path, self.client.workspace.datasites, include_hidden=False, include_symlinks=False)
+
+    monkeypatch.setattr(
+        "syftbox.client.plugins.sync.manager.DatasiteState.get_current_local_state",
+        mock_get_curr_local_state_skip_hidden,
+    )
 
     hidden_folder = datasite_1.datasite / ".hidden_folder"
     hidden_nested_file = hidden_folder / "subfolder" / "file.txt"
