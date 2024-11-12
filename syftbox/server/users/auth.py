@@ -18,7 +18,7 @@ http_basic_security = HTTPBasic()  # Used for admin credentials
 bearer_scheme = HTTPBearer()  # Used for User JWT tokens
 
 
-def create_access_token(username: str, password: str) -> str:
+def create_keycloak_access_token(username: str, password: str) -> str:
     """Create JWT token for user, without expiry date.
 
     Args:

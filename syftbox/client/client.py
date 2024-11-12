@@ -36,6 +36,9 @@ from syftbox.client.utils import macos
 from syftbox.lib import ClientConfig, SharedState, validate_email
 from syftbox.server.users.secret_constants import CLIENT_ID, CLIENT_SECRET, KEYCLOAK_REALM, KEYCLOAK_URL
 from getpass import getpass
+from functools import lru_cache
+import time
+import base64
 
 current_dir = Path(__file__).parent
 # Initialize FastAPI app and scheduler
@@ -54,6 +57,7 @@ ICON_FOLDER = ASSETS_FOLDER / "icon"
 
 WATCHDOG_IGNORE = ["apps"]
 
+TOKEN_TIMEOUT = 3600
 
 @dataclass
 class Plugin:
@@ -62,8 +66,71 @@ class Plugin:
     schedule: int
     description: str
 
+@lru_cache()
+def get_token(username, password, ttl=None):
+    del ttl
+    data = {
+            "client_id": CLIENT_ID,
+            "client_secret": CLIENT_SECRET,
+            "username": username,
+            "password": password,
+            "grant_type": "password"
+        }
 
-def load_or_create_config(args) -> ClientConfig:
+    resp = requests.post(f"{KEYCLOAK_URL}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/token", data=data)
+    if resp.status_code == 200:
+        token = resp.json()['access_token']
+        return token
+    else:
+        raise Exception(f"Token request returned code {resp.status_code} with message {resp.text}")
+
+def get_user_from_token(token):
+    _, payload, _ = token.split('.')
+    padded_payload = padded_payload = payload + "="*divmod(len(payload),4)[1]
+    user_data = json.loads(base64.urlsafe_b64decode(padded_payload))
+    return user_data
+    
+def get_user_info(token: str):
+    headers = {
+        'Authorization': f'Bearer {token}',
+        'Content-Type': 'application/json'
+    }
+    resp = requests.post(f"{KEYCLOAK_URL}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/userinfo", headers=headers)
+    if resp.status_code != 200:
+        return None
+    content = resp.json()
+    return content
+
+
+def get_ttl_hash(seconds=TOKEN_TIMEOUT):
+    """Return the same value withing `seconds` time period"""
+    return round(time.time() / seconds)
+
+def get_headers(token):
+    return {
+        'Authorization': f'Bearer {token}',
+        'Content-Type': 'application/json'
+    }
+
+def reset_password(user_id, new_password, token):
+    data = {
+        "type": "password", 
+        "temporary": False, 
+        "value": new_password 
+    }
+    resp = requests.put(f"{KEYCLOAK_URL}/realms/{KEYCLOAK_REALM}/users/{user_id}/reset-password", headers=get_headers(token), data=data)
+    return resp
+
+def get_email_from_args(args):
+    if args.email:
+        email = args.email
+    else:
+        email = get_user_input("Login email: ")
+        if not validate_email(email):
+            raise Exception(f"Invalid email: {email}")
+    return email
+
+def load_or_create_config(args, first_run=False) -> ClientConfig:
     syft_config_dir = os.path.abspath(os.path.expanduser("~/.syftbox"))
     os.makedirs(syft_config_dir, exist_ok=True)
 
@@ -83,16 +150,28 @@ def load_or_create_config(args) -> ClientConfig:
         client_config = ClientConfig(config_path=config_path)
     
     password = None
-    if args.register:
-        print("Welcome to SyftBox! You are trying to register a new user.")
-            
-        if args.email:
-            client_config.email = args.email
+    if args.reset_password and first_run:
+        email = get_email_from_args(args)
+        email_token = os.environ.get("EMAIL_TOKEN", None)
+        if email_token:
+            client_config.email_token = email_token
         else:
-            email = get_user_input("Login email: ")
-            if not validate_email(email):
-                raise Exception(f"Invalid email: {email}")
-            client_config.email = email
+            if password is None:
+                password = getpass("No token provided. What is your password? ")
+            
+            email_token = get_token(email, password, ttl=get_ttl_hash())
+            client_config.email_token = email_token
+            os.environ["EMAIL_TOKEN"] = email_token
+        user = get_user_from_token(client_config.email_token)
+        new_password = 'a'
+        reset_password(user['sub'], new_password, client_config.email_token)
+    
+    if args.server:
+        client_config.server_url = args.server
+
+    if args.register and first_run:
+        print("Welcome to SyftBox! You are trying to register a new user.")
+        client_config.email = get_email_from_args(args)
 
         firstName = get_user_input("First Name: ")
         lastName = get_user_input("Last Name: ")
@@ -104,27 +183,18 @@ def load_or_create_config(args) -> ClientConfig:
                 print(f"Password verified!\n"
                     "You will receive an email to confirm your account within 24 hours.\n" 
                     "Configuration will continue as normal.")
-                data = {
-                    "email": client_config.email,
-                    "password": password,
-                    "firstName": firstName,
-                    "lastName": lastName, 
-                }
-                response = requests.post(
-                    f"{client_config.server_url}/users/register",
-                    json=data)
-                print(response.status_code, response.text)
                 break
             print("Passwords do not match. Please try again!")
-        
+        data = {
+            "email": client_config.email,
+            "password": password,
+            "firstName": firstName,
+            "lastName": lastName, 
+        }
+        resp = requests.post(f"{client_config.server_url}/users/register", json=data)
+        print(resp.status_code, resp.text)
     else:
-        if args.email:
-            client_config.email = args.email
-        if client_config.email is None:
-            email = get_user_input("What is your email address for login? ")
-            if not validate_email(email):
-                raise Exception(f"Invalid email: {email}")
-            client_config.email = email
+        client_config.email = get_email_from_args(args)
 
     if client_config.sync_folder is None:
         sync_folder = get_user_input(
@@ -138,8 +208,6 @@ def load_or_create_config(args) -> ClientConfig:
         sync_folder = os.path.abspath(os.path.expanduser(args.sync_folder))
         client_config.sync_folder = sync_folder
 
-    if args.server:
-        client_config.server_url = args.server
 
     if not os.path.exists(client_config.sync_folder):
         os.makedirs(client_config.sync_folder, exist_ok=True)
@@ -160,23 +228,10 @@ def load_or_create_config(args) -> ClientConfig:
     else:
         if password is None:
             password = getpass("No token provided. What is your password? ")
-        data = {
-            "client_id": CLIENT_ID,
-            "client_secret": CLIENT_SECRET,
-            "username": client_config.email,
-            "password": password,
-            "grant_type": "password"
-        }
-
-        resp = requests.post(f"{KEYCLOAK_URL}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/token", data=data)
-        if resp.status_code == 200:
-            email_token = resp.json()['access_token']
-            print(email_token)
-            client_config.email_token = email_token
-            os.environ["EMAIL_TOKEN"] = email_token
-        else:
-            raise Exception(f"Token request returned code {resp.status_code} with message {resp.text}")
-            
+        
+        email_token = get_token(client_config.email, password, ttl=get_ttl_hash())
+        client_config.email_token = email_token
+        os.environ["EMAIL_TOKEN"] = email_token
 
     client_config.save(args.config_path)
     return client_config
@@ -335,6 +390,7 @@ def parse_args():
     )
     parser.add_argument("--sync_folder", type=str, help="sync folder path")
     parser.add_argument("--register", action="store_true", help="register new user")
+    parser.add_argument("--reset_password", action="store_true", help="reset password")
     parser.add_argument("--email", type=str, help="email")
     parser.add_argument("--port", type=int, default=8080, help="Port number")
     parser.add_argument(
@@ -567,7 +623,7 @@ def get_syftbox_src_path():
 
 def main() -> None:
     args = parse_args()
-    client_config = load_or_create_config(args)
+    client_config = load_or_create_config(args, first_run=True)
 
     os.environ["SYFTBOX_DATASITE"] = client_config.email
     os.environ["SYFTBOX_CLIENT_CONFIG_PATH"] = client_config.config_path

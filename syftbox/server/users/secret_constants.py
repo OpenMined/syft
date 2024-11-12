@@ -1,8 +1,8 @@
 
 CLIENT_ID = "syftbox"
-CLIENT_SECRET = "lkmr29tXVE5I1jHuv5ia1xEZk1ewAbgd"
+CLIENT_SECRET = "uyOaMdYsEtDfoNxKQ1jIT0CuP1EJa0J8"
 ADMIN_UNAME = "info@openmined.org"
 ADMIN_PASSWORD = "changethis"
 
-KEYCLOAK_URL = "http://20.56.213.46:8080"
+KEYCLOAK_URL = "http://auth.syftbox.openmined.org"
 KEYCLOAK_REALM = "master"

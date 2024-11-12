@@ -7,9 +7,11 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+import time
 from typing import Annotated, Optional
 
 from fastapi.security import OAuth2AuthorizationCodeBearer
+from apscheduler.schedulers.background import BackgroundScheduler
 import jwt
 import requests
 import uvicorn
@@ -39,7 +41,7 @@ from syftbox.server.settings import ServerSettings, get_server_settings
 from syftbox.server.users.secret_constants import CLIENT_ID, CLIENT_SECRET, KEYCLOAK_REALM, KEYCLOAK_URL
 from syftbox.server.users.user import UserManager
 
-from .users.router import create_admin_token, user_router
+from .users.router import create_keycloak_admin_token, delete_user, user_router
 
 current_dir = Path(__file__).parent
 
@@ -123,6 +125,17 @@ def create_folders(folders: list[str]) -> None:
             os.makedirs(folder, exist_ok=True)
 
 
+def remove_unverified_users():
+    users = get_users()
+    for user in users:
+        if not user['emailVerified']:
+            # user['createdTimestamp'] is counted in microseconds
+            delta = (time.time() - user['createdTimestamp'] / 1000)
+            if delta / (3600 * 24) > 1:
+                # delete de user
+                delete_user(user['id'])
+    print("remove_unverified_users task finished")
+
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
@@ -140,6 +153,11 @@ async def lifespan(app: FastAPI):
     print(users)
 
     user_manager = UserManager()
+
+
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(remove_unverified_users,"interval",minutes = 60 * 24)
+    scheduler.start()
 
     yield {
         "server_settings": settings,
@@ -424,7 +442,7 @@ async def datasites(request: Request, server_settings: ServerSettings = Depends(
 
 @app.post('/invite')
 async def invite(email: str, firstName: str, lastName: str):
-    admin_token = create_admin_token()
+    admin_token = create_keycloak_admin_token()
     headers = {
         'Authorization': f'Bearer {admin_token}',
         'Content-Type': 'application/json'
