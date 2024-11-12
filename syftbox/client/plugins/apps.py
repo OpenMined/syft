@@ -219,9 +219,9 @@ def run_custom_app_config(app_config: SimpleNamespace, app_path: Path, client_co
             )
             logger.info(f"App '{app_name}' ran sucessfully.\nstdout:\n{result.stdout}stderr:\n{result.stderr}")
         except subprocess.CalledProcessError as e:
-            logger.warning(f"Error running '{app_name}'", e)
+            logger.error(f"Error running '{app_name}' - {e}\nstdout:\n{e.stdout}\nstderr:\n{e.stderr}")
         except Exception as e:
-            logger.error(f"Error running '{app_name}'", e)
+            logger.error(f"Error running '{app_name}' - {e}")
 
         if cron_iter is not None:
             # Schedule the next exection
@@ -243,10 +243,10 @@ def run_app(app_path: Path, config_path: Path):
         logger.info(f"Running '{app_name}' app")
         result = find_and_run_script(app_path, extra_args, config_path)
         logger.info(f"App '{app_name}' ran sucessfully.\nstdout:\n{result.stdout}stderr:\n{result.stderr}")
-    except (subprocess.CalledProcessError, FileNotFoundError) as e:
-        logger.warning(f"Error running '{app_name}'", e)
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Error running '{app_name}' - {e}\nstdout:\n{e.stdout}\nstderr:\n{e.stderr}")
     except Exception as e:
-        logger.error(f"Error running '{app_name}'", e)
+        logger.error(f"Error running '{app_name}' - {e}")
 
 
 class AppRunner:

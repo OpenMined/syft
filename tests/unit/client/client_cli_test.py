@@ -8,6 +8,10 @@ from syftbox.client.cli import app as client_cli
 runner = CliRunner()
 
 
+def mock_port_in_use(*args, **kwargs):
+    return False
+
+
 def test_client_success(monkeypatch, mock_config):
     def setup_config_interactive(*args, **kwargs):
         return mock_config
@@ -17,6 +21,7 @@ def test_client_success(monkeypatch, mock_config):
 
     monkeypatch.setattr("syftbox.client.client2.run_client", mock_run_client)
     monkeypatch.setattr("syftbox.client.cli_setup.setup_config_interactive", setup_config_interactive)
+    monkeypatch.setattr("syftbox.client.utils.net.is_port_in_use", mock_port_in_use)
 
     result = runner.invoke(client_cli)
     assert result.exit_code == 0
@@ -31,6 +36,7 @@ def test_client_error(monkeypatch, mock_config):
 
     monkeypatch.setattr("syftbox.client.client2.run_client", mock_run_client)
     monkeypatch.setattr("syftbox.client.cli_setup.setup_config_interactive", setup_config_interactive)
+    monkeypatch.setattr("syftbox.client.utils.net.is_port_in_use", mock_port_in_use)
 
     result = runner.invoke(client_cli)
     assert result.exit_code == -1
