@@ -399,6 +399,64 @@ def test_sync_invalid_local_environment(datasite_1: SyftClientInterface):
     assert not sync_service.is_alive()
 
 
+def test_skip_symlink(server_client: TestClient, datasite_1: SyftClientInterface):
+    sync_service = SyncManager(datasite_1)
+    sync_service.run_single_thread()
+
+    apps_dir = datasite_1.workspace.apps
+    datasite_dir = datasite_1.datasite
+
+    folder_to_symlink = apps_dir / "folder_to_symlink"
+    file_to_symlink = apps_dir / "file_to_symlink.txt"
+
+    folder_to_symlink.mkdir()
+    file_to_symlink.write_text("content")
+
+    # Nothing to sync, no writes to datasites
+    states = sync_service.get_datasite_states()
+    assert len(states) == 1
+    assert states[0].is_in_sync()
+
+    # Make symlinks in datasite
+    symlink_folder = datasite_dir / "symlinked_folder"
+    symlink_file = datasite_dir / "symlinked_file.txt"
+
+    symlink_folder.symlink_to(folder_to_symlink)
+    symlink_file.symlink_to(file_to_symlink)
+
+    states = sync_service.get_datasite_states()
+    assert len(states) == 1
+    assert states[0].is_in_sync()
+
+    # Check if symlinks are not synced
+    sync_service.run_single_thread()
+    snapshot_folder = server_client.app_state["server_settings"].snapshot_folder
+    assert not (snapshot_folder / datasite_1.email / "symlinked_folder").exists()
+    assert not (snapshot_folder / datasite_1.email / "symlinked_file.txt").exists()
+
+
+def test_skip_hidden_paths(server_client: TestClient, datasite_1: SyftClientInterface):
+    sync_service = SyncManager(datasite_1)
+    sync_service.run_single_thread()
+
+    hidden_folder = datasite_1.datasite / ".hidden_folder"
+    hidden_nested_file = hidden_folder / "subfolder" / "file.txt"
+    hidden_file = datasite_1.datasite / ".hidden_file.txt"
+
+    hidden_folder.mkdir()
+    hidden_nested_file.parent.mkdir(parents=True)
+    hidden_file.write_text("content")
+
+    states = sync_service.get_datasite_states()
+    assert len(states) == 1
+    assert states[0].is_in_sync()
+
+    sync_service.run_single_thread()
+    snapshot_folder = server_client.app_state["server_settings"].snapshot_folder
+    assert not (snapshot_folder / datasite_1.email / ".hidden_folder").exists()
+    assert not (snapshot_folder / datasite_1.email / ".hidden_file.txt").exists()
+
+
 @pytest.mark.skip("This is for manual testing")
 def test_n_datasites(tmp_path: Path, server_client: TestClient, datasite_1: SyftClientInterface):
     server_settings: ServerSettings = server_client.app_state["server_settings"]

@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 from pathlib import Path
 from typing import Optional
 
@@ -107,7 +108,8 @@ class SyftClientConfig(BaseModel):
         # if we loaded the legacy config, we need to move it to new config
         if self.path.name == LEGACY_CONFIG_NAME:
             new_path = Path(self.path.parent, DEFAULT_CONFIG_PATH.name)
-            self.path = self.path.rename(new_path)
+            shutil.move(str(self.path), str(new_path))
+            self.path = new_path
             self.save()
 
         return self

@@ -247,17 +247,17 @@ def run_migration(config: SyftClientConfig):
 
         # create the datasites directory & move all under it
         for dir in old_sync_folder.glob("*@*"):
-            dir.rename(new_ws.datasites / dir.name)
+            shutil.move(str(dir), str(new_ws.datasites))
 
         # move syftignore file
         old_ignore_file = old_sync_folder / IGNORE_FILENAME
         if old_ignore_file.exists():
-            old_ignore_file.rename(new_ws.datasites / IGNORE_FILENAME)
+            shutil.move(str(old_ignore_file), str(new_ws.datasites / IGNORE_FILENAME))
 
         # move old sync state file
         old_sync_state = old_sync_folder / ".syft" / "local_syncstate.json"
         if old_sync_state.exists():
-            old_sync_state.rename(new_ws.plugins / "local_syncstate.json")
+            shutil.move(str(old_sync_state), str(new_ws.plugins / "local_syncstate.json"))
         if old_sync_state.parent.exists():
             shutil.rmtree(str(old_sync_state.parent))
 

@@ -4,14 +4,12 @@ from rich import print as rprint
 from typer import Context, Exit, Option, Typer
 from typing_extensions import Annotated
 
-from syftbox.client.cli_setup import setup_config_interactive
-from syftbox.client.client2 import run_client
-from syftbox.client.utils.net import get_free_port, is_port_in_use
 from syftbox.lib.constants import DEFAULT_CONFIG_PATH, DEFAULT_DATA_DIR, DEFAULT_PORT, DEFAULT_SERVER_URL
 
 app = Typer(
     name="SyftBox Client",
     pretty_exceptions_enable=False,
+    add_completion=False,
     context_settings={"help_option_names": ["-h", "--help"]},
 )
 
@@ -64,7 +62,7 @@ VERBOSE_OPTS = Option(
 
 # report command opts
 REPORT_PATH_OPTS = Option(
-    Path(".").resolve(), "-o", "-p", "--path", "--output-dir",
+    "-o", "--output-dir",
     help="Directory to save the log file",
 )
 
@@ -88,6 +86,11 @@ def client(
         # If a subcommand is being invoked, just return
         return
 
+    # lazy import to imporve cli startup speed
+    from syftbox.client.cli_setup import setup_config_interactive
+    from syftbox.client.client2 import run_client
+    from syftbox.client.utils.net import get_free_port, is_port_in_use
+
     if port == 0:
         port = get_free_port()
     elif is_port_in_use(port):
@@ -103,17 +106,25 @@ def client(
 
 
 @app.command()
-def report(path: Path = REPORT_PATH_OPTS):
+def report(
+    output_path: Annotated[Path, REPORT_PATH_OPTS] = Path(".").resolve(),
+    config_path: Annotated[Path, CONFIG_OPTS] = DEFAULT_CONFIG_PATH,
+):
     """Generate a report of the SyftBox client"""
     from datetime import datetime
 
+    from syftbox.lib.client_config import SyftClientConfig
     from syftbox.lib.logger import zip_logs
 
-    name = f"syftbox_logs_{datetime.now().strftime('%Y_%m_%d_%H%M')}"
-    output_path = Path(path, name).resolve()
-    output_path_with_extension = zip_logs(output_path)
-    rprint(f"Logs saved at: {output_path_with_extension}.")
-    raise Exit(0)
+    try:
+        config = SyftClientConfig.load(config_path)
+        name = f"syftbox_logs_{datetime.now().strftime('%Y_%m_%d_%H%M')}"
+        output_path = Path(output_path, name).resolve()
+        output_path_with_extension = zip_logs(output_path, log_dir=config.data_dir / "logs")
+        rprint(f"Logs from {config.data_dir} saved at {output_path_with_extension}.")
+    except Exception as e:
+        rprint(f"[red]Error[/red]: {e}")
+        raise Exit(1)
 
 
 def main():

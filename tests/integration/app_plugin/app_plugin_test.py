@@ -37,7 +37,8 @@ def test_app_plugin_without_config(tmp_path, monkeypatch):
     monkeypatch.setattr("syftbox.client.plugins.apps.RUNNING_APPS", PATCHED_RUNNING)
 
     # Run app
-    run_apps(app_dir)
+    no_config = ""  # dummy app doesn't need SYFTBOX_CLIENT_CONFIG_PATH
+    run_apps(app_dir, no_config)
 
     # Verify results
     verify_running_apps(PATCHED_RUNNING)
@@ -60,7 +61,8 @@ def test_app_plugin_with_config(tmp_path, monkeypatch):
     monkeypatch.setattr("syftbox.client.plugins.apps.EVENT", EVT)
 
     # Run app
-    run_apps(app_dir)
+    no_config = ""  # dummy app doesn't need SYFTBOX_CLIENT_CONFIG_PATH
+    run_apps(app_dir, no_config)
     time.sleep(2)
 
     # Verify results

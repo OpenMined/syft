@@ -46,12 +46,6 @@ def setup_config_interactive(config_path: Path, email: str, data_dir: Path, serv
             port=port,
         )
     else:
-        # if cli args changed, then we update the config
-        # not sure if we really need this
-        if email and email != conf.email:
-            conf.email = email
-        if data_dir and data_dir != conf.data_dir:
-            conf.data_dir = data_dir
         if server and server != conf.server_url:
             conf.set_server_url(server)
         if port != conf.client_url.port:

@@ -1,21 +1,16 @@
 [project]
 name = "syftbox"
-version = "0.1.24"
+version = "0.2.3"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
-    "cryptography>=43.0.1",
-    "requests>=2.32.3",
     "fastapi>=0.114.0",
     "uvicorn>=0.30.6",
-    "apscheduler>=3.10.4",
     "jinja2>=3.1.4",
     "typing-extensions>=4.12.2",
-    "sqlalchemy>=2.0.34",
     "markdown>=3.7",
     "pandas>=2.2.2",
-    "setuptools>=75.1.0",
     "postmarker>=1.0",
     "watchdog>=5.0.2",
     "pydantic>=2.9.2",

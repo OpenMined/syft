@@ -77,10 +77,11 @@ jobs:
           just reset
           just test-e2e ${{ matrix.e2e-test }}
 
-      - name: Cleanup macOS Icon\r Files
+      - name: Cleanup unnecessary files
         if: ${{ failure() && startsWith(matrix.runner, 'sh-macos') }}
         run: |
           find . -type f -name "Icon*" -exec rm -f {} \;
+          find . -type f -name "syftbox.pid" -exec rm -f {} \;
 
       - name: Upload logs & client/server state
         if: failure()

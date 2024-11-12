@@ -10,7 +10,6 @@ RING_DIR=$E2E_DIR/ring
 LOGS_DIR=$RING_DIR/logs
 CLIENT_DIR=$RING_DIR/client
 SERVER_DIR=$RING_DIR/server
-CONFIG_DIR=$RING_DIR/config
 DOMAIN="openmined.org"
 
 ########## Client & Server ##########
@@ -31,11 +30,12 @@ bg_start_client() {
     info "Starting client email=$email port=$port"
 
     run_bg syftbox client \
-        --config=$CONFIG_DIR/$user.json \
+        --config=$CLIENT_DIR/$user/config.json \
         --data-dir=$CLIENT_DIR/$user \
         --email=$email \
         --port=$port \
         --no-open-dir \
+        --verbose \
         --server=http://localhost:5001 &> $LOGS_DIR/client.$1.log
 }
 
@@ -53,26 +53,31 @@ bg_start_syftbox() {
 
 e2e_prepare_dirs() {
     rm -rf $E2E_DIR
-    mkdir -p $LOGS_DIR $CONFIG_DIR $CLIENT_DIR
+    mkdir -p $LOGS_DIR $CLIENT_DIR
 }
 
 ########## Ring ##########
 
+path_user_datasite() {
+    # get path to client's datasite
+    local user=$1
+    echo "$CLIENT_DIR/$user/datasites/$user@$DOMAIN"
+}
+
 path_ring_app() {
     # get path to client's ring app
-
-    echo "$CLIENT_DIR/$1/apps/ring"
+    local user=$1
+    echo "$CLIENT_DIR/$user/apps/ring"
 }
 
 path_ring_pipeline() {
     # get path to client's ring app pipeline
-
-    echo "$CLIENT_DIR/$1/$1@$DOMAIN/app_pipelines/ring"
+    local user=$1
+    echo "$(path_user_datasite $user)/app_pipelines/ring"
 }
 
 wait_for_ring_app() {
     # wait for ring app to be be installed
-
     for user in $@
     do wait_for_path "$(path_ring_app $user)/run.sh" 30
     done
@@ -80,12 +85,10 @@ wait_for_ring_app() {
 
 ring_copy_secrets() {
     # copy secret.json to ring app
-
     for user in $@
     do cp $SCRIPT_DATA_DIR/$user.secret.json "$(path_ring_app $user)/secret.json"
     done
 }
-
 
 ring_init() {
     # place data.json in apps_pipelines/ring/running

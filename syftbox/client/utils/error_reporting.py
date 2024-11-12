@@ -2,7 +2,7 @@ import datetime
 import sys
 from platform import platform
 
-import requests
+import httpx
 from pydantic import BaseModel, Field
 from typing_extensions import Optional
 
@@ -35,6 +35,6 @@ def make_error_report(client_config: SyftClientConfig):
 def try_get_server_version(server_url):
     try:
         # do not use the server_client here, as it may not be in bad state
-        return requests.get(f"{server_url}/info").json()["version"]
+        return httpx.get(f"{server_url}/info").json()["version"]
     except Exception:
         return None

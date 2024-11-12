@@ -19,10 +19,11 @@ def setup_logger(
     logger.add(level=level, sink=sys.stderr, diagnose=False, backtrace=False)
 
     # new file per run - no rotation needed
+    # always log debug level
     log_file = Path(log_dir, f"syftbox_{int(datetime.now().timestamp())}.log")
     logger.add(
         log_file,
-        level=level,
+        level="DEBUG",
         rotation=None,
         compression=None,
     )
@@ -30,12 +31,12 @@ def setup_logger(
     # keep last 5 logs
     logs_to_delete = sorted(log_dir.glob("syftbox_*.log"))[:-keep_logs]
     for log in logs_to_delete:
-        log.unlink()
+        try:
+            log.unlink()
+        except Exception:
+            pass
 
 
 def zip_logs(output_path, log_dir: PathLike = DEFAULT_LOGS_DIR):
     logs_folder = to_path(log_dir)
     return make_archive(output_path, "zip", logs_folder)
-
-
-setup_logger()

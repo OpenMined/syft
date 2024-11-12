@@ -51,15 +51,13 @@ def test_setup_new_config_with_prompt(tmp_path, monkeypatch):
 
 def test_setup_existing_config(tmp_path, mock_config):
     new_port = 8081
-    new_data_dir = tmp_path / "new_data"
     result = setup_config_interactive(
         server=str(mock_config.server_url),
         email=str(mock_config.email),
-        data_dir=new_data_dir,
+        data_dir="",
         config_path=mock_config.path,
         port=new_port,
     )
 
     assert isinstance(result, SyftClientConfig)
     assert result.client_url.port == new_port
-    assert result.data_dir == new_data_dir

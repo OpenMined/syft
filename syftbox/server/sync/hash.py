@@ -53,29 +53,30 @@ def hash_files(files: list[Path], root_dir: Path) -> list[FileMetadata]:
     return [r for r in result if r is not None]
 
 
-def hash_dir(dir: Path, root_dir: Path) -> list[FileMetadata]:
+def hash_dir(
+    dir: Path,
+    root_dir: Path,
+    include_hidden: bool = True,
+    include_symlinks: bool = True,
+) -> list[FileMetadata]:
     """
     hash all files in dir recursively, return a list of FileMetadata.
 
     ignore_folders should be relative to root_dir.
     returned Paths are relative to root_dir.
     """
-    files = collect_files(dir)
+    files = collect_files(dir, include_hidden=include_hidden, include_symlinks=include_symlinks)
     return hash_files(files, root_dir)
 
 
-def collect_files(dir: Union[Path, str], pattern: Union[str, re.Pattern, None] = None) -> list[Path]:
-    """Recursively collect files in a directory
+def collect_files(
+    dir: Union[Path, str],
+    pattern: Union[str, re.Pattern, None] = None,
+    include_hidden: bool = True,
+    include_symlinks: bool = True,
+) -> list[Path]:
+    """Recursively collect files in a directory with options to include hidden files and symlinks"""
 
-    Examples:
-        >>> # list all .syftperm files
-        >>> collect_files(snapshot_dir, r".*/.syftperm")
-
-        >>> # list all files in a directory info
-        >>> collect_files(snapshot_dir, r".*")
-
-
-    """
     dir = Path(dir)
     if not dir.is_dir():
         return []
@@ -86,10 +87,16 @@ def collect_files(dir: Union[Path, str], pattern: Union[str, re.Pattern, None] =
         pattern = re.compile(pattern)
 
     for entry in dir.iterdir():
+        if not include_hidden and entry.name.startswith("."):
+            continue
+
+        if entry.is_symlink() and not include_symlinks:
+            continue
+
         if entry.is_file():
             if pattern is None or pattern.match(entry.as_posix()):
                 files.append(entry)
         elif entry.is_dir():
-            files.extend(collect_files(entry, pattern))
+            files.extend(collect_files(entry, pattern, include_hidden, include_symlinks))
 
     return files

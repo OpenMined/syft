@@ -65,7 +65,9 @@ class DatasiteState:
         return p.expanduser().resolve()
 
     def get_current_local_state(self) -> list[FileMetadata]:
-        return hash_dir(self.path, root_dir=self.client.workspace.datasites)
+        return hash_dir(
+            self.path, root_dir=self.client.workspace.datasites, include_hidden=False, include_symlinks=False
+        )
 
     def get_remote_state(self) -> list[FileMetadata]:
         if self.remote_state is None:
@@ -73,6 +75,10 @@ class DatasiteState:
                 self.client.server_client, email=self.client.email, path=Path(self.email)
             )
         return self.remote_state
+
+    def is_in_sync(self) -> bool:
+        permission_changes, file_changes = self.get_out_of_sync_files()
+        return len(permission_changes) == 0 and len(file_changes) == 0
 
     def get_out_of_sync_files(
         self,
