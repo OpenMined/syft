@@ -11,7 +11,6 @@ from syftbox.server.settings import ServerSettings, get_server_settings
 # from syftbox.server.users.router import get_user_manager
 from syftbox.server.users.secret_constants import CLIENT_ID, CLIENT_SECRET, KEYCLOAK_REALM, KEYCLOAK_URL
 from syftbox.server.users.user import User, UserManager
-import jwt
 
 JWT_ALGORITHM = "HS256"
 http_basic_security = HTTPBasic()  # Used for admin credentials
@@ -38,7 +37,7 @@ def create_keycloak_access_token(username: str, password: str) -> str:
         "grant_type": "password"
     }
 
-    
+
     resp = requests.post(f"{KEYCLOAK_URL}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/token", data=data)
     content = json.loads(resp.text)
     return content['access_token']
