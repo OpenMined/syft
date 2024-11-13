@@ -5,7 +5,7 @@ from fastapi import Depends, HTTPException, Header, Request
 from pydantic import BaseModel
 import requests
 
-from syftbox.client.client import get_user_info
+from functools import lru_cache
 from syftbox.server.settings import ServerSettings, get_server_settings
 from syftbox.server.users.auth import create_keycloak_access_token
 
@@ -16,6 +16,78 @@ user_router = fastapi.APIRouter(
     prefix="/users",
     tags=["users"],
 )
+from syftbox.server.users.secret_constants import CLIENT_ID, CLIENT_SECRET, KEYCLOAK_REALM, KEYCLOAK_URL
+import requests
+import time
+import json
+
+TOKEN_TIMEOUT = 3600
+
+
+@lru_cache()
+def get_token(username, password, ttl=None):
+    del ttl
+    data = {
+            "client_id": CLIENT_ID,
+            "client_secret": CLIENT_SECRET,
+            "username": username,
+            "password": password,
+            "grant_type": "password"
+        }
+
+    resp = requests.post(f"{KEYCLOAK_URL}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/token", data=data)
+    if resp.status_code == 200:
+        token = resp.json()['access_token']
+        return token
+    else:
+        raise Exception(f"Token request returned code {resp.status_code} with message {resp.text}")
+
+def get_user_from_token(token):
+    _, payload, _ = token.split('.')
+    padded_payload = padded_payload = payload + "="*divmod(len(payload),4)[1]
+    user_data = json.loads(base64.urlsafe_b64decode(padded_payload))
+    return user_data
+    
+def get_user_info(token: str):
+    headers = {
+        'Authorization': f'Bearer {token}',
+        'Content-Type': 'application/json'
+    }
+    resp = requests.post(f"{KEYCLOAK_URL}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/userinfo", headers=headers)
+    if resp.status_code != 200:
+        return None
+    content = resp.json()
+    return content
+
+
+def get_ttl_hash(seconds=TOKEN_TIMEOUT):
+    """Return the same value withing `seconds` time period"""
+    return round(time.time() / seconds)
+
+def get_headers(token):
+    return {
+        'Authorization': f'Bearer {token}',
+        'Content-Type': 'application/json'
+    }
+
+def reset_password(user_id, new_password, token):
+    data = {
+        "type": "password", 
+        "temporary": False, 
+        "value": new_password 
+    }
+    resp = requests.put(f"{KEYCLOAK_URL}/realms/{KEYCLOAK_REALM}/users/{user_id}/reset-password", headers=get_headers(token), data=data)
+    return resp
+
+def get_email_from_args(args):
+    if args.email:
+        email = args.email
+    else:
+        email = get_user_input("Login email: ")
+        if not validate_email(email):
+            raise Exception(f"Invalid email: {email}")
+    return email
+
 
 
 def create_keycloak_admin_token() -> str:
