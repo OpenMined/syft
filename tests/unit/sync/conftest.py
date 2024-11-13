@@ -1,3 +1,4 @@
+import os
 from collections.abc import Generator
 from functools import partial
 from pathlib import Path
@@ -71,6 +72,9 @@ def server_client(tmp_path: Path) -> Generator[TestClient, None, None]:
     path.mkdir()
 
     settings = ServerSettings.from_data_folder(path)
+    access_token = os.getenv("SYFTBOX_ACCESS_TOKEN", None)
+    if not access_token:
+        settings.no_auth = True
     lifespan_with_settings = partial(server_lifespan, settings=settings)
     server_app.router.lifespan_context = lifespan_with_settings
 
