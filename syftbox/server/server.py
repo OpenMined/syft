@@ -9,14 +9,11 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 import time
-from typing import Annotated, Optional
+from typing import Optional
 
-from fastapi.security import OAuth2AuthorizationCodeBearer
 from apscheduler.schedulers.background import BackgroundScheduler
-import jwt
-import requests
 import uvicorn
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, Request
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.gzip import GZipMiddleware
@@ -37,10 +34,7 @@ from syftbox.lib.lib import (
     get_datasites,
 )
 from syftbox.server.settings import ServerSettings, get_server_settings
-from syftbox.server.users.secret_constants import CLIENT_ID, CLIENT_SECRET, KEYCLOAK_REALM, KEYCLOAK_URL
-from syftbox.server.users.user import UserManager
-
-from .users.router import create_keycloak_admin_token, delete_user, user_router
+from .users.router import user_router
 
 from .sync import db, hash
 from .sync.router import router as sync_router
@@ -165,17 +159,8 @@ async def lifespan(app: FastAPI, settings: Optional[ServerSettings] = None):
     logger.info(settings)
 
     logger.info("> Creating Folders")
-
     create_folders(settings.folders)
-
-    users = Users(path=settings.user_file_path)
-    logger.info("> Loading Users")
-    logger.info(users)
-
     init_db(settings)
-
-    user_manager = UserManager()
-
 
     scheduler = BackgroundScheduler()
     scheduler.add_job(remove_unverified_users,"interval",minutes = 60 * 24)
@@ -183,8 +168,6 @@ async def lifespan(app: FastAPI, settings: Optional[ServerSettings] = None):
 
     yield {
         "server_settings": settings,
-        "users": users,
-        "user_manager": user_manager,
     }
 
     logger.info("> Shutting down server")
@@ -333,133 +316,114 @@ async def browse_datasite(
     return f"No Datasite {datasite_part} exists"
 
 
-@app.post("/register")
-async def register(
-    request: Request,
-    users: Users = Depends(get_users),
-    server_settings: ServerSettings = Depends(get_server_settings),
-):
-    data = await request.json()
-    email = data["email"]
-    token = users.create_user(email)
+# @app.post("/write")
+# async def write(request: Request, server_settings: ServerSettings = Depends(get_server_settings)):
+#     try:
+#         data = await request.json()
+#         email = data["email"]
+#         change_dict = data["change"]
+#         change_dict["kind"] = FileChangeKind(change_dict["kind"])
+#         change = FileChange(**change_dict)
 
-    # create datasite snapshot folder
-    datasite_folder = Path(server_settings.snapshot_folder) / email
-    os.makedirs(datasite_folder, exist_ok=True)
+#         change.sync_folder = os.path.abspath(str(server_settings.snapshot_folder))
+#         result = True
+#         accepted = True
+#         if change.newer():
+#             if change.kind_write:
+#                 if data.get("is_directory", False):
+#                     # Handle empty directory
+#                     os.makedirs(change.full_path, exist_ok=True)
+#                     result = True
+#                 else:
+#                     bin_data = strtobin(data["data"])
+#                     result = change.write(bin_data)
+#             elif change.kind_delete:
+#                 if change.hash_equal_or_none():
+#                     result = change.delete()
+#                 else:
+#                     print(f"> 🔥 {change.kind} hash doesnt match so ignore {change}")
+#                     accepted = False
+#             else:
+#                 raise Exception(f"Unknown type of change kind. {change.kind}")
+#         else:
+#             print(f"> 🔥 {change.kind} is older so ignore {change}")
+#             accepted = False
 
-    logger.info(f"> {email} registering: {token}, snapshot folder: {datasite_folder}")
-
-    return JSONResponse({"status": "success", "token": token}, status_code=200)
-
-
-@app.post("/write")
-async def write(request: Request, server_settings: ServerSettings = Depends(get_server_settings)):
-    try:
-        data = await request.json()
-        email = data["email"]
-        change_dict = data["change"]
-        change_dict["kind"] = FileChangeKind(change_dict["kind"])
-        change = FileChange(**change_dict)
-
-        change.sync_folder = os.path.abspath(str(server_settings.snapshot_folder))
-        result = True
-        accepted = True
-        if change.newer():
-            if change.kind_write:
-                if data.get("is_directory", False):
-                    # Handle empty directory
-                    os.makedirs(change.full_path, exist_ok=True)
-                    result = True
-                else:
-                    bin_data = strtobin(data["data"])
-                    result = change.write(bin_data)
-            elif change.kind_delete:
-                if change.hash_equal_or_none():
-                    result = change.delete()
-                else:
-                    print(f"> 🔥 {change.kind} hash doesnt match so ignore {change}")
-                    accepted = False
-            else:
-                raise Exception(f"Unknown type of change kind. {change.kind}")
-        else:
-            print(f"> 🔥 {change.kind} is older so ignore {change}")
-            accepted = False
-
-        if result:
-            print(f"> {email} {change.kind}: {change.internal_path}")
-            json_payload = {
-                "status": "success",
-                "change": change.to_dict(),
-                "accepted": accepted,
-            }
-            return JSONResponse(
-                json_payload,
-                status_code=200,
-            )
-        return JSONResponse(
-            {"status": "error", "change": change.to_dict()},
-            status_code=400,
-        )
-    except Exception as e:
-        print("Exception writing", e)
-        return JSONResponse(
-            {"status": "error", "error": str(e)},
-            status_code=400,
-        )
+#         if result:
+#             print(f"> {email} {change.kind}: {change.internal_path}")
+#             json_payload = {
+#                 "status": "success",
+#                 "change": change.to_dict(),
+#                 "accepted": accepted,
+#             }
+#             return JSONResponse(
+#                 json_payload,
+#                 status_code=200,
+#             )
+#         return JSONResponse(
+#             {"status": "error", "change": change.to_dict()},
+#             status_code=400,
+#         )
+#     except Exception as e:
+#         print("Exception writing", e)
+#         return JSONResponse(
+#             {"status": "error", "error": str(e)},
+#             status_code=400,
+#         )
 
 
-@app.post("/read")
-async def read(request: Request, server_settings: ServerSettings = Depends(get_server_settings)):
-    data = await request.json()
-    email = data["email"]
-    change_dict = data["change"]
-    change_dict["kind"] = FileChangeKind(change_dict["kind"])
-    change = FileChange(**change_dict)
-    change.sync_folder = os.path.abspath(str(server_settings.snapshot_folder))
+# @app.post("/read")
+# async def read(request: Request, server_settings: ServerSettings = Depends(get_server_settings)):
+#     data = await request.json()
+#     email = data["email"]
+#     change_dict = data["change"]
+#     change_dict["kind"] = FileChangeKind(change_dict["kind"])
+#     change = FileChange(**change_dict)
+#     change.sync_folder = os.path.abspath(str(server_settings.snapshot_folder))
 
-    json_dict = {"change": change.to_dict()}
+#     json_dict = {"change": change.to_dict()}
 
-    if change.kind_write:
-        if os.path.isdir(change.full_path):
-            # Handle directory
-            json_dict["is_directory"] = True
-        else:
-            # Handle file
-            bin_data = change.read()
-            json_dict["data"] = bintostr(bin_data)
-    elif change.kind_delete:
-        # Handle delete operation if needed
-        pass
-    else:
-        raise Exception(f"Unknown type of change kind. {change.kind}")
+#     if change.kind_write:
+#         if os.path.isdir(change.full_path):
+#             # Handle directory
+#             json_dict["is_directory"] = True
+#         else:
+#             # Handle file
+#             bin_data = change.read()
+#             json_dict["data"] = bintostr(bin_data)
+#     elif change.kind_delete:
+#         # Handle delete operation if needed
+#         pass
+#     else:
+#         raise Exception(f"Unknown type of change kind. {change.kind}")
 
-    print(f"> {email} {change.kind}: {change.internal_path}")
-    return JSONResponse({"status": "success"} | json_dict, status_code=200)
+#     print(f"> {email} {change.kind}: {change.internal_path}")
+#     return JSONResponse({"status": "success"} | json_dict, status_code=200)
 
 
-@app.post("/dir_state")
-async def dir_state(request: Request, server_settings: ServerSettings = Depends(get_server_settings)):
-    try:
-        data = await request.json()
-        email = data["email"]
-        sub_path = data["sub_path"]
-        snapshot_folder = str(server_settings.snapshot_folder)
-        full_path = os.path.join(snapshot_folder, sub_path)
-        remote_dir_state = hash_dir(snapshot_folder, sub_path)
+# @app.post("/dir_state")
+# async def dir_state(request: Request, server_settings: ServerSettings = Depends(get_server_settings)):
+#     try:
+#         data = await request.json()
+#         email = data["email"]
+#         sub_path = data["sub_path"]
+#         snapshot_folder = str(server_settings.snapshot_folder)
+#         full_path = os.path.join(snapshot_folder, sub_path)
+#         remote_dir_state = hash_dir(snapshot_folder, sub_path)
 
-        # get the top level perm file
-        perm_tree = PermissionTree.from_path(full_path)
+#         # get the top level perm file
+#         perm_tree = PermissionTree.from_path(full_path)
 
-        # filter the read state for this user by the perm tree
-        read_state = filter_read_state(email, remote_dir_state, perm_tree)
-        remote_dir_state.tree = read_state
+#         # filter the read state for this user by the perm tree
+#         read_state = filter_read_state(email, remote_dir_state, perm_tree)
+#         remote_dir_state.tree = read_state
 
-        response_json = {"sub_path": sub_path, "dir_state": remote_dir_state.to_dict()}
-        if remote_dir_state:
-            return JSONResponse({"status": "success"} | response_json, status_code=200)
-        return JSONResponse({"status": "error"}, status_code=400)
-    except Exception as e:
-        print("Failed to run /dir_state", e)
+#         response_json = {"sub_path": sub_path, "dir_state": remote_dir_state.to_dict()}
+#         if remote_dir_state:
+#             return JSONResponse({"status": "success"} | response_json, status_code=200)
+#         return JSONResponse({"status": "error"}, status_code=400)
+#     except Exception as e:
+#         print("Failed to run /dir_state", e)
 
 
 @app.get("/list_datasites")
@@ -469,48 +433,6 @@ async def datasites(request: Request, server_settings: ServerSettings = Depends(
     if datasites:
         return JSONResponse({"status": "success"} | response_json, status_code=200)
     return JSONResponse({"status": "error"}, status_code=400)
-
-@app.post('/invite')
-async def invite(email: str, firstName: str, lastName: str):
-    admin_token = create_keycloak_admin_token()
-    headers = {
-        'Authorization': f'Bearer {admin_token}',
-        'Content-Type': 'application/json'
-    }
-    
-    payload = {
-        'firstName': firstName,
-        'lastName': lastName,
-        'email': email,
-        'enabled': "true",
-        'username': email,
-        "requiredActions": [
-            "UPDATE_PASSWORD",
-            "UPDATE_PROFILE"
-        ]
-    }
-    resp = requests.post(f"{KEYCLOAK_URL}/admin/realms/{KEYCLOAK_REALM}/users", headers=headers, data=json.dumps(payload))
-    if resp.status_code == 201:
-        resp = requests.get(f"{KEYCLOAK_URL}/admin/realms/{KEYCLOAK_REALM}/users", headers=headers)
-        content = resp.json()
-        for user in content:
-            if user['username'] == email:
-                user_id = user['id']
-                actions = [
-                    "UPDATE_PASSWORD",
-                    "UPDATE_PROFILE"
-                ]
-
-                resp = requests.put(
-                            f"{KEYCLOAK_URL}/admin/realms/{KEYCLOAK_REALM}/users/{user_id}/execute-actions-email?client_id={CLIENT_ID}", 
-                            headers=headers, 
-                            data=json.dumps(actions)
-                        )
-                return resp.status_code, resp.text
-                
-        return f'error user {email} not found after creation'
-    else:
-        return resp.status_code, resp.text
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run FastAPI server")

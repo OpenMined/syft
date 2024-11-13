@@ -10,6 +10,7 @@ from typing_extensions import Self
 
 from syftbox.lib.constants import DEFAULT_CONFIG_PATH, DEFAULT_DATA_DIR, DEFAULT_SERVER_URL
 from syftbox.lib.exceptions import ClientConfigException
+from syftbox.lib.keycloak import get_user_from_token
 from syftbox.lib.types import PathLike, to_path
 
 __all__ = ["SyftClientConfig"]
@@ -61,6 +62,12 @@ class SyftClientConfig(BaseModel):
         if isinstance(val, int):
             return f"http://127.0.0.1:{val}"
         return val
+    
+    @property
+    def user_id(self):
+        if self.token:
+            return get_user_from_token(self.token)['sub']
+        return None
 
     @field_validator("token", mode="before")
     def token_to_str(cls, v):
