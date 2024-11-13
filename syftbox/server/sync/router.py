@@ -93,9 +93,6 @@ def dir_state(
     server_settings: ServerSettings = Depends(get_server_settings),
     email: str = Depends(get_current_user),
 ) -> list[FileMetadata]:
-    if dir.is_absolute():
-        raise HTTPException(status_code=400, detail="dir must be relative")
-
     full_path = server_settings.snapshot_folder / dir
     # get the top level perm file
     try:

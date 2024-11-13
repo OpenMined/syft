@@ -1,4 +1,5 @@
 import asyncio
+import os
 import platform
 import shutil
 from functools import lru_cache
@@ -50,10 +51,13 @@ class SyftClient:
 
         self.workspace = SyftWorkspace(self.config.data_dir)
         self.pid = PidFile(pidname="syftbox.pid", piddir=self.workspace.data_dir)
+
+        # TODO READ FROM CLIENT CONFIG, BUT OMIT FROM LOGS
+        access_token = os.getenv("SYFTBOX_ACCESS_TOKEN")
         self.server_client = httpx.Client(
             base_url=str(self.config.server_url),
             follow_redirects=True,
-            headers={"email": self.config.email, "Authorization": "Bearer unset"},
+            headers={"email": self.config.email, "Authorization": f"Bearer {access_token}"},
         )
 
         # kwargs for making customization/unit testing easier
