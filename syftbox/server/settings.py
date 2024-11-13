@@ -1,8 +1,7 @@
 from pathlib import Path
 
 from fastapi import Request
-from pydantic import SecretStr
-from pydantic import Field, field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing_extensions import Self, Union
 
@@ -36,8 +35,6 @@ class ServerSettings(BaseSettings):
     jwt_secret: SecretStr = "changethis"
 
     data_folder: Path = Path("data")
-    snapshot_folder: Path = Path("data/snapshot")
-    user_file_path: Path = Path("data/users.json")
     smtp: SMTSettings = SMTSettings()
     data_folder: Path = Field(default=Path("data").resolve())
     """Absolute path to the server data folder"""
