@@ -25,7 +25,6 @@ alias rs := run-server
 alias rc := run-client
 alias rj := run-jupyter
 alias b := build
-alias d := deploy
 
 # ---------------------------------------------------------------------------------------------------------------------
 
@@ -37,7 +36,8 @@ alias d := deploy
 # Run a local syftbox server on port 5001
 [group('server')]
 run-server port="5001" uvicorn_args="":
-    uv run uvicorn syftbox.server.server:app --reload --reload-dir ./syftbox --port {{ port }} {{ uvicorn_args }}
+    mkdir -p .server/data
+    SYFTBOX_DATA_FOLDER=.server/data uv run uvicorn syftbox.server.server:app --reload --reload-dir ./syftbox --port {{ port }} {{ uvicorn_args }}
 
 # ---------------------------------------------------------------------------------------------------------------------
 
@@ -53,20 +53,45 @@ run-client name port="auto" server="http://localhost:5001":
 
     # if port is auto, then generate a random port between 8000-8090, else use the provided port
     PORT="{{ port }}"
-    if [[ "$PORT" == "auto" ]]; then PORT=$(shuf -n 1 -i 8000-8090); fi
+    if [[ "$PORT" == "auto" ]]; then PORT="0"; fi
+
+    # Working directory for client is .clients/<email>
+    DATA_DIR=.clients/$EMAIL
+    mkdir -p $DATA_DIR
+
+    echo -e "Email      : {{ _green }}$EMAIL{{ _nc }}"
+    echo -e "Client     : {{ _cyan }}http://localhost:$PORT{{ _nc }}"
+    echo -e "Server     : {{ _cyan }}{{ server }}{{ _nc }}"
+    echo -e "Data Dir   : $DATA_DIR"
+
+    uv run syftbox/client/cli.py --config=$DATA_DIR/config.json --data-dir=$DATA_DIR --email=$EMAIL --port=$PORT --server={{ server }} --no-open-dir
+
+# ---------------------------------------------------------------------------------------------------------------------
+
+[group('client')]
+run-live-client server="https://syftbox.openmined.org/":
+    uv run syftbox client --server={{ server }}
+
+# ---------------------------------------------------------------------------------------------------------------------
+
+# Run a local syftbox app command
+[group('app')]
+run-app name command subcommand="":
+    #!/bin/bash
+    set -eou pipefail
+
+    # generate a local email from name, but if it looks like an email, then use it as is
+    EMAIL="{{ name }}@openmined.org"
+    if [[ "{{ name }}" == *@*.* ]]; then EMAIL="{{ name }}"; fi
 
     # Working directory for client is .clients/<email>
     CONFIG_DIR=.clients/$EMAIL/config
     SYNC_DIR=.clients/$EMAIL/sync
     mkdir -p $CONFIG_DIR $SYNC_DIR
 
-    echo -e "Email      : {{ _green }}$EMAIL{{ _nc }}"
-    echo -e "Client     : {{ _cyan }}http://localhost:$PORT{{ _nc }}"
-    echo -e "Server     : {{ _cyan }}{{ server }}{{ _nc }}"
     echo -e "Config Dir : $CONFIG_DIR"
-    echo -e "Sync Dir   : $SYNC_DIR"
 
-    uv run syftbox/client/client.py --config_path=$CONFIG_DIR/config.json --sync_folder=$SYNC_DIR --email=$EMAIL --port=$PORT --server={{ server }}
+    uv run syftbox/main.py app {{ command }} {{ subcommand }} --config_path=$CONFIG_DIR/config.json
 
 # ---------------------------------------------------------------------------------------------------------------------
 
@@ -76,50 +101,13 @@ build:
     rm -rf dist
     uv build
 
-[group('build')]
-fetch-syftbox-version version="latest":
-    #!/bin/bash
-    set -euo pipefail
 
-    # If version is latest, then fetch the latest version from PyPI
-    # else, check if the version exists on PyPI
-    if [ "{{ version }}" = "latest" ]; then
-        echo "Fetching the latest version of syftbox from PyPI..."
-        curl -sSf "https://pypi.org/pypi/syftbox/json" | jq -r ".info.version" || { echo "Failed to fetch the latest version." >&2; exit 1; }
-    else
-        echo "Checking if syftbox version {{ version }} exists on PyPI..."
-        if curl -sSf -o /dev/null "https://pypi.org/pypi/syftbox/{{ version }}/json"; then
-            echo "{{ version }}"
-        else
-            echo "syftbox version {{ version }} does not exist." >&2
-            exit 1
-        fi
-    fi
-
-
-# Build & Deploy syftbox to a remote server using SSH
-[group('build')]
-deploy keyfile version="latest" remote="azureuser@20.168.10.234":
-    #!/bin/bash
-    set -eou pipefail
-
-    # change permissions to comply with ssh/scp
-    chmod 600 {{ keyfile }}
-
-    # Sanity Check the syft box version
-    REMOTE_VERSION=$(just fetch-syftbox-version {{ version }} | tail -n 1)
-
-    echo -e "Deploying syftbox version $REMOTE_VERSION to {{ remote }}..."
-
-    # install pip package
-    ssh -i {{ keyfile }} {{ remote }} "pip install syftbox==$REMOTE_VERSION --break-system-packages  --force"
-
-    # restart service
-    # TODO - syftbox service was created manually on 20.168.10.234
-    ssh -i {{ keyfile }} {{ remote }} "sudo systemctl daemon-reload"
-    ssh -i {{ keyfile }} {{ remote }} "sudo systemctl restart syftbox"
-
-    echo -e "{{ _green }}Deploy successful!{{ _nc }}"
+# Build syftbox wheel
+[group('install')]
+install:
+    rm -rf dist
+    uv build
+    uv tool install $(ls ./dist/*.whl) --reinstall
 
 # Bump version, commit and tag
 [group('build')]
@@ -151,15 +139,72 @@ bump-version level="patch":
 
 # ---------------------------------------------------------------------------------------------------------------------
 
+[group('test')]
+test-e2e test_name:
+    @echo "Using SyftBox from {{ _green }}'$(which syftbox)'{{ _nc }}"
+    chmod +x ./tests/e2e/{{ test_name }}/run.bash
+    bash ./tests/e2e/{{ test_name }}/run.bash
+
+# ---------------------------------------------------------------------------------------------------------------------
+
+# Build & Deploy syftbox to a remote server using SSH
+[group('deploy')]
+upload-dev keyfile remote="user@0.0.0.0": build
+    #!/bin/bash
+    set -eou pipefail
+
+    # there will be only one wheel file in the dist directory, but you never know...
+    LOCAL_WHEEL=$(ls dist/*.whl | grep syftbox | head -n 1)
+
+    # Remote paths to copy the wheel to
+    REMOTE_DIR="~"
+    REMOTE_WHEEL="$REMOTE_DIR/$(basename $LOCAL_WHEEL)"
+
+    echo -e "Deploying {{ _cyan }}$LOCAL_WHEEL{{ _nc }} to {{ _green }}{{ remote }}:$REMOTE_WHEEL{{ _nc }}"
+
+    # change permissions to comply with ssh/scp
+    chmod 600 {{ keyfile }}
+
+    # Use scp to transfer the file to the remote server
+    scp -i {{ keyfile }} "$LOCAL_WHEEL" "{{ remote }}:$REMOTE_DIR"
+
+    # install pip package
+    ssh -i {{ keyfile }} {{ remote }} "uv venv && uv pip install $REMOTE_WHEEL"
+
+    # restart service
+    # NOTE - syftbox service is created manually on the remote server
+    ssh -i {{ keyfile }} {{ remote }} "sudo systemctl daemon-reload && sudo systemctl restart syftbox"
+    echo -e "{{ _green }}Deployed SyftBox local wheel to {{ remote }}{{ _nc }}"
+
+# Deploy syftbox from pypi to a remote server using SSH
+[group('deploy')]
+upload-pip version keyfile remote="user@0.0.0.0":
+    #!/bin/bash
+    set -eou pipefail
+
+    # change permissions to comply with ssh/scp
+    chmod 600 {{ keyfile }}
+
+    echo -e "Deploying syftbox version {{ version }} to {{ remote }}..."
+
+    # install pip package
+    ssh -i {{ keyfile }} {{ remote }} "uv venv && uv pip install syftbox=={{ version }}"
+
+    # restart service
+    ssh -i {{ keyfile }} {{ remote }} "sudo systemctl daemon-reload && sudo systemctl restart syftbox"
+
+    echo -e "{{ _green }}Deployed SyftBox {{ version }} to {{ remote }}{{ _nc }}"
+
+# ---------------------------------------------------------------------------------------------------------------------
+
 [group('utils')]
-ssh keyfile remote="azureuser@20.168.10.234":
-    ssh -i {{ keyfile }} {{ remote }}    
+ssh keyfile remote="user@0.0.0.0":
+    ssh -i {{ keyfile }} {{ remote }}
 
 # remove all local files & directories
 [group('utils')]
 reset:
-    # 'users' is the old directory
-    rm -rf ./users ./.clients ./data ./dist *.whl
+    rm -rf ./.clients ./.server ./dist ./.e2e
 
 [group('utils')]
 run-jupyter jupyter_args="":

@@ -2,6 +2,7 @@ import argparse
 import contextlib
 import json
 import os
+import platform
 import random
 import sys
 from dataclasses import dataclass
@@ -16,6 +17,9 @@ import jwt
 import requests
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Request
+
+from fastapi import Depends, FastAPI, Request
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import (
     FileResponse,
     HTMLResponse,
@@ -24,18 +28,13 @@ from fastapi.responses import (
     RedirectResponse,
 )
 from jinja2 import Template
-from typing_extensions import Any
+from loguru import logger
+from typing_extensions import Any, Optional, Union
 
-from syftbox.lib import (
-    FileChange,
-    FileChangeKind,
+from syftbox.__version__ import __version__
+from syftbox.lib.lib import (
     Jsonable,
-    PermissionTree,
-    bintostr,
-    filter_read_state,
     get_datasites,
-    hash_dir,
-    strtobin,
 )
 from syftbox.server.settings import ServerSettings, get_server_settings
 from syftbox.server.users.secret_constants import CLIENT_ID, CLIENT_SECRET, KEYCLOAK_REALM, KEYCLOAK_URL
@@ -43,10 +42,13 @@ from syftbox.server.users.user import UserManager
 
 from .users.router import create_keycloak_admin_token, delete_user, user_router
 
+from .sync import db, hash
+from .sync.router import router as sync_router
+
 current_dir = Path(__file__).parent
 
 
-def load_dict(cls, filepath: str) -> list[Any]:
+def load_dict(cls, filepath: str) -> Optional[dict[str, Any]]:
     try:
         with open(filepath) as f:
             data = f.read()
@@ -56,7 +58,7 @@ def load_dict(cls, filepath: str) -> list[Any]:
                 dicts[key] = cls(**value)
             return dicts
     except Exception as e:
-        print(f"Unable to load dict file: {filepath}. {e}")
+        logger.info(f"Unable to load dict file: {filepath}. {e}")
     return None
 
 
@@ -136,21 +138,41 @@ def remove_unverified_users():
                 delete_user(user['id'])
     print("remove_unverified_users task finished")
 
-@contextlib.asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup
-    print("> Starting Server")
-    settings = ServerSettings()
-    print(settings)
 
-    print("> Creating Folders")
+def init_db(settings: ServerSettings) -> None:
+    # might take very long as snapshot folder grows
+    logger.info(f"> Collecting Files from {settings.snapshot_folder.absolute()}")
+    files = hash.collect_files(settings.snapshot_folder.absolute())
+    logger.info("> Hashing files")
+    metadata = hash.hash_files(files, settings.snapshot_folder)
+    logger.info(f"> Updating file hashes at {settings.file_db_path.absolute()}")
+    con = db.get_db(settings.file_db_path.absolute())
+    cur = con.cursor()
+    for m in metadata:
+        db.save_file_metadata(cur, m)
+
+    cur.close()
+    con.commit()
+    con.close()
+
+
+@contextlib.asynccontextmanager
+async def lifespan(app: FastAPI, settings: Optional[ServerSettings] = None):
+    # Startup
+    logger.info(f"> Starting SyftBox Server {__version__}. Python {platform.python_version()}")
+    if settings is None:
+        settings = ServerSettings()
+    logger.info(settings)
+
+    logger.info("> Creating Folders")
 
     create_folders(settings.folders)
 
-    print("> Loading Users")
-    # TODO remove old users
     users = Users(path=settings.user_file_path)
-    print(users)
+    logger.info("> Loading Users")
+    logger.info(users)
+
+    init_db(settings)
 
     user_manager = UserManager()
 
@@ -165,45 +187,43 @@ async def lifespan(app: FastAPI):
         "user_manager": user_manager,
     }
 
-    print("> Shutting down server")
+    logger.info("> Shutting down server")
 
 
 app = FastAPI(lifespan=lifespan)
+app.include_router(sync_router)
+app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 
 app.include_router(user_router)
 
 # Define the ASCII art
-ascii_art = r"""
+ascii_art = rf"""
  ____         __ _   ____
 / ___| _   _ / _| |_| __ )  _____  __
 \___ \| | | | |_| __|  _ \ / _ \ \/ /
  ___) | |_| |  _| |_| |_) | (_) >  <
 |____/ \__, |_|  \__|____/ \___/_/\_\
-       |___/
+       |___/        {__version__:>17}
 
 
-# MacOS and Linux
-Install uv
-curl -LsSf https://astral.sh/uv/install.sh | sh
+# Install Syftbox (MacOS and Linux)
+curl -LsSf https://syftbox.openmined.org/install.sh | sh
 
-# create a virtualenv somewhere
-uv venv .venv
-
-# Install SyftBox
-uv pip install -U syftbox
-
-# run the client
-uv run syftbox client
+# Run the client
+syftbox client
 """
 
 
 @app.get("/", response_class=PlainTextResponse)
-async def get_ascii_art():
+async def get_ascii_art(request: Request):
+    req_host = request.headers.get("host", "")
+    if "syftboxstage" in req_host:
+        return ascii_art.replace("syftbox.openmined.org", "syftboxstage.openmined.org")
     return ascii_art
 
 
 @app.get("/wheel/{path:path}", response_class=HTMLResponse)
-async def get_wheel(request: Request, path: str):
+async def get_wheel(path: str):
     if path == "":  # Check if path is empty (meaning "/datasites/")
         return RedirectResponse(url="/")
 
@@ -214,7 +234,7 @@ async def get_wheel(request: Request, path: str):
     return filename
 
 
-def get_file_list(directory: str | Path = ".") -> list[dict[str, Any]]:
+def get_file_list(directory: Union[str, Path] = ".") -> list[dict[str, Any]]:
     # TODO rewrite with pathlib
     directory = str(directory)
 
@@ -314,11 +334,21 @@ async def browse_datasite(
 
 
 @app.post("/register")
-async def register(request: Request, users: Users = Depends(get_users)):
+async def register(
+    request: Request,
+    users: Users = Depends(get_users),
+    server_settings: ServerSettings = Depends(get_server_settings),
+):
     data = await request.json()
     email = data["email"]
     token = users.create_user(email)
-    print(f"> {email} registering: {token}")
+
+    # create datasite snapshot folder
+    datasite_folder = Path(server_settings.snapshot_folder) / email
+    os.makedirs(datasite_folder, exist_ok=True)
+
+    logger.info(f"> {email} registering: {token}, snapshot folder: {datasite_folder}")
+
     return JSONResponse({"status": "success", "token": token}, status_code=200)
 
 
@@ -509,3 +539,14 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+@app.get("/install.sh")
+async def install():
+    install_script = current_dir / "templates" / "install.sh"
+    return FileResponse(install_script, media_type="text/plain")
+
+
+@app.get("/info")
+async def info():
+    return {
+        "version": __version__,
+    }

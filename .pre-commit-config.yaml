@@ -25,6 +25,7 @@ repos:
         always_run: true
       - id: name-tests-test
         always_run: true
+        exclude: "tests/.*(e2e|stress|fixtures)"
       - id: requirements-txt-fixer
         always_run: true
       - id: mixed-line-ending
@@ -49,6 +50,15 @@ repos:
     rev: "v3.0.0-alpha.9-for-vscode"
     hooks:
       - id: prettier
+
+  # todo - re-enable mypy & fixes in a separate PR
+  # - repo: https://github.com/pre-commit/mirrors-mypy
+  #   rev: v1.10.0
+  #   hooks:
+  #     - id: mypy
+  #       name: "mypy"
+  #       always_run: true
+  #       files: ^syftbox
 
   # - repo: meta
   #   hooks:

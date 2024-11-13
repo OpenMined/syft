@@ -168,6 +168,8 @@ cython_debug/
 /data/
 /users/
 .clients/
+.server/
+.e2e/
 keys/
 backup/
 netflix_data/
@@ -176,3 +178,11 @@ notebooks/crypto
 # syft files
 scheduler.lock
 jobs.sqlite
+
+.vscode
+experimental/
+*.db
+notebooks/
+dev_space/
+
+!tests/**/.env

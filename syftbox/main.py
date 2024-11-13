@@ -1,32 +1,53 @@
-import argparse
-import sys
+from pathlib import Path
+from typing import Annotated, Optional
 
-from syftbox.client.client import main as client_main
-from syftbox.server.server import main as server_main
+from rich import print as rprint
+from typer import Exit, Option, Typer
+
+from syftbox import __version__
+from syftbox.app.cli import app as app_cli
+from syftbox.client.cli import app as client_cli
+from syftbox.server.cli import app as server_cli
+
+app = Typer(
+    name="SyftBox",
+    help="SyftBox CLI",
+    no_args_is_help=True,
+    pretty_exceptions_enable=False,
+    context_settings={"help_option_names": ["-h", "--help"]},
+)
+
+CONFIG_OPTS = Option("-c", "--config", "--config_path", help="Path to the SyftBox config")
+
+
+@app.command(rich_help_panel="General Options")
+def version():
+    """Print SyftBox version"""
+
+    print(__version__)
+
+
+@app.command(rich_help_panel="General Options")
+def debug(config_path: Annotated[Optional[Path], CONFIG_OPTS] = None):
+    """Print SyftBox debug data"""
+
+    # lazy import to improve CLI startup performance
+    from syftbox.lib.debug import debug_report_yaml
+
+    try:
+        rprint(debug_report_yaml(config_path))
+    except Exception as e:
+        rprint(f"[red]Error[/red]: {e}")
+        raise Exit(1)
+
+
+app.add_typer(client_cli, name="client")
+app.add_typer(server_cli, name="server")
+app.add_typer(app_cli, name="app")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Syftbox CLI")
-    subparsers = parser.add_subparsers(dest="command")
-
-    # Define the client command
-    subparsers.add_parser("client", help="Run the Syftbox client")
-
-    # Define the server command
-    subparsers.add_parser("server", help="Run the Syftbox server")
-
-    args, remaining_args = parser.parse_known_args()
-
-    if args.command == "client":
-        # Modify sys.argv to exclude the subcommand
-        sys.argv = [sys.argv[0]] + remaining_args
-        client_main()
-    elif args.command == "server":
-        # Modify sys.argv to exclude the subcommand
-        sys.argv = [sys.argv[0]] + remaining_args
-        server_main()
-    else:
-        parser.print_help()
+    app()
 
 
 if __name__ == "__main__":

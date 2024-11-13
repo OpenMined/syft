@@ -1,10 +1,10 @@
-name: CD - SyftBox
+name: SyftBox PyPI Release
 
 on:
   workflow_dispatch:
     inputs:
       bump_type:
-        description: "Version bump type"
+        description: Bump bersion by
         type: choice
         default: patch
         options:
@@ -12,37 +12,43 @@ on:
           - minor
           - major
 
-      test_bump:
-        description: "Perform a test bump version without pushing to pypi and repo"
+      run_tests:
+        description: Run pre-release tests
+        type: boolean
+        default: true
+
+      dryrun:
+        description: Dry Run. Will not push to PyPI.
         type: boolean
         default: false
-      
-      skip_tests:
-        description: "If true, skip pre-release tests"
-        required: false
-        default: "false"
-        type: choice
-        options:
-          - "false"
-          - "true"
 
 # Prevents concurrent runs of the same workflow
 # while the previous run is still in progress
 concurrency:
-  group: "CD - SyftBox"
+  group: release-syftbox
   cancel-in-progress: false
 
 jobs:
   call-pr-tests:
-    if: ${{ inputs.skip_tests == 'false' }}
+    if: ${{ inputs.run_tests == true }}
     uses: ./.github/workflows/pr-tests.yaml
-    
 
   deploy-syftbox:
     needs: [call-pr-tests]
-    runs-on: ubuntu-latest
+    if: |
+      always() &&
+      (needs.call-pr-tests.result == 'success' || needs.call-pr-tests.result == 'skipped')
+
+    # runs-on: ubuntu-latest
+    runs-on: syftbox-sh-linux-x64
 
     steps:
+      - name: Install Git
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install git -y
+
       - name: Checkout SyftBox repo with github token
         uses: actions/checkout@v4
         with:
@@ -58,16 +64,21 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install uv==0.4.19 twine
-          uv --version
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "0.4.25"
 
       - name: Install Just
         uses: extractions/setup-just@v2
         with:
           just-version: "1.36.0"
+
+      - name: Install dependencies
+        run: |
+          uv --version
+          uv tool install twine
+          twine --version
 
       - name: Bump the Version
         run: |
@@ -78,11 +89,11 @@ jobs:
           just build
 
       - name: Push to pypi
-        if: ${{ inputs.test_bump == false }}
+        if: ${{ inputs.dryrun == false  && github.event_name != 'pull_request' }}
         run: |
           twine upload -u __token__ -p ${{ secrets.OM_SYFTBOX_PYPI_TOKEN }} dist/*
 
       - name: Push changes to SyftBox repo
-        if: ${{ inputs.test_bump == false }}
+        if: ${{ inputs.dryrun == false  && github.event_name != 'pull_request' }}
         run: |
-          git push origin
+          git push origin --follow-tags

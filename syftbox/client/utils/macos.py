@@ -1,12 +1,14 @@
 import subprocess
 from pathlib import Path
 
+from typing_extensions import Optional
+
 ASSETS_FOLDER = Path(__file__).parents[2] / "assets"
 ICONS_PKG = ASSETS_FOLDER / "icon.zip"
 
 
 # Function to search for Icon\r file
-def search_icon_file(src_path: Path) -> Path:
+def search_icon_file(src_path: Path) -> Optional[Path]:
     if not src_path.exists():
         return None
     for file_path in src_path.iterdir():

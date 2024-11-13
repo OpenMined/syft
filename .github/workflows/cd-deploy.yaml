@@ -1,4 +1,4 @@
-name: CD - Deploy SyftBox Server
+name: Deploy Prod
 
 on:
   workflow_dispatch:
@@ -6,20 +6,34 @@ on:
       version:
         description: "SyftBox Version to deploy"
         type: string
-        default: latest
+        default: 0.1.12
+
+      dryrun:
+        description: Dry Run. Will not deploy to server.
+        type: boolean
+        default: false
 
 # Prevents concurrent runs of the same workflow
 # while the previous run is still in progress
 concurrency:
-  group: "CD - Deploy SyftBox Server"
+  group: deploy-syftbox-prod
   cancel-in-progress: false
 
 jobs:
-    
-  deploy-syftbox-server:
-    runs-on: ubuntu-latest
+  deploy-syftbox-prod:
+    # runs-on: ubuntu-latest
+    runs-on: syftbox-sh-linux-x64
 
     steps:
+      - name: Install Git & SSH
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install git openssh-client -y
+
+      - name: Checkout SyftBox repo
+        uses: actions/checkout@v4
+
       - name: Install Just
         uses: extractions/setup-just@v2
         with:
@@ -27,11 +41,17 @@ jobs:
 
       - name: Set up SSH
         run: |
-            mkdir -p ~/.ssh
-            echo "${{ secrets.SYFTBOX_SERVER_PRIVATE_KEY }}" > ~/.ssh/syftbox.pem
-            chmod 600 ~/.ssh/syftbox.pem
-            ssh-keyscan -H "20.168.10.234" >> ~/.ssh/known_hosts
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SYFTBOX_SERVER_PRIVATE_KEY }}" > ~/.ssh/cert.pem
+          chmod 600 ~/.ssh/cert.pem
+          ssh-keyscan -H "172.210.40.183" >> ~/.ssh/known_hosts
 
       - name: Deploy SyftBox Server
+        if: ${{ inputs.dryrun == false  && github.event_name != 'pull_request' }}
         run: |
-            just deploy ~/.ssh/syftbox.pem ${{ inputs.version }}
+          just upload-pip ${{ inputs.version }} ~/.ssh/cert.pem azureuser@172.210.40.183
+
+      - name: Delete cert.pem
+        if: always()
+        run: |
+          rm -f ~/.ssh/cert.pem

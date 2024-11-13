@@ -53,12 +53,13 @@
 # [tool.uv.sources]
 # syftbox = { path = "/Users/madhavajay/dev/syft", editable = true }
 # ///
+from typing_extensions import Optional
 
 __name__ = "netflix_stats"
 __author__ = "madhava@openmined.org"
 
 
-def input_reader(private: bool = False, datasite: str | None = None):
+def input_reader(private: bool = False, datasite: Optional[str] = None):
     import os
 
     import pandas as pd

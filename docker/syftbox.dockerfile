@@ -1,13 +1,17 @@
-# Start with the Alpine base image with Python 3
-FROM python:3.12-alpine
+FROM cgr.dev/chainguard/wolfi-base
 
-# Set the working directory inside the container
+ARG PYTHON_VERSION="3.12"
+ARG UV_VERSION="0.4.20-r0"
+ARG SYFT_VERSION="0.2.4"
+
+RUN apk update && apk upgrade && \
+    apk add --no-cache python-$PYTHON_VERSION uv=$UV_VERSION
+
 WORKDIR /app
-COPY . /app
 
-RUN pip install uv
-RUN uv venv .venv
-RUN uv pip install -e .
+RUN uv venv
+RUN uv pip install --no-cache syftbox==${SYFT_VERSION}
 
-# CMD ["ash", "/app/scripts/server.sh"]
+EXPOSE 8000
 
+CMD ["uv", "run", "uvicorn", "syftbox.server.server:app", "--host=0.0.0.0", "--port=8000"]

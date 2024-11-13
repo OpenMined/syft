@@ -8,4 +8,4 @@
 __title__ = "SyftBox"
 __description__ = ""
 __url__ = "https://openmined.org"
-__version__ = "0.1.3"
+__version__ = "0.2.4"
