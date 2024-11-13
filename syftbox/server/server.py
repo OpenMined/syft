@@ -5,7 +5,6 @@ import os
 import platform
 import random
 import sys
-import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -13,7 +12,6 @@ from typing import Optional
 
 import requests
 import uvicorn
-from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import (
@@ -38,7 +36,7 @@ from syftbox.server.users.user import UserManager
 
 from .sync import db, hash
 from .sync.router import router as sync_router
-from .users.router import create_keycloak_admin_token, delete_user, user_router
+from .users.router import create_keycloak_admin_token, user_router
 
 current_dir = Path(__file__).parent
 
@@ -112,26 +110,10 @@ class Users:
         return string
 
 
-def get_users(request: Request) -> Users:
-    return request.state.users
-
-
 def create_folders(folders: list[str]) -> None:
     for folder in folders:
         if not os.path.exists(folder):
             os.makedirs(folder, exist_ok=True)
-
-
-def remove_unverified_users():
-    users = get_users()
-    for user in users:
-        if not user["emailVerified"]:
-            # user['createdTimestamp'] is counted in microseconds
-            delta = time.time() - user["createdTimestamp"] / 1000
-            if delta / (3600 * 24) > 1:
-                # delete de user
-                delete_user(user["id"])
-    print("remove_unverified_users task finished")
 
 
 def init_db(settings: ServerSettings) -> None:
@@ -170,10 +152,6 @@ async def lifespan(app: FastAPI, settings: Optional[ServerSettings] = None):
     init_db(settings)
 
     user_manager = UserManager()
-
-    scheduler = BackgroundScheduler()
-    scheduler.add_job(remove_unverified_users, "interval", minutes=60 * 24)
-    scheduler.start()
 
     yield {
         "server_settings": settings,
@@ -330,20 +308,10 @@ async def browse_datasite(
 @app.post("/register")
 async def register(
     request: Request,
-    users: Users = Depends(get_users),
     server_settings: ServerSettings = Depends(get_server_settings),
 ):
-    data = await request.json()
-    email = data["email"]
-    token = users.create_user(email)
-
-    # create datasite snapshot folder
-    datasite_folder = Path(server_settings.snapshot_folder) / email
-    os.makedirs(datasite_folder, exist_ok=True)
-
-    logger.info(f"> {email} registering: {token}, snapshot folder: {datasite_folder}")
-
-    return JSONResponse({"status": "success", "token": token}, status_code=200)
+    # TODO implement
+    return JSONResponse({"status": "success"}, status_code=200)
 
 
 @app.get("/list_datasites")

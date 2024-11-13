@@ -120,12 +120,7 @@ def send_action_email(user_id: str, actions: List[str]):
                 data=json.dumps(actions)
             )
 
-def get_users():
-    resp = requests.get(f"{KEYCLOAK_URL}/admin/realms/{KEYCLOAK_REALM}/users/", headers=get_admin_headers())
-    if resp.status_code == 200:
-        content = resp.json()
-        return content
-    return resp.text
+
 
 
 def get_user_from_header(token: Annotated[str, Header()]):
