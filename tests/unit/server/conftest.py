@@ -29,6 +29,7 @@ def client(monkeypatch, tmp_path):
     monkeypatch.setenv("SYFTBOX_DATA_FOLDER", str(settings.data_folder))
     monkeypatch.setenv("SYFTBOX_SNAPSHOT_FOLDER", str(settings.snapshot_folder))
     monkeypatch.setenv("SYFTBOX_USER_FILE_PATH", str(settings.user_file_path))
+    monkeypatch.setenv("SYFTBOX_NO_AUTH", "true")
 
     datasite_name = TEST_DATASITE_NAME
     datasite = settings.snapshot_folder / datasite_name
@@ -48,7 +49,7 @@ def client(monkeypatch, tmp_path):
     permfile.touch()
     permfile.write_text(json.dumps(PERMFILE_DICT))
 
-    with TestClient(app) as client:
+    with TestClient(app, headers={"email": TEST_DATASITE_NAME, "Authorization": "Bearer test"}) as client:
         yield client
 
 

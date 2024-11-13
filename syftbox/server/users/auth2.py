@@ -10,8 +10,8 @@ class AuthenticationError(Exception):
 
 bearer_scheme = HTTPBearer()
 
-def get_user_manager():
-    return UserManager()
+def get_user_manager(server_settings: Annotated[ServerSettings, Depends(get_server_settings)]):
+    return UserManager(server_settings)
 
 class UserManager:
     def __init__(self, server_settings: ServerSettings):
@@ -32,10 +32,9 @@ class UserManager:
 def get_current_user(
     credentials: Annotated[HTTPAuthorizationCredentials, Security(bearer_scheme)],
     user_manager: Annotated[UserManager, Depends(get_user_manager)],
-    server_settings: Annotated[ServerSettings, Depends(get_server_settings)],
     email: Annotated[str | None, Header()] = None,
 ) -> str:
-    if server_settings.auth_disabled:
+    if user_manager.server_settings.no_auth:
         if email is None:
             raise AuthenticationError("email is required in header when auth is disabled.")
         return email

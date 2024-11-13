@@ -30,7 +30,7 @@ class ServerSettings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="SYFTBOX_")
 
-    auth_disabled: bool = False
+    no_auth: bool = False
     keycloak_url: str = "http://20.56.213.46:8080"
 
     data_folder: Path = Path("data")
