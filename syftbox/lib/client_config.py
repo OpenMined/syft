@@ -52,6 +52,9 @@ class SyftClientConfig(BaseModel):
 
     token: Optional[str] = Field(default=None, description="API token for the user")
     """API token for the user"""
+    
+    password: Optional[str] = Field(default=None, description="password for the user")
+    """password for the user"""
 
     # WARN: we don't need `path` to be serialized, hence exclude=True
     path: Path = Field(exclude=True, description="Path to the config file")

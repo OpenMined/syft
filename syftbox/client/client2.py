@@ -172,7 +172,13 @@ class SyftClient:
 
     def __register_email(self) -> str:
         # TODO - this should probably be wrapped in a SyftCacheServer API?
-        response = self.server_client.post("/register", json={"email": self.config.email})
+        payload = {
+            "email": self.config.email,
+            "password": self.config.password,
+            "firstName": '', 
+            "lastName": '',
+        }
+        response = self.server_client.post("/users/register", json=payload)
         response.raise_for_status()
         return response.json().get("token")
 

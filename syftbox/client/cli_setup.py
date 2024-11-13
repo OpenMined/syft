@@ -57,7 +57,8 @@ def setup_config_interactive(
             email=email,
             server_url=server,
             port=port,
-            token=token
+            token=token,
+            password=password,
         )
     else:
         if server and server != conf.server_url:
