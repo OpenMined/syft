@@ -47,6 +47,8 @@ def setup_datasite(tmp_path: Path, server_client: TestClient, email: str) -> Syf
     ws = SyftWorkspace(config.data_dir)
     ws.mkdirs()
     create_datasite(ws.datasites, email)
+    server_client.headers["email"] = email
+    server_client.headers["Authorization"] = f"Bearer {config.token}"
     return MockClient(config, ws, server_client)
 
 

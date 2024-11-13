@@ -6,10 +6,6 @@ from pydantic import BaseModel
 import requests
 
 from functools import lru_cache
-from syftbox.server.settings import ServerSettings, get_server_settings
-from syftbox.server.users.auth import create_keycloak_access_token
-
-from .user import User, UserManager, UserUpdate
 from syftbox.server.users.secret_constants import CLIENT_ID, CLIENT_SECRET, KEYCLOAK_REALM, KEYCLOAK_URL, ADMIN_UNAME, ADMIN_PASSWORD
 
 user_router = fastapi.APIRouter(
@@ -47,7 +43,7 @@ def get_user_from_token(token):
     padded_payload = padded_payload = payload + "="*divmod(len(payload),4)[1]
     user_data = json.loads(base64.urlsafe_b64decode(padded_payload))
     return user_data
-    
+
 def get_user_info(token: str):
     headers = {
         'Authorization': f'Bearer {token}',
@@ -72,9 +68,9 @@ def get_headers(token):
 
 def reset_password(user_id, new_password, token):
     data = {
-        "type": "password", 
-        "temporary": False, 
-        "value": new_password 
+        "type": "password",
+        "temporary": False,
+        "value": new_password
     }
     resp = requests.put(f"{KEYCLOAK_URL}/realms/{KEYCLOAK_REALM}/users/{user_id}/reset-password", headers=get_headers(token), data=data)
     return resp
@@ -119,8 +115,8 @@ def create_user(email, firstName, lastName, password):
 
 def send_action_email(user_id: str, actions: List[str]):
     return requests.put(
-                f"{KEYCLOAK_URL}/admin/realms/{KEYCLOAK_REALM}/users/{user_id}/execute-actions-email?client_id={CLIENT_ID}", 
-                headers=get_admin_headers(), 
+                f"{KEYCLOAK_URL}/admin/realms/{KEYCLOAK_REALM}/users/{user_id}/execute-actions-email?client_id={CLIENT_ID}",
+                headers=get_admin_headers(),
                 data=json.dumps(actions)
             )
 
@@ -137,7 +133,7 @@ def get_user_from_header(token: Annotated[str, Header()]):
     if user is None or not user['enabled']:
         raise HTTPException(status_code=401, detail="User not found")
     return user
-        
+
 def get_admin_user(token: Annotated[str, Header()]):
     user = get_user_from_header(token)
     # check if the user is admin
@@ -207,7 +203,7 @@ def ban_user(user):
         "enabled": False
     }
     return update_user(user_id, payload)
-    
+
 @user_router.post('/ban')
 async def ban(
     email: str,
