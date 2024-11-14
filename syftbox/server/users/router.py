@@ -2,16 +2,17 @@ from typing import Any, List
 import fastapi
 from fastapi import Depends
 from pydantic import BaseModel
+import requests
+import json
 
-
-from syftbox.lib.keycloak import CLIENT_ID, CLIENT_SECRET, KEYCLOAK_REALM, KEYCLOAK_URL, create_user, get_admin_user, get_user_from_header, get_users, send_action_email, update_user
+from syftbox.lib.keycloak import CLIENT_ID, CLIENT_SECRET, KEYCLOAK_REALM, KEYCLOAK_URL, send_action_email, update_user
+from syftbox.server.users.auth2 import UserManager, get_user_manager
 
 user_router = fastapi.APIRouter(
     prefix="/users",
     tags=["users"],
 )
-import requests
-import json
+
 
 
 
@@ -31,16 +32,7 @@ def reset_password(user_id, new_password, token):
     return resp
 
 
-def create_keycloak_admin_token() -> str:
-    return create_keycloak_access_token(ADMIN_UNAME, ADMIN_PASSWORD)
 
-
-def get_admin_headers():
-    admin_token = create_keycloak_admin_token()
-    return {
-        'Authorization': f'Bearer {admin_token}',
-        'Content-Type': 'application/json'
-    }
 
 def create_user(email, firstName, lastName, password):
     print(f"> {email}, {firstName}, {lastName}, {password}")
@@ -81,35 +73,25 @@ def remove_user_files(user):
 class User(BaseModel):
     email: str
     password: str
-    firstName: str
-    lastName: str
 
 
 @user_router.post("/register")
 async def register(
-    user: User
+    user: User,
+    user_manager: UserManager = Depends(get_user_manager)
 ) -> str:
     email = user.email
-    firstName = user.firstName
-    lastName = user.lastName
     password = user.password
-    resp = create_user(email=email, firstName=firstName, lastName=lastName, password=password)
-    print(resp, type(resp))
-    if resp.status_code in [200, 201]:
-        # Keycloak does not return the id of the user just created, currently
-        # iterating through all the users and check the username
-        users = get_users()
-        print(users)
-        if isinstance(users, str):
-            return users
-        for user in users:
-            if user['username'] == email:
-                user_id = user['id']
-                actions = ["UPDATE_PASSWORD"]
-                resp = send_action_email(user_id=user_id, actions=actions)
-                print(resp.status_code, resp.text)
-                return "Email sent!"
-        return f'error user {email} not found after creation'
+    resp = create_user(email=email, password=password)
+    resp.raise_for_status()
+    # Keycloak does not return the id of the user just created
+    user = user_manager.get_details(email)
+
+    user_id = user['id']
+    actions = ["UPDATE_PASSWORD"]
+    resp = send_action_email(user_id=user_id, actions=actions)
+    print(resp.status_code, resp.text)
+    return "Email sent!"
     print(f"> error? {resp.status_code} {resp.text} ")
     return resp
 
@@ -123,17 +105,11 @@ def ban_user(user):
 
 @user_router.post('/ban')
 async def ban(
-    email: str,
-    admin_user: Any = Depends(get_admin_user)
+    email_to_ban: str,
+    user_manager: UserManager = Depends(get_user_manager)
 ) -> str:
-    users = get_users()
-    print(users)
-    if isinstance(users, str):
-        return users
-    for user in users:
-        if user['username'] == email:
-            resp = ban_user(user)
-            print(resp.status_code, resp.text)
-            remove_user_files(user)
-            return "User Banned"
+    user = user_manager.get_details(email_to_ban)
+    resp = user_manager.ban_user(user)
+    remove_user_files(user)
+    return "User Banned"
     return "User Not Found"

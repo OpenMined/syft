@@ -7,7 +7,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-import requests
 from fastapi import Depends, FastAPI, Header, Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import (
@@ -22,7 +21,6 @@ from loguru import logger
 from typing_extensions import Any, Union
 
 from syftbox.__version__ import __version__
-from syftbox.lib.keycloak import CLIENT_ID, KEYCLOAK_REALM, KEYCLOAK_URL
 from syftbox.lib.lib import (
     Jsonable,
     get_datasites,
@@ -34,7 +32,7 @@ from syftbox.server.settings import ServerSettings, get_server_settings
 
 from .sync import db, hash
 from .sync.router import router as sync_router
-from .users.router import create_keycloak_admin_token, user_router
+from .users.router import user_router
 
 current_dir = Path(__file__).parent
 
@@ -294,42 +292,6 @@ async def browse_datasite(
             return HTMLResponse(content=message_404, status_code=404)
 
     return f"No Datasite {datasite_part} exists"
-
-
-@app.post("/invite")
-async def invite(email: str, firstName: str, lastName: str):
-    admin_token = create_keycloak_admin_token()
-    headers = {"Authorization": f"Bearer {admin_token}", "Content-Type": "application/json"}
-
-    payload = {
-        "firstName": firstName,
-        "lastName": lastName,
-        "email": email,
-        "enabled": "true",
-        "username": email,
-        "requiredActions": ["UPDATE_PASSWORD", "UPDATE_PROFILE"],
-    }
-    resp = requests.post(
-        f"{KEYCLOAK_URL}/admin/realms/{KEYCLOAK_REALM}/users", headers=headers, data=json.dumps(payload)
-    )
-    if resp.status_code == 201:
-        resp = requests.get(f"{KEYCLOAK_URL}/admin/realms/{KEYCLOAK_REALM}/users", headers=headers)
-        content = resp.json()
-        for user in content:
-            if user["username"] == email:
-                user_id = user["id"]
-                actions = ["UPDATE_PASSWORD", "UPDATE_PROFILE"]
-
-                resp = requests.put(
-                    f"{KEYCLOAK_URL}/admin/realms/{KEYCLOAK_REALM}/users/{user_id}/execute-actions-email?client_id={CLIENT_ID}",
-                    headers=headers,
-                    data=json.dumps(actions),
-                )
-                return resp.status_code, resp.text
-
-        return f"error user {email} not found after creation"
-    else:
-        return resp.status_code, resp.text
 
 
 @app.post("/log_event")

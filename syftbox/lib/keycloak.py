@@ -71,21 +71,6 @@ def get_admin_headers():
     return {"Authorization": f"Bearer {admin_token}", "Content-Type": "application/json"}
 
 
-def create_user(email, firstName, lastName, password):
-    print(f"> {email}, {firstName}, {lastName}, {password}")
-    userdata = {
-        "firstName": firstName,
-        "lastName": lastName,
-        "email": email,
-        "enabled": "true",
-        "username": email,
-        "credentials": [{"type": "password", "value": password, "temporary": False}],
-    }
-    return requests.post(
-        f"{KEYCLOAK_URL}/admin/realms/{KEYCLOAK_REALM}/users", headers=get_admin_headers(), data=json.dumps(userdata)
-    )
-
-
 def send_action_email(user_id: str, actions: List[str]):
     return requests.put(
         f"{KEYCLOAK_URL}/admin/realms/{KEYCLOAK_REALM}/users/{user_id}/execute-actions-email?client_id={CLIENT_ID}",
