@@ -2,12 +2,12 @@ import contextlib
 import json
 import os
 import platform
-import random
-import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
+import requests
 from fastapi import Depends, FastAPI, Header, Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import (
@@ -19,9 +19,10 @@ from fastapi.responses import (
 )
 from jinja2 import Template
 from loguru import logger
-from typing_extensions import Any, Optional, Union
+from typing_extensions import Any, Union
 
 from syftbox.__version__ import __version__
+from syftbox.lib.keycloak import CLIENT_ID, KEYCLOAK_REALM, KEYCLOAK_URL
 from syftbox.lib.lib import (
     Jsonable,
     get_datasites,
@@ -33,6 +34,7 @@ from syftbox.server.settings import ServerSettings, get_server_settings
 
 from .sync import db, hash
 from .sync.router import router as sync_router
+from .users.router import create_keycloak_admin_token, user_router
 
 current_dir = Path(__file__).parent
 
@@ -88,26 +90,11 @@ class Users:
             return None
         return self.users[email]
 
-    def create_user(self, email: str) -> int:
-        if email in self.users:
-            # for now just return the token
-            return self.users[email].token
-            # raise Exception(f"User already registered: {email}")
-        token = random.randint(0, sys.maxsize)
-        user = User(email=email, token=token)
-        self.users[email] = user
-        self.save()
-        return token
-
     def __repr__(self) -> str:
         string = ""
         for email, user in self.users.items():
             string += f"{email}: {user}"
         return string
-
-
-def get_users(request: Request) -> Users:
-    return request.state.users
 
 
 def create_folders(folders: list[str]) -> None:
@@ -145,18 +132,11 @@ async def lifespan(app: FastAPI, settings: Optional[ServerSettings] = None):
     logger.info(settings)
 
     logger.info("> Creating Folders")
-
     create_folders(settings.folders)
-
-    users = Users(path=settings.user_file_path)
-    logger.info("> Loading Users")
-    logger.info(users)
-
     init_db(settings)
 
     yield {
         "server_settings": settings,
-        "users": users,
     }
 
     logger.info("> Shutting down server")
@@ -166,6 +146,8 @@ app = FastAPI(lifespan=lifespan)
 app.include_router(sync_router)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.add_middleware(LoguruMiddleware)
+
+app.include_router(user_router)
 
 # Define the ASCII art
 ascii_art = rf"""
@@ -314,24 +296,40 @@ async def browse_datasite(
     return f"No Datasite {datasite_part} exists"
 
 
-@app.post("/register")
-async def register(
-    request: Request,
-    users: Users = Depends(get_users),
-    server_settings: ServerSettings = Depends(get_server_settings),
-):
-    data = await request.json()
-    email = data["email"]
-    token = users.create_user(email)
+@app.post("/invite")
+async def invite(email: str, firstName: str, lastName: str):
+    admin_token = create_keycloak_admin_token()
+    headers = {"Authorization": f"Bearer {admin_token}", "Content-Type": "application/json"}
 
-    # create datasite snapshot folder
-    datasite_folder = Path(server_settings.snapshot_folder) / email
-    os.makedirs(datasite_folder, exist_ok=True)
+    payload = {
+        "firstName": firstName,
+        "lastName": lastName,
+        "email": email,
+        "enabled": "true",
+        "username": email,
+        "requiredActions": ["UPDATE_PASSWORD", "UPDATE_PROFILE"],
+    }
+    resp = requests.post(
+        f"{KEYCLOAK_URL}/admin/realms/{KEYCLOAK_REALM}/users", headers=headers, data=json.dumps(payload)
+    )
+    if resp.status_code == 201:
+        resp = requests.get(f"{KEYCLOAK_URL}/admin/realms/{KEYCLOAK_REALM}/users", headers=headers)
+        content = resp.json()
+        for user in content:
+            if user["username"] == email:
+                user_id = user["id"]
+                actions = ["UPDATE_PASSWORD", "UPDATE_PROFILE"]
 
-    logger.info(f"> {email} registering: {token}, snapshot folder: {datasite_folder}")
-    log_analytics_event("/register", email)
+                resp = requests.put(
+                    f"{KEYCLOAK_URL}/admin/realms/{KEYCLOAK_REALM}/users/{user_id}/execute-actions-email?client_id={CLIENT_ID}",
+                    headers=headers,
+                    data=json.dumps(actions),
+                )
+                return resp.status_code, resp.text
 
-    return JSONResponse({"status": "success", "token": token}, status_code=200)
+        return f"error user {email} not found after creation"
+    else:
+        return resp.status_code, resp.text
 
 
 @app.post("/log_event")

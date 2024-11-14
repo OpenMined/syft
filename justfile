@@ -43,7 +43,7 @@ run-server port="5001" uvicorn_args="":
 
 # Run a local syftbox client on any available port between 8080-9000
 [group('client')]
-run-client name port="auto" server="http://localhost:5001":
+run-client name port="auto" server="http://localhost:5001" register="false" reset_password="false":
     #!/bin/bash
     set -eou pipefail
 
@@ -59,12 +59,19 @@ run-client name port="auto" server="http://localhost:5001":
     DATA_DIR=.clients/$EMAIL
     mkdir -p $DATA_DIR
 
-    echo -e "Email      : {{ _green }}$EMAIL{{ _nc }}"
-    echo -e "Client     : {{ _cyan }}http://localhost:$PORT{{ _nc }}"
-    echo -e "Server     : {{ _cyan }}{{ server }}{{ _nc }}"
-    echo -e "Data Dir   : $DATA_DIR"
+    echo -e "Email          : {{ _green }}$EMAIL{{ _nc }}"
+    echo -e "Client         : {{ _cyan }}http://localhost:$PORT{{ _nc }}"
+    echo -e "Server         : {{ _cyan }}{{ server }}{{ _nc }}"
+    echo -e "Data Dir       : $DATA_DIR"
+    echo -e "Register       : {{ register }}"
+    echo -e "Reset Password : {{ reset_password }}"
 
-    uv run syftbox/client/cli.py --config=$DATA_DIR/config.json --data-dir=$DATA_DIR --email=$EMAIL --port=$PORT --server={{ server }} --no-open-dir
+    OTHER_OPTS=""
+    if [[ "{{ register }}" == "true" ]]; then OTHER_OPTS="--register "; fi
+    if [[ "{{ reset_password }}" == "true" ]]; then OTHER_OPTS="$OTHER_OPTS --reset_password "; fi
+    
+
+    uv run syftbox/client/cli.py --config=$DATA_DIR/config.json --data-dir=$DATA_DIR --email=$EMAIL --port=$PORT --server={{ server }} --no-open-dir $OTHER_OPTS 
 
 # ---------------------------------------------------------------------------------------------------------------------
 

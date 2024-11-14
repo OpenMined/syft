@@ -19,6 +19,13 @@ class ServerSettings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="SYFTBOX_")
 
+    no_auth: bool = False
+    """If True, server will **not** require authentication!"""
+    keycloak_url: str = "http://20.56.213.46:8080"
+    """Required when no_auth is False"""
+    keycloak_admin_token: str | None = None
+    """Required when no_auth is False"""
+
     data_folder: Path = Field(default=Path("data").resolve())
     """Absolute path to the server data folder"""
 
