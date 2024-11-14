@@ -92,7 +92,7 @@ class SyftClient:
     @property
     def is_registered(self) -> bool:
         """Check if the current user is registered with the server"""
-        return bool(self.config.token)
+        return bool(self.config.access_token)
 
     @property
     def datasite(self) -> Path:
@@ -163,11 +163,11 @@ class SyftClient:
         if self.is_registered:
             return
         try:
-            token = self.__register_email()
+            access_token = self.__register_email()
             # TODO + FIXME - once we have JWT, we should not store token in config!
             # ideally in OS keychain (using keyring) or
             # in a separate location under self.workspace.plugins
-            self.config.token = str(token)
+            self.config.access_token = access_token
             self.config.save()
             logger.info("Email registration successful")
         except Exception as e:

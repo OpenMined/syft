@@ -3,8 +3,6 @@ import contextlib
 import json
 import os
 import platform
-import random
-import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -93,17 +91,6 @@ class Users:
         if email not in self.users:
             return None
         return self.users[email]
-
-    def create_user(self, email: str) -> int:
-        if email in self.users:
-            # for now just return the token
-            return self.users[email].token
-            # raise Exception(f"User already registered: {email}")
-        token = random.randint(0, sys.maxsize)
-        user = User(email=email, token=token)
-        self.users[email] = user
-        self.save()
-        return token
 
     def __repr__(self) -> str:
         string = ""

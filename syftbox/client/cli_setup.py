@@ -49,7 +49,7 @@ def setup_config_interactive(
 
         password = register_password() if register else login_password()
 
-        conf.access_token = get_token(email, password)
+        access_token = get_token(email, password)
 
         # create a new config with the input params
         conf = SyftClientConfig(
@@ -58,7 +58,7 @@ def setup_config_interactive(
             email=email,
             server_url=server,
             port=port,
-            # token=token,
+            access_token=access_token,
         )
     else:
         if conf.access_token is None:
@@ -76,7 +76,7 @@ def setup_config_interactive(
             exit()
         else:
             new_password = register_password()
-            resp = reset_password(conf.user_id, new_password, conf.token)
+            resp = reset_password(conf.user_id, new_password, conf.access_token)
             if resp.status_code == 204:
                 rprint("[bold]Password reset succesful![/bold]")
             else:
