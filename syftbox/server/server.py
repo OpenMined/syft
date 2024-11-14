@@ -3,18 +3,13 @@ import contextlib
 import json
 import os
 import platform
-import random
-import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-import time
 from typing import Optional
 
-from apscheduler.schedulers.background import BackgroundScheduler
+import requests
 import uvicorn
-from fastapi import Depends, FastAPI, Request
-
 from fastapi import Depends, FastAPI, Header, Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import (
@@ -26,9 +21,10 @@ from fastapi.responses import (
 )
 from jinja2 import Template
 from loguru import logger
-from typing_extensions import Any, Optional, Union
+from typing_extensions import Any, Union
 
 from syftbox.__version__ import __version__
+from syftbox.lib.keycloak import CLIENT_ID, KEYCLOAK_REALM, KEYCLOAK_URL
 from syftbox.lib.lib import (
     Jsonable,
     get_datasites,
@@ -37,10 +33,10 @@ from syftbox.server.analytics import log_analytics_event
 from syftbox.server.logger import setup_logger
 from syftbox.server.middleware import LoguruMiddleware
 from syftbox.server.settings import ServerSettings, get_server_settings
-from .users.router import user_router
 
 from .sync import db, hash
 from .sync.router import router as sync_router
+from .users.router import create_keycloak_admin_token, user_router
 
 current_dir = Path(__file__).parent
 
@@ -96,17 +92,6 @@ class Users:
             return None
         return self.users[email]
 
-    def create_user(self, email: str) -> int:
-        if email in self.users:
-            # for now just return the token
-            return self.users[email].token
-            # raise Exception(f"User already registered: {email}")
-        token = random.randint(0, sys.maxsize)
-        user = User(email=email, token=token)
-        self.users[email] = user
-        self.save()
-        return token
-
     def __repr__(self) -> str:
         string = ""
         for email, user in self.users.items():
@@ -114,26 +99,10 @@ class Users:
         return string
 
 
-def get_users(request: Request) -> Users:
-    return request.state.users
-
-
 def create_folders(folders: list[str]) -> None:
     for folder in folders:
         if not os.path.exists(folder):
             os.makedirs(folder, exist_ok=True)
-
-
-def remove_unverified_users():
-    users = get_users()
-    for user in users:
-        if not user['emailVerified']:
-            # user['createdTimestamp'] is counted in microseconds
-            delta = (time.time() - user['createdTimestamp'] / 1000)
-            if delta / (3600 * 24) > 1:
-                # delete de user
-                delete_user(user['id'])
-    print("remove_unverified_users task finished")
 
 
 def init_db(settings: ServerSettings) -> None:
@@ -167,10 +136,6 @@ async def lifespan(app: FastAPI, settings: Optional[ServerSettings] = None):
     logger.info("> Creating Folders")
     create_folders(settings.folders)
     init_db(settings)
-
-    scheduler = BackgroundScheduler()
-    scheduler.add_job(remove_unverified_users,"interval",minutes = 60 * 24)
-    scheduler.start()
 
     yield {
         "server_settings": settings,
@@ -331,6 +296,90 @@ async def browse_datasite(
             return HTMLResponse(content=message_404, status_code=404)
 
     return f"No Datasite {datasite_part} exists"
+
+
+@app.post("/register")
+async def register(
+    request: Request,
+    server_settings: ServerSettings = Depends(get_server_settings),
+):
+    # TODO implement
+    return JSONResponse({"status": "success"}, status_code=200)
+
+
+@app.get("/list_datasites")
+async def datasites(request: Request, server_settings: ServerSettings = Depends(get_server_settings)):
+    datasites = get_datasites(server_settings.snapshot_folder)
+    response_json = {"datasites": datasites}
+    if datasites:
+        return JSONResponse({"status": "success"} | response_json, status_code=200)
+    return JSONResponse({"status": "error"}, status_code=400)
+
+
+@app.post("/invite")
+async def invite(email: str, firstName: str, lastName: str):
+    admin_token = create_keycloak_admin_token()
+    headers = {"Authorization": f"Bearer {admin_token}", "Content-Type": "application/json"}
+
+    payload = {
+        "firstName": firstName,
+        "lastName": lastName,
+        "email": email,
+        "enabled": "true",
+        "username": email,
+        "requiredActions": ["UPDATE_PASSWORD", "UPDATE_PROFILE"],
+    }
+    resp = requests.post(
+        f"{KEYCLOAK_URL}/admin/realms/{KEYCLOAK_REALM}/users", headers=headers, data=json.dumps(payload)
+    )
+    if resp.status_code == 201:
+        resp = requests.get(f"{KEYCLOAK_URL}/admin/realms/{KEYCLOAK_REALM}/users", headers=headers)
+        content = resp.json()
+        for user in content:
+            if user["username"] == email:
+                user_id = user["id"]
+                actions = ["UPDATE_PASSWORD", "UPDATE_PROFILE"]
+
+                resp = requests.put(
+                    f"{KEYCLOAK_URL}/admin/realms/{KEYCLOAK_REALM}/users/{user_id}/execute-actions-email?client_id={CLIENT_ID}",
+                    headers=headers,
+                    data=json.dumps(actions),
+                )
+                return resp.status_code, resp.text
+
+        return f"error user {email} not found after creation"
+    else:
+        return resp.status_code, resp.text
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Run FastAPI server")
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=5001,
+        help="Port to run the server on (default: 5001)",
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Run the server in debug mode with hot reloading",
+    )
+
+    args = parser.parse_args()
+
+    uvicorn.run(
+        "syftbox.server.server:app" if args.debug else app,  # Use import string in debug mode
+        host="0.0.0.0",
+        port=args.port,
+        log_level="debug" if args.debug else "info",
+        reload=args.debug,  # Enable hot reloading only in debug mode
+    )
+
+
+if __name__ == "__main__":
+    main()
+
 
 @app.post("/log_event")
 async def log_event(request: Request, email: Optional[str] = Header(default=None)):

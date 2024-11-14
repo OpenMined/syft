@@ -1,3 +1,4 @@
+import os
 from collections.abc import Generator
 from functools import partial
 from pathlib import Path
@@ -47,6 +48,8 @@ def setup_datasite(tmp_path: Path, server_client: TestClient, email: str) -> Syf
     ws = SyftWorkspace(config.data_dir)
     ws.mkdirs()
     create_datasite(ws.datasites, email)
+    server_client.headers["email"] = email
+    server_client.headers["Authorization"] = f"Bearer {config.token}"
     return MockClient(config, ws, server_client)
 
 
@@ -69,6 +72,9 @@ def server_client(tmp_path: Path) -> Generator[TestClient, None, None]:
     path.mkdir()
 
     settings = ServerSettings.from_data_folder(path)
+    access_token = os.getenv("SYFTBOX_ACCESS_TOKEN", None)
+    if not access_token:
+        settings.no_auth = True
     lifespan_with_settings = partial(server_lifespan, settings=settings)
     server_app.router.lifespan_context = lifespan_with_settings
 

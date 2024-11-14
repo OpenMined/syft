@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from fastapi import Request
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing_extensions import Self, Union
 
@@ -30,9 +30,11 @@ class ServerSettings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="SYFTBOX_")
 
-    admin_username: SecretStr = "info@openmined.org"
-    admin_password: SecretStr = "changethis"
-    jwt_secret: SecretStr = "changethis"
+    no_auth: bool = False
+    keycloak_url: str = "http://20.56.213.46:8080"
+    """Required when no_auth is False"""
+    keycloak_admin_token: str | None = None
+    """Required when no_auth is False"""
 
     data_folder: Path = Path("data")
     smtp: SMTSettings = SMTSettings()

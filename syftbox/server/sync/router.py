@@ -3,10 +3,9 @@ import hashlib
 import sqlite3
 import zipfile
 from io import BytesIO
-from typing import Optional
 
 import py_fast_rsync
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from loguru import logger
 
@@ -18,6 +17,7 @@ from syftbox.server.sync.db import (
     get_db,
 )
 from syftbox.server.sync.file_store import FileStore, SyftFile
+from syftbox.server.users.auth2 import get_current_user
 
 from .models import (
     ApplyDiffRequest,
@@ -52,6 +52,7 @@ router = APIRouter(prefix="/sync", tags=["sync"])
 def get_diff(
     req: DiffRequest,
     file_store: FileStore = Depends(get_file_store),
+    email: str = Depends(get_current_user),
 ) -> DiffResponse:
     try:
         file = file_store.get(req.path)
@@ -71,7 +72,7 @@ def get_datasite_states(
     conn: sqlite3.Connection = Depends(get_db_connection),
     file_store: FileStore = Depends(get_file_store),
     server_settings: ServerSettings = Depends(get_server_settings),
-    email: str = Header(),
+    email: str = Depends(get_current_user),
 ) -> dict[str, list[FileMetadata]]:
     all_datasites = get_all_datasites(conn)
     datasite_states: dict[str, list[FileMetadata]] = {}
@@ -91,11 +92,8 @@ def dir_state(
     dir: RelativePath,
     file_store: FileStore = Depends(get_file_store),
     server_settings: ServerSettings = Depends(get_server_settings),
-    email: str = Header(),
+    email: str = Depends(get_current_user),
 ) -> list[FileMetadata]:
-    if dir.is_absolute():
-        raise HTTPException(status_code=400, detail="dir must be relative")
-
     full_path = server_settings.snapshot_folder / dir
     # get the top level perm file
     try:
@@ -113,7 +111,7 @@ def dir_state(
 def get_metadata(
     req: FileMetadataRequest,
     file_store: FileStore = Depends(get_file_store),
-    email: Optional[str] = Header(default=None),
+    email: str = Depends(get_current_user),
 ) -> FileMetadata:
     try:
         metadata = file_store.get_metadata(req.path_like)
@@ -131,7 +129,7 @@ def get_metadata(
 def apply_diffs(
     req: ApplyDiffRequest,
     file_store: FileStore = Depends(get_file_store),
-    email: Optional[str] = Header(default=None),
+    email: str = Depends(get_current_user),
 ) -> ApplyDiffResponse:
     try:
         file = file_store.get(req.path)
@@ -162,8 +160,8 @@ def apply_diffs(
 @router.post("/delete", response_class=JSONResponse)
 def delete_file(
     req: FileRequest,
-    email: Optional[str] = Header(default=None),
     file_store: FileStore = Depends(get_file_store),
+    email: str = Depends(get_current_user),
 ) -> JSONResponse:
     log_file_change_event(
         "/sync/delete",
@@ -180,7 +178,7 @@ def delete_file(
 def create_file(
     file: UploadFile,
     file_store: FileStore = Depends(get_file_store),
-    email: str = Header(default=None),
+    email: str = Depends(get_current_user),
 ) -> JSONResponse:
     relative_path = RelativePath(file.filename)
     if "%" in file.filename:
@@ -212,6 +210,7 @@ def create_file(
 def download_file(
     req: FileRequest,
     file_store: FileStore = Depends(get_file_store),
+    email: str = Depends(get_current_user),
 ) -> FileResponse:
     try:
         abs_path = file_store.get(req.path).absolute_path
@@ -221,7 +220,10 @@ def download_file(
 
 
 @router.post("/datasites", response_model=list[str])
-def get_datasites(conn: sqlite3.Connection = Depends(get_db_connection)) -> list[str]:
+def get_datasites(
+    conn: sqlite3.Connection = Depends(get_db_connection),
+    email: str = Depends(get_current_user),
+) -> list[str]:
     return get_all_datasites(conn)
 
 
@@ -238,6 +240,7 @@ def create_zip_from_files(files: list[SyftFile]) -> BytesIO:
 async def get_files(
     req: BatchFileRequest,
     file_store: FileStore = Depends(get_file_store),
+    email: str = Depends(get_current_user),
 ) -> StreamingResponse:
     all_files = []
     for path in req.paths:
