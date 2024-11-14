@@ -4,6 +4,7 @@ SyftBox CLI - Setup scripts
 
 from pathlib import Path
 
+from loguru import logger
 from rich import print as rprint
 from rich.prompt import Confirm, Prompt
 
@@ -48,7 +49,7 @@ def setup_config_interactive(
 
         password = register_password() if register else login_password()
 
-        token = get_token(email, password)
+        conf.access_token = get_token(email, password)
 
         # create a new config with the input params
         conf = SyftClientConfig(
@@ -57,10 +58,13 @@ def setup_config_interactive(
             email=email,
             server_url=server,
             port=port,
-            token=token,
-            password=password,
+            # token=token,
         )
     else:
+        if conf.access_token is None:
+            logger.info("No access token found in the config. Please login again.")
+            pwd = login_password()
+            conf.access_token = get_token(conf.email, pwd)
         if server and server != conf.server_url:
             conf.set_server_url(server)
         if port != conf.client_url.port:

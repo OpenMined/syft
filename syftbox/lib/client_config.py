@@ -50,9 +50,14 @@ class SyftClientConfig(BaseModel):
     email: EmailStr = Field(description="Email address of the user")
     """Email address of the user"""
 
-    token: Optional[str] = Field(default=None, description="API token for the user")
-    """API token for the user"""
-    
+    token: Optional[str] = Field(
+        default=None, description="Depracated: Use access_token instead. API token for the user", deprecated=True
+    )
+    """Depracated: Use access_token instead. API token for the user"""
+
+    access_token: Optional[str] = Field(default=None, description="Access token for the user")
+    """Access token for the user"""
+
     password: Optional[str] = Field(default=None, description="password for the user")
     """password for the user"""
 
@@ -65,11 +70,11 @@ class SyftClientConfig(BaseModel):
         if isinstance(val, int):
             return f"http://127.0.0.1:{val}"
         return val
-    
+
     @property
     def user_id(self):
         if self.token:
-            return get_user_from_token(self.token)['sub']
+            return get_user_from_token(self.token)["sub"]
         return None
 
     @field_validator("token", mode="before")

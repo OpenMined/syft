@@ -1,6 +1,5 @@
 import asyncio
 import json
-import os
 import platform
 import shutil
 from functools import lru_cache
@@ -25,6 +24,7 @@ from syftbox.lib.client_config import SyftClientConfig
 from syftbox.lib.datasite import create_datasite
 from syftbox.lib.exceptions import SyftBoxException
 from syftbox.lib.ignore import IGNORE_FILENAME
+from syftbox.lib.keycloak import get_token
 from syftbox.lib.workspace import SyftWorkspace
 
 SCRIPT_DIR = Path(__file__).parent
@@ -57,11 +57,10 @@ class SyftClient:
         self.pid = PidFile(pidname="syftbox.pid", piddir=self.workspace.data_dir)
 
         # TODO READ FROM CLIENT CONFIG, BUT OMIT FROM LOGS
-        access_token = os.getenv("SYFTBOX_ACCESS_TOKEN")
         self.server_client = httpx.Client(
             base_url=str(self.config.server_url),
             follow_redirects=True,
-            headers={"email": self.config.email, "Authorization": f"Bearer {access_token}"},
+            headers={"email": self.config.email, "Authorization": f"Bearer {self.config.access_token}"},
         )
 
         # kwargs for making customization/unit testing easier
@@ -202,7 +201,8 @@ class SyftClient:
         }
         response = self.server_client.post("/users/register", json=payload)
         response.raise_for_status()
-        return response.json().get("token")
+        token = get_token(self.config.email, self.config.password)
+        return token
 
     def __enter__(self):
         return self
@@ -347,6 +347,16 @@ def run_client(
 
     try:
         client = SyftClient(client_config, log_level=log_level)
+
+        # authentication check
+        response = client.server_client.post("/sync/datasites")
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Failed to authenticate with the server: {e}")
+            if response.status_code == 401:
+                logger.info("Please login to refresh your session.")
+
         # we don't want to run migration if another instance of client is already running
         bool(client.check_pidfile()) and run_migration(client_config)
         (not syftbox_env.DISABLE_ICONS) and client.copy_icons()

@@ -1,6 +1,5 @@
 import base64
 import json
-from functools import lru_cache
 from typing import Annotated, List
 
 import requests
@@ -8,18 +7,17 @@ from fastapi import Header, HTTPException
 
 TOKEN_TIMEOUT = 3600
 
+# CLIENT_ID = "syftbox"
+# CLIENT_SECRET = "uyOaMdYsEtDfoNxKQ1jIT0CuP1EJa0J8"
 CLIENT_ID = "syftbox"
-CLIENT_SECRET = "uyOaMdYsEtDfoNxKQ1jIT0CuP1EJa0J8"
+CLIENT_SECRET = "lkmr29tXVE5I1jHuv5ia1xEZk1ewAbgd"
 ADMIN_UNAME = "info@openmined.org"
 ADMIN_PASSWORD = "changethis"
-
-KEYCLOAK_URL = "http://auth.syftbox.openmined.org"
+KEYCLOAK_URL = "http://20.56.213.46:8080"
 KEYCLOAK_REALM = "master"
 
 
-@lru_cache()
-def get_token(username, password, ttl=None):
-    del ttl
+def get_token(username, password):
     data = {
         "client_id": CLIENT_ID,
         "client_secret": CLIENT_SECRET,

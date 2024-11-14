@@ -59,10 +59,12 @@ run-client name port="auto" server="http://localhost:5001" register="false" rese
     DATA_DIR=.clients/$EMAIL
     mkdir -p $DATA_DIR
 
-    echo -e "Email      : {{ _green }}$EMAIL{{ _nc }}"
-    echo -e "Client     : {{ _cyan }}http://localhost:$PORT{{ _nc }}"
-    echo -e "Server     : {{ _cyan }}{{ server }}{{ _nc }}"
-    echo -e "Data Dir   : $DATA_DIR"
+    echo -e "Email          : {{ _green }}$EMAIL{{ _nc }}"
+    echo -e "Client         : {{ _cyan }}http://localhost:$PORT{{ _nc }}"
+    echo -e "Server         : {{ _cyan }}{{ server }}{{ _nc }}"
+    echo -e "Data Dir       : $DATA_DIR"
+    echo -e "Register       : {{ register }}"
+    echo -e "Reset Password : {{ reset_password }}"
 
     OTHER_OPTS=""
     if [[ "{{ register }}" == "true" ]]; then OTHER_OPTS="--register "; fi
