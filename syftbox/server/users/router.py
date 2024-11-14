@@ -1,12 +1,14 @@
 from typing import Any, List
 import fastapi
 from fastapi import Depends
+import httpx
 from pydantic import BaseModel
 import requests
 import json
 
-from syftbox.lib.keycloak import CLIENT_ID, CLIENT_SECRET, KEYCLOAK_REALM, KEYCLOAK_URL, send_action_email, update_user
-from syftbox.server.users.auth2 import UserManager, get_user_manager
+from syftbox.lib.keycloak import ADMIN_PASSWORD, ADMIN_UNAME, CLIENT_ID, CLIENT_SECRET, KEYCLOAK_REALM, KEYCLOAK_URL, send_action_email, update_user
+from syftbox.server.settings import ServerSettings, get_server_settings
+from syftbox.server.users.auth2 import User, UserManager, UserNotFoundError, get_user_manager
 
 user_router = fastapi.APIRouter(
     prefix="/users",
@@ -34,8 +36,7 @@ def reset_password(user_id, new_password, token):
 
 
 
-def create_user(email, firstName, lastName, password):
-    print(f"> {email}, {firstName}, {lastName}, {password}")
+def create_user(user: User):
     userdata = {
     'firstName': firstName,
     'lastName': lastName,
@@ -56,60 +57,41 @@ def send_action_email(user_id: str, actions: List[str]):
 
 
 
-
-
-def delete_user(user_id):
-    resp = requests.delete(f"{KEYCLOAK_URL}/admin/realms/{KEYCLOAK_REALM}/users/{user_id}", headers=get_admin_headers())
-    if resp.status_code != 200:
-        print(f"> error {resp.status_code} {resp.text}")
-    return resp
-
-
-
-
-def remove_user_files(user):
-    print(user['email'].split("@")[0])
-
-class User(BaseModel):
-    email: str
-    password: str
-
-
 @user_router.post("/register")
-async def register(
+def register(
     user: User,
-    user_manager: UserManager = Depends(get_user_manager)
+    server_settings: ServerSettings = Depends(get_server_settings)
 ) -> str:
-    email = user.email
-    password = user.password
-    resp = create_user(email=email, password=password)
-    resp.raise_for_status()
-    # Keycloak does not return the id of the user just created
-    user = user_manager.get_details(email)
+    admin_token = UserManager.get_access_token(server_settings, User(email=ADMIN_UNAME, password=ADMIN_PASSWORD))
+    user_manager = UserManager(server_settings, admin_token)
+    user_manager.create_user(user)
 
-    user_id = user['id']
-    actions = ["UPDATE_PASSWORD"]
-    resp = send_action_email(user_id=user_id, actions=actions)
-    print(resp.status_code, resp.text)
-    return "Email sent!"
-    print(f"> error? {resp.status_code} {resp.text} ")
-    return resp
+    user_details = user_manager.get_details(user.email)
+    user_manager.send_action_email(user_id=user_details.id, actions=["UPDATE_PASSWORD"])
+    access_token = UserManager.get_access_token(server_settings, user)
+    # resp = send_action_email(user_id=user_id, actions=actions)
+    return access_token
 
 
-def ban_user(user):
-    user_id = user['id']
-    payload = {
-        "enabled": False
-    }
-    return update_user(user_id, payload)
 
 @user_router.post('/ban')
-async def ban(
+def ban(
     email_to_ban: str,
     user_manager: UserManager = Depends(get_user_manager)
-) -> str:
-    user = user_manager.get_details(email_to_ban)
-    resp = user_manager.ban_user(user)
-    remove_user_files(user)
-    return "User Banned"
-    return "User Not Found"
+):
+    try:
+        user = user_manager.get_details(email_to_ban)
+        user_manager.ban_user(user)
+    except httpx.HTTPStatusError as e:
+        return {"status": "error", "message": e.response.json()}
+    except UserNotFoundError:
+        return {"status": "error", "message": "User not found"}
+    # TODO remove user files
+    return {"status": f"User {email_to_ban} banned"}
+
+@user_router.post('/login')
+def login(
+    user: User,
+    server_settings: ServerSettings = Depends(get_server_settings)
+):
+    return UserManager.get_access_token(server_settings, user)

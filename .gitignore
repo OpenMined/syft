@@ -166,7 +166,6 @@ cython_debug/
 
 # syft dirs
 data/
-users/
 .clients/
 .server/
 .e2e/

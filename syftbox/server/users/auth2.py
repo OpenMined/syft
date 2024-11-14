@@ -1,5 +1,6 @@
 import datetime
-from typing import Any
+import json
+from typing import Any, List
 from loguru import logger
 from pydantic import BaseModel, Field
 from typing_extensions import Annotated
@@ -7,10 +8,20 @@ from fastapi import Depends, HTTPException, Header, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 import httpx
 
+from syftbox.lib.keycloak import CLIENT_ID, CLIENT_SECRET
 from syftbox.server.settings import ServerSettings, get_server_settings
 
 class AuthenticationError(Exception):
     pass
+
+class UserNotFoundError(Exception):
+    pass
+
+
+class User(BaseModel):
+    email: str
+    password: str
+
 
 class KeycloakUserInfoResponse(BaseModel):
     sub: str
@@ -37,7 +48,7 @@ bearer_scheme = HTTPBearer()
 
 
 class UserManager:
-    def __init__(self, server_settings: ServerSettings, access_token: str):
+    def __init__(self, server_settings: ServerSettings, access_token: str|None=None):
         self.server_settings = server_settings
         self.url = self.server_settings.keycloak_url
         self.realm = self.server_settings.keycloak_realm
@@ -50,17 +61,19 @@ class UserManager:
             }
         )
 
-
-    def create_user(self, email, password):
+    def create_user(self, user:User):
         userdata = {
-            "email": email,
+            "username": user.email,
+            "email": user.email,
             "enabled": "true",
-            "username": email,
-            "credentials": [{"type": "password", "value": password, "temporary": False}],
+            "firstName": "",
+            "lastName": "",
+            "credentials": [{"type": "password", "value": user.password, "temporary": False}],
         }
-        return self.client(
-            f"/admin/realms/{self.realm}/users", data=userdata
+        resp = self.client.post(
+            f"/admin/realms/{self.realm}/users", data=json.dumps(userdata)
         )
+        resp.raise_for_status()
 
     def validate_token(self):
         resp = self.client.post(f"/realms/{self.realm}/protocol/openid-connect/userinfo")
@@ -78,14 +91,51 @@ class UserManager:
 
     def get_details(self, email: str) -> KeycloakUser:
         resp = self.client.get(f"/admin/realms/{self.realm}/users", params={"email": email})
-        resp.raise_for_status()
+        try:
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            raise AuthenticationError(e.response.text) from e
         data = resp.json()
         if len(data) != 1:
             logger.error(f"Expected 1 user, got {len(data)}, {data}")
-            raise AuthenticationError(f"User not found: {email}")
+            raise UserNotFoundError()
         repr_dict = data[0]
         user_repr = KeycloakUser(data=repr_dict, **repr_dict)
         return user_repr
+
+    def ban_user(self, user: KeycloakUser):
+        """Raises HTTPError if user is not found or if there is an error"""
+        resp = self.client.put(f"/admin/realms/{self.realm}/users/{user.id}", json={"enabled": False})
+        resp.raise_for_status()
+
+    def send_action_email(self, user_id: str, actions: List[str]):
+        resp = self.client.put(
+                f"/admin/realms/{self.realm}/users/{user_id}/execute-actions-email?client_id={CLIENT_ID}",
+                data=json.dumps(actions)
+            )
+        resp.raise_for_status()
+
+
+    @staticmethod
+    def get_access_token(server_settings:ServerSettings, user:User) -> str:
+        # TODO client id and secret should be stored in the server settings
+        data = {
+            "client_id": CLIENT_ID,
+            "client_secret": CLIENT_SECRET,
+            "username": user.email,
+            "password": user.password,
+            "grant_type": "password",
+        }
+
+        client = httpx.Client(
+            base_url=server_settings.keycloak_url,
+        )
+
+        resp = client.post(f"/realms/{server_settings.keycloak_realm}/protocol/openid-connect/token", data=data)
+        resp.raise_for_status()
+        token = resp.json()["access_token"]
+        return token
+
 
 def get_user_manager(
     server_settings: Annotated[ServerSettings, Depends(get_server_settings)],

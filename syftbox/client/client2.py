@@ -200,8 +200,6 @@ class SyftClient:
         payload = {
             "email": self.config.email,
             "password": self.config.password,
-            "firstName": "",
-            "lastName": "",
         }
         response = self.server_client.post("/users/register", json=payload)
         response.raise_for_status()
