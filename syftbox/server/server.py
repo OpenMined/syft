@@ -307,15 +307,6 @@ async def register(
     return JSONResponse({"status": "success"}, status_code=200)
 
 
-@app.get("/list_datasites")
-async def datasites(request: Request, server_settings: ServerSettings = Depends(get_server_settings)):
-    datasites = get_datasites(server_settings.snapshot_folder)
-    response_json = {"datasites": datasites}
-    if datasites:
-        return JSONResponse({"status": "success"} | response_json, status_code=200)
-    return JSONResponse({"status": "error"}, status_code=400)
-
-
 @app.post("/invite")
 async def invite(email: str, firstName: str, lastName: str):
     admin_token = create_keycloak_admin_token()

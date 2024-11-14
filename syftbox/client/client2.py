@@ -56,10 +56,14 @@ class SyftClient:
         self.workspace = SyftWorkspace(self.config.data_dir)
         self.pid = PidFile(pidname="syftbox.pid", piddir=self.workspace.data_dir)
 
-        # TODO READ FROM CLIENT CONFIG, BUT OMIT FROM LOGS
         self.server_client = httpx.Client(
             base_url=str(self.config.server_url),
             follow_redirects=True,
+            # We are sending email along with the bearer token
+            # to support fallback to email based authentication in case of keycloak failure
+            # or local development without keycloak
+            # To configure the server to use bypass keycloak authentication
+            # set the environment variable SYFTBOX_NO_AUTH=1
             headers={"email": self.config.email, "Authorization": f"Bearer {self.config.access_token}"},
         )
 
