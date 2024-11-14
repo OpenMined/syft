@@ -1,4 +1,3 @@
-import argparse
 import contextlib
 import json
 import os
@@ -9,7 +8,6 @@ from pathlib import Path
 from typing import Optional
 
 import requests
-import uvicorn
 from fastapi import Depends, FastAPI, Header, Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import (
@@ -298,15 +296,6 @@ async def browse_datasite(
     return f"No Datasite {datasite_part} exists"
 
 
-@app.post("/register")
-async def register(
-    request: Request,
-    server_settings: ServerSettings = Depends(get_server_settings),
-):
-    # TODO implement
-    return JSONResponse({"status": "success"}, status_code=200)
-
-
 @app.post("/invite")
 async def invite(email: str, firstName: str, lastName: str):
     admin_token = create_keycloak_admin_token()
@@ -341,35 +330,6 @@ async def invite(email: str, firstName: str, lastName: str):
         return f"error user {email} not found after creation"
     else:
         return resp.status_code, resp.text
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Run FastAPI server")
-    parser.add_argument(
-        "--port",
-        type=int,
-        default=5001,
-        help="Port to run the server on (default: 5001)",
-    )
-    parser.add_argument(
-        "--debug",
-        action="store_true",
-        help="Run the server in debug mode with hot reloading",
-    )
-
-    args = parser.parse_args()
-
-    uvicorn.run(
-        "syftbox.server.server:app" if args.debug else app,  # Use import string in debug mode
-        host="0.0.0.0",
-        port=args.port,
-        log_level="debug" if args.debug else "info",
-        reload=args.debug,  # Enable hot reloading only in debug mode
-    )
-
-
-if __name__ == "__main__":
-    main()
 
 
 @app.post("/log_event")

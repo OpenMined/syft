@@ -3,7 +3,6 @@ import fastapi
 from fastapi import Depends
 from pydantic import BaseModel
 
-from functools import lru_cache
 
 from syftbox.lib.keycloak import CLIENT_ID, CLIENT_SECRET, KEYCLOAK_REALM, KEYCLOAK_URL, create_user, get_admin_user, get_user_from_header, get_users, send_action_email, update_user
 
@@ -13,42 +12,6 @@ user_router = fastapi.APIRouter(
 )
 import requests
 import json
-
-
-
-def get_token(username, password, ttl=None):
-    del ttl
-    data = {
-            "client_id": CLIENT_ID,
-            "client_secret": CLIENT_SECRET,
-            "username": username,
-            "password": password,
-            "grant_type": "password"
-        }
-
-    resp = requests.post(f"{KEYCLOAK_URL}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/token", data=data)
-    if resp.status_code == 200:
-        token = resp.json()['access_token']
-        return token
-    else:
-        raise Exception(f"Token request returned code {resp.status_code} with message {resp.text}")
-
-def get_user_from_token(token):
-    _, payload, _ = token.split('.')
-    padded_payload = padded_payload = payload + "="*divmod(len(payload),4)[1]
-    user_data = json.loads(base64.urlsafe_b64decode(padded_payload))
-    return user_data
-
-def get_user_info(token: str):
-    headers = {
-        'Authorization': f'Bearer {token}',
-        'Content-Type': 'application/json'
-    }
-    resp = requests.post(f"{KEYCLOAK_URL}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/userinfo", headers=headers)
-    if resp.status_code != 200:
-        return None
-    content = resp.json()
-    return content
 
 
 
@@ -70,10 +33,6 @@ def reset_password(user_id, new_password, token):
 
 def create_keycloak_admin_token() -> str:
     return create_keycloak_access_token(ADMIN_UNAME, ADMIN_PASSWORD)
-
-
-class RegisterResponse(BaseModel):
-    bearer_token: str
 
 
 def get_admin_headers():
