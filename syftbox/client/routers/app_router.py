@@ -1,3 +1,5 @@
+import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -46,6 +48,7 @@ class AppDetails(BaseModel):
     source: str
     home: str
     icon: str
+    path: str
 
 
 def get_all_apps(apps_dir: str) -> List[AppDetails]:
@@ -70,6 +73,7 @@ def get_all_apps(apps_dir: str) -> List[AppDetails]:
                     source=frontmatter.get("source", ""),
                     home=frontmatter.get("home", ""),
                     icon=frontmatter.get("icon", ""),
+                    path=str(app_dir),
                 )
                 apps.append(app)
 
@@ -119,3 +123,41 @@ async def install_app(request: InstallRequest):
             status_code=500,
             detail={"status": "error", "message": f"Failed to install app {request.source}.", "output": e.stderr},
         )
+
+
+@router.post("/command/{app_name}")
+async def app_command(ctx: APIContext, app_name: str, request: dict):
+    apps_dir = ctx.workspace.apps
+    apps = get_all_apps(apps_dir)
+
+    for app in apps:
+        if app_name == app.name:
+            # Convert request dictionary to JSON string and wrap with single quotes for shell
+            request_json = json.dumps(request)
+            json_arg = f"--input='{request_json}'"  # Wrap entire JSON argument in single quotes
+            command = f"uv run {app.path}/command.py {json_arg}"  # Complete command as a single string
+            print("command", command)
+
+            # Define the environment variable
+            env = {
+                **os.environ,
+                "SYFTBOX_CLIENT_CONFIG_PATH": ctx.config.path,
+            }
+
+            try:
+                # Execute the command with the specified environment
+                result = subprocess.run(command, check=True, capture_output=True, text=True, shell=True, env=env)
+
+                # Trim the output and attempt to parse it as JSON
+                trimmed_output = result.stdout.strip()
+                try:
+                    json_output = json.loads(trimmed_output)
+                    return JSONResponse(content=json_output)
+                except json.JSONDecodeError:
+                    # Return trimmed output as plain text if not valid JSON
+                    return JSONResponse(content={"output": trimmed_output})
+            except subprocess.CalledProcessError as e:
+                print("error", e)
+                return JSONResponse(status_code=500, content={"error": e.stderr.strip()})
+
+    raise HTTPException(status_code=404, detail="App not found")

@@ -148,7 +148,7 @@ class SyftPermission(Jsonable):
 
     def save(self, path=None) -> bool:
         self.perm_path(path=path)
-        if self.filepath.endswith(".syftperm"):
+        if str(self.filepath).endswith(".syftperm"):
             super().save(self.filepath)
         else:
             raise Exception(f"Perm file must end in .syftperm. {self.filepath}")

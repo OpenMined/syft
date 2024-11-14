@@ -15,7 +15,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 import uvicorn
 from fastapi import Depends, FastAPI, Request
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, Header, Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import (
     FileResponse,
@@ -33,6 +33,9 @@ from syftbox.lib.lib import (
     Jsonable,
     get_datasites,
 )
+from syftbox.server.analytics import log_analytics_event
+from syftbox.server.logger import setup_logger
+from syftbox.server.middleware import LoguruMiddleware
 from syftbox.server.settings import ServerSettings, get_server_settings
 from .users.router import user_router
 
@@ -153,9 +156,12 @@ def init_db(settings: ServerSettings) -> None:
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI, settings: Optional[ServerSettings] = None):
     # Startup
-    logger.info(f"> Starting SyftBox Server {__version__}. Python {platform.python_version()}")
     if settings is None:
         settings = ServerSettings()
+
+    setup_logger(logs_folder=settings.logs_folder)
+
+    logger.info(f"> Starting SyftBox Server {__version__}. Python {platform.python_version()}")
     logger.info(settings)
 
     logger.info("> Creating Folders")
@@ -176,6 +182,7 @@ async def lifespan(app: FastAPI, settings: Optional[ServerSettings] = None):
 app = FastAPI(lifespan=lifespan)
 app.include_router(sync_router)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
+app.add_middleware(LoguruMiddleware)
 
 app.include_router(user_router)
 
@@ -281,11 +288,19 @@ async def browse_datasite(
                 with open(slug_path, "r") as file:
                     content = file.read()
                 return PlainTextResponse(content)
+            elif slug_path.endswith(".json") or slug_path.endswith(".jsonl"):
+                return FileResponse(slug_path, media_type="application/json")
+            elif slug_path.endswith(".yaml") or slug_path.endswith(".yml"):
+                return FileResponse(slug_path, media_type="application/x-yaml")
+            elif slug_path.endswith(".log") or slug_path.endswith(".txt"):
+                return FileResponse(slug_path, media_type="text/plain")
+            elif slug_path.endswith(".py"):
+                return FileResponse(slug_path, media_type="text/plain")
             else:
                 return FileResponse(slug_path, media_type="application/octet-stream")
 
         # show directory
-        if not path.endswith("/"):
+        if not path.endswith("/") and os.path.exists(path + "/") and os.path.isdir(path + "/"):
             return RedirectResponse(url=f"{path}/")
 
         index_file = os.path.abspath(slug_path + "/" + "index.html")
@@ -311,156 +326,19 @@ async def browse_datasite(
             )
             return html_content
         else:
-            return f"Bad Slug {slug}"
+            # return 404
+            message_404 = f"No file or directory found at /datasites/{datasite_part}{slug}"
+            return HTMLResponse(content=message_404, status_code=404)
 
     return f"No Datasite {datasite_part} exists"
 
-
-# @app.post("/write")
-# async def write(request: Request, server_settings: ServerSettings = Depends(get_server_settings)):
-#     try:
-#         data = await request.json()
-#         email = data["email"]
-#         change_dict = data["change"]
-#         change_dict["kind"] = FileChangeKind(change_dict["kind"])
-#         change = FileChange(**change_dict)
-
-#         change.sync_folder = os.path.abspath(str(server_settings.snapshot_folder))
-#         result = True
-#         accepted = True
-#         if change.newer():
-#             if change.kind_write:
-#                 if data.get("is_directory", False):
-#                     # Handle empty directory
-#                     os.makedirs(change.full_path, exist_ok=True)
-#                     result = True
-#                 else:
-#                     bin_data = strtobin(data["data"])
-#                     result = change.write(bin_data)
-#             elif change.kind_delete:
-#                 if change.hash_equal_or_none():
-#                     result = change.delete()
-#                 else:
-#                     print(f"> 🔥 {change.kind} hash doesnt match so ignore {change}")
-#                     accepted = False
-#             else:
-#                 raise Exception(f"Unknown type of change kind. {change.kind}")
-#         else:
-#             print(f"> 🔥 {change.kind} is older so ignore {change}")
-#             accepted = False
-
-#         if result:
-#             print(f"> {email} {change.kind}: {change.internal_path}")
-#             json_payload = {
-#                 "status": "success",
-#                 "change": change.to_dict(),
-#                 "accepted": accepted,
-#             }
-#             return JSONResponse(
-#                 json_payload,
-#                 status_code=200,
-#             )
-#         return JSONResponse(
-#             {"status": "error", "change": change.to_dict()},
-#             status_code=400,
-#         )
-#     except Exception as e:
-#         print("Exception writing", e)
-#         return JSONResponse(
-#             {"status": "error", "error": str(e)},
-#             status_code=400,
-#         )
+@app.post("/log_event")
+async def log_event(request: Request, email: Optional[str] = Header(default=None)):
+    data = await request.json()
+    log_analytics_event("/log_event", email, **data)
+    return JSONResponse({"status": "success"}, status_code=200)
 
 
-# @app.post("/read")
-# async def read(request: Request, server_settings: ServerSettings = Depends(get_server_settings)):
-#     data = await request.json()
-#     email = data["email"]
-#     change_dict = data["change"]
-#     change_dict["kind"] = FileChangeKind(change_dict["kind"])
-#     change = FileChange(**change_dict)
-#     change.sync_folder = os.path.abspath(str(server_settings.snapshot_folder))
-
-#     json_dict = {"change": change.to_dict()}
-
-#     if change.kind_write:
-#         if os.path.isdir(change.full_path):
-#             # Handle directory
-#             json_dict["is_directory"] = True
-#         else:
-#             # Handle file
-#             bin_data = change.read()
-#             json_dict["data"] = bintostr(bin_data)
-#     elif change.kind_delete:
-#         # Handle delete operation if needed
-#         pass
-#     else:
-#         raise Exception(f"Unknown type of change kind. {change.kind}")
-
-#     print(f"> {email} {change.kind}: {change.internal_path}")
-#     return JSONResponse({"status": "success"} | json_dict, status_code=200)
-
-
-# @app.post("/dir_state")
-# async def dir_state(request: Request, server_settings: ServerSettings = Depends(get_server_settings)):
-#     try:
-#         data = await request.json()
-#         email = data["email"]
-#         sub_path = data["sub_path"]
-#         snapshot_folder = str(server_settings.snapshot_folder)
-#         full_path = os.path.join(snapshot_folder, sub_path)
-#         remote_dir_state = hash_dir(snapshot_folder, sub_path)
-
-#         # get the top level perm file
-#         perm_tree = PermissionTree.from_path(full_path)
-
-#         # filter the read state for this user by the perm tree
-#         read_state = filter_read_state(email, remote_dir_state, perm_tree)
-#         remote_dir_state.tree = read_state
-
-#         response_json = {"sub_path": sub_path, "dir_state": remote_dir_state.to_dict()}
-#         if remote_dir_state:
-#             return JSONResponse({"status": "success"} | response_json, status_code=200)
-#         return JSONResponse({"status": "error"}, status_code=400)
-#     except Exception as e:
-#         print("Failed to run /dir_state", e)
-
-
-@app.get("/list_datasites")
-async def datasites(request: Request, server_settings: ServerSettings = Depends(get_server_settings)):
-    datasites = get_datasites(server_settings.snapshot_folder)
-    response_json = {"datasites": datasites}
-    if datasites:
-        return JSONResponse({"status": "success"} | response_json, status_code=200)
-    return JSONResponse({"status": "error"}, status_code=400)
-
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Run FastAPI server")
-    parser.add_argument(
-        "--port",
-        type=int,
-        default=5001,
-        help="Port to run the server on (default: 5001)",
-    )
-    parser.add_argument(
-        "--debug",
-        action="store_true",
-        help="Run the server in debug mode with hot reloading",
-    )
-
-    args = parser.parse_args()
-
-    uvicorn.run(
-        "syftbox.server.server:app" if args.debug else app,  # Use import string in debug mode
-        host="0.0.0.0",
-        port=args.port,
-        log_level="debug" if args.debug else "info",
-        reload=args.debug,  # Enable hot reloading only in debug mode
-    )
-
-
-if __name__ == "__main__":
-    main()
 @app.get("/install.sh")
 async def install():
     install_script = current_dir / "templates" / "install.sh"

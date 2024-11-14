@@ -78,7 +78,7 @@ def test_migration(mock_config):
         (mock_config.data_dir / dir).mkdir(parents=True)
     (mock_config.data_dir / ".syft" / "local_syncstate.json").touch()
 
-    run_migration(mock_config)
+    run_migration(mock_config, prompt_remove=False)
 
     # check new workspace
     assert (mock_config.data_dir / "apps").is_dir()

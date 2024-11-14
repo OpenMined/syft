@@ -125,8 +125,8 @@ def report(
     """Generate a report of the SyftBox client"""
     from datetime import datetime
 
+    from syftbox.client.logger import zip_logs
     from syftbox.lib.client_config import SyftClientConfig
-    from syftbox.lib.logger import zip_logs
 
     try:
         config = SyftClientConfig.load(config_path)

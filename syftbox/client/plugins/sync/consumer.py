@@ -12,9 +12,9 @@ from loguru import logger
 from pydantic import BaseModel
 
 from syftbox.client.base import SyftClientInterface
+from syftbox.client.exceptions import SyftServerError
 from syftbox.client.plugins.sync.constants import MAX_FILE_SIZE_MB
 from syftbox.client.plugins.sync.endpoints import (
-    SyftServerError,
     apply_diff,
     create,
     delete,
@@ -447,22 +447,29 @@ class SyncConsumer:
                 logger.error(f"Failed to sync file {item.data.path}, it will be retried in the next sync. Reason: {e}")
 
     def download_all_missing(self, datasite_states: list[DatasiteState]):
-        missing_files: list[Path] = []
-        for datasite_state in datasite_states:
-            for file in datasite_state.remote_state:
-                path = file.path
-                if not self.previous_state.states.get(path):
-                    missing_files.append(path)
-        missing_files = filter_ignored_paths(self.client.workspace.datasites, missing_files)
+        try:
+            missing_files: list[Path] = []
+            for datasite_state in datasite_states:
+                for file in datasite_state.remote_state:
+                    path = file.path
+                    if not self.previous_state.states.get(path):
+                        missing_files.append(path)
+            missing_files = filter_ignored_paths(self.client.workspace.datasites, missing_files)
 
-        logger.info(f"Downloading {len(missing_files)} files in batch")
-        received_files = create_local_batch(self.client, missing_files)
-        for path in received_files:
-            path = Path(path)
-            state = self.get_current_local_syncstate(path)
-            self.previous_state.insert(
-                path=path,
-                state=state,
+            logger.info(f"Downloading {len(missing_files)} files in batch")
+            received_files = create_local_batch(self.client, missing_files)
+            for path in received_files:
+                path = Path(path)
+                state = self.get_current_local_syncstate(path)
+                self.previous_state.insert(
+                    path=path,
+                    state=state,
+                )
+        except FatalSyncError as e:
+            raise e
+        except Exception as e:
+            logger.error(
+                f"Failed to download missing files, files will be downloaded individually instead. Reason: {e}"
             )
 
     def get_decisions(self, item: SyncQueueItem) -> SyncDecisionTuple:

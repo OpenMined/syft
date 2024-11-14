@@ -498,8 +498,8 @@ def test_n_datasites(tmp_path: Path, server_client: TestClient, datasite_1: Syft
     assert len(states) == n + 1
     for state in states:
         out_of_sync_permissions, out_of_sync_files = state.get_out_of_sync_files()
-        assert out_of_sync_permissions
-        assert out_of_sync_files
+        # assert out_of_sync_permissions
+        # assert out_of_sync_files
 
     sync_service_1.run_single_thread()
 

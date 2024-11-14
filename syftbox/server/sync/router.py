@@ -3,6 +3,7 @@ import hashlib
 import sqlite3
 import zipfile
 from io import BytesIO
+from typing import Optional
 
 import py_fast_rsync
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, UploadFile
@@ -10,6 +11,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from loguru import logger
 
 from syftbox.lib.lib import PermissionTree, SyftPermission, filter_metadata
+from syftbox.server.analytics import log_analytics_event, log_file_change_event
 from syftbox.server.settings import ServerSettings, get_server_settings
 from syftbox.server.sync.db import (
     get_all_datasites,
@@ -111,9 +113,16 @@ def dir_state(
 def get_metadata(
     req: FileMetadataRequest,
     file_store: FileStore = Depends(get_file_store),
+    email: Optional[str] = Header(default=None),
 ) -> FileMetadata:
     try:
-        return file_store.get_metadata(req.path_like)
+        metadata = file_store.get_metadata(req.path_like)
+        log_analytics_event(
+            "/sync/get_metadata",
+            email=email,
+            file_metadata=metadata,
+        )
+        return metadata
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -122,6 +131,7 @@ def get_metadata(
 def apply_diffs(
     req: ApplyDiffRequest,
     file_store: FileStore = Depends(get_file_store),
+    email: Optional[str] = Header(default=None),
 ) -> ApplyDiffResponse:
     try:
         file = file_store.get(req.path)
@@ -138,14 +148,30 @@ def apply_diffs(
         raise HTTPException(status_code=400, detail="invalid syftpermission contents, skipped writing")
 
     file_store.put(req.path, result)
+
+    log_file_change_event(
+        "/sync/apply_diff",
+        email=email,
+        relative_path=req.path,
+        file_store=file_store,
+    )
+
     return ApplyDiffResponse(path=req.path, current_hash=new_hash, previous_hash=file.metadata.hash)
 
 
 @router.post("/delete", response_class=JSONResponse)
 def delete_file(
     req: FileRequest,
+    email: Optional[str] = Header(default=None),
     file_store: FileStore = Depends(get_file_store),
 ) -> JSONResponse:
+    log_file_change_event(
+        "/sync/delete",
+        email=email,
+        relative_path=req.path,
+        file_store=file_store,
+    )
+
     file_store.delete(req.path)
     return JSONResponse(content={"status": "success"})
 
@@ -154,8 +180,8 @@ def delete_file(
 def create_file(
     file: UploadFile,
     file_store: FileStore = Depends(get_file_store),
+    email: str = Header(default=None),
 ) -> JSONResponse:
-    #
     relative_path = RelativePath(file.filename)
     if "%" in file.filename:
         raise HTTPException(status_code=400, detail="filename cannot contain '%'")
@@ -171,6 +197,13 @@ def create_file(
     file_store.put(
         relative_path,
         contents,
+    )
+
+    log_file_change_event(
+        "/sync/create",
+        email=email,
+        relative_path=relative_path,
+        file_store=file_store,
     )
     return JSONResponse(content={"status": "success"})
 
