@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import platform
 import shutil
@@ -9,11 +10,14 @@ import httpx
 import uvicorn
 from loguru import logger
 from pid import PidFile, PidFileAlreadyLockedError, PidFileAlreadyRunningError
+from rich.prompt import Confirm
 
+from syftbox.__version__ import __version__
 from syftbox.client.api import create_api
 from syftbox.client.base import SyftClientInterface
 from syftbox.client.env import syftbox_env
-from syftbox.client.exceptions import SyftBoxAlreadyRunning, SyftInitializationError
+from syftbox.client.exceptions import SyftBoxAlreadyRunning, SyftInitializationError, SyftServerError
+from syftbox.client.logger import setup_logger
 from syftbox.client.plugins.apps import AppRunner
 from syftbox.client.plugins.sync.manager import SyncManager
 from syftbox.client.utils import error_reporting, file_manager, macos
@@ -21,12 +25,12 @@ from syftbox.lib.client_config import SyftClientConfig
 from syftbox.lib.datasite import create_datasite
 from syftbox.lib.exceptions import SyftBoxException
 from syftbox.lib.ignore import IGNORE_FILENAME
-from syftbox.lib.logger import setup_logger
 from syftbox.lib.workspace import SyftWorkspace
 
 SCRIPT_DIR = Path(__file__).parent
 ASSETS_FOLDER = SCRIPT_DIR.parent / "assets"
 ICON_FOLDER = ASSETS_FOLDER / "icon"
+METADATA_FILENAME = ".metadata.json"
 
 
 class SyftClient:
@@ -106,6 +110,7 @@ class SyftClient:
             self.pid.create()
         except PidFileAlreadyLockedError:
             raise SyftBoxAlreadyRunning(f"Another instance of SyftBox is running on {self.config.data_dir}")
+        self.create_metadata_file()
 
         logger.info("Started SyftBox client")
 
@@ -118,6 +123,15 @@ class SyftClient:
         self.sync_manager.start()
         self.app_runner.start()
         return self.__run_local_server()
+
+    @property
+    def metadata_path(self) -> Path:
+        return self.workspace.data_dir / METADATA_FILENAME
+
+    def create_metadata_file(self) -> None:
+        metadata_json = self.config.model_dump(mode="json")
+        metadata_json["version"] = __version__
+        self.metadata_path.write_text(json.dumps(metadata_json, indent=2))
 
     def shutdown(self):
         if self.__local_server:
@@ -180,7 +194,13 @@ class SyftClient:
 
     def __register_email(self) -> str:
         # TODO - this should probably be wrapped in a SyftCacheServer API?
-        response = self.server_client.post("/register", json={"email": self.config.email})
+        payload = {
+            "email": self.config.email,
+            "password": self.config.password,
+            "firstName": "",
+            "lastName": "",
+        }
+        response = self.server_client.post("/users/register", json=payload)
         response.raise_for_status()
         return response.json().get("token")
 
@@ -237,8 +257,36 @@ class SyftClientContext(SyftClientInterface):
     def __repr__(self) -> str:
         return f"SyftClientContext<{self.config.email}, {self.config.data_dir}>"
 
+    def log_analytics_event(self, event_name: str, **kwargs) -> None:
+        """Log an event to the server"""
+        event_data = {
+            "event_name": event_name,
+            **kwargs,
+        }
 
-def run_migration(config: SyftClientConfig):
+        response = self.server_client.post("/log_event", headers={"email": self.email}, json=event_data)
+        if response.status_code != 200:
+            raise SyftServerError(f"Failed to log event: {response.text}")
+
+
+def has_old_syftbox_version(data_dir: Path) -> bool:
+    """True if the data_dir was created with an older version of SyftBox"""
+    metadata_file = data_dir / METADATA_FILENAME
+    if not metadata_file.exists():
+        return True
+    metadata = json.loads(metadata_file.read_text())
+    current_version = __version__
+    old_version = metadata.get("version", None)
+    return old_version != current_version
+
+
+def prompt_delete_old_data_dir(data_dir: Path) -> bool:
+    msg = f"[yellow]Found old SyftBox folder at {data_dir}.[/yellow]\n"
+    msg += "[yellow]Press Y to remove the old folder and download it from the server [bold](recommended)[/bold]. Press N to keep the old folder and migrate it.[/yellow]"
+    return Confirm.ask(msg)
+
+
+def run_migration(config: SyftClientConfig, prompt_remove=True):
     # first run config migration
     config.migrate()
 
@@ -249,6 +297,15 @@ def run_migration(config: SyftClientConfig):
     # data_dir == sync_folder
     old_sync_folder = new_ws.data_dir
     old_datasite_path = Path(old_sync_folder, config.email)
+
+    # Option 1: if outdated, completely remove the existing syftbox folder and start fresh
+    if new_ws.data_dir.exists():
+        if has_old_syftbox_version(new_ws.data_dir) and prompt_remove and prompt_delete_old_data_dir(new_ws.data_dir):
+            logger.info("Removing old syftbox folder")
+            shutil.rmtree(str(old_sync_folder))
+            return
+
+    # Option 2: if syftbox folder has old structure, migrate to new
     if old_datasite_path.exists():
         logger.info("Migrating to new datasite structure")
         new_ws.mkdirs()

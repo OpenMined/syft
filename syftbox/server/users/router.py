@@ -1,26 +1,21 @@
-import json
-from typing import Annotated, Any, List
+from typing import Any, List
 import fastapi
-from fastapi import Depends, HTTPException, Header, Request
+from fastapi import Depends
 from pydantic import BaseModel
-import requests
 
 from functools import lru_cache
-from syftbox.server.users.secret_constants import CLIENT_ID, CLIENT_SECRET, KEYCLOAK_REALM, KEYCLOAK_URL, ADMIN_UNAME, ADMIN_PASSWORD
+
+from syftbox.lib.keycloak import CLIENT_ID, CLIENT_SECRET, KEYCLOAK_REALM, KEYCLOAK_URL, create_user, get_admin_user, get_user_from_header, get_users, send_action_email, update_user
 
 user_router = fastapi.APIRouter(
     prefix="/users",
     tags=["users"],
 )
-from syftbox.server.users.secret_constants import CLIENT_ID, CLIENT_SECRET, KEYCLOAK_REALM, KEYCLOAK_URL
 import requests
-import time
 import json
 
-TOKEN_TIMEOUT = 3600
 
 
-@lru_cache()
 def get_token(username, password, ttl=None):
     del ttl
     data = {
@@ -56,9 +51,6 @@ def get_user_info(token: str):
     return content
 
 
-def get_ttl_hash(seconds=TOKEN_TIMEOUT):
-    """Return the same value withing `seconds` time period"""
-    return round(time.time() / seconds)
 
 def get_headers(token):
     return {
@@ -74,16 +66,6 @@ def reset_password(user_id, new_password, token):
     }
     resp = requests.put(f"{KEYCLOAK_URL}/realms/{KEYCLOAK_REALM}/users/{user_id}/reset-password", headers=get_headers(token), data=data)
     return resp
-
-def get_email_from_args(args):
-    if args.email:
-        email = args.email
-    else:
-        email = get_user_input("Login email: ")
-        if not validate_email(email):
-            raise Exception(f"Invalid email: {email}")
-    return email
-
 
 
 def create_keycloak_admin_token() -> str:
@@ -123,18 +105,6 @@ def send_action_email(user_id: str, actions: List[str]):
 
 
 
-def get_user_from_header(token: Annotated[str, Header()]):
-    user = get_user_info(token)
-    if user is None or not user['enabled']:
-        raise HTTPException(status_code=401, detail="User not found")
-    return user
-
-def get_admin_user(token: Annotated[str, Header()]):
-    user = get_user_from_header(token)
-    # check if the user is admin
-    if user['email'] == ADMIN_UNAME:
-        return user
-    raise HTTPException(status_code=403, detail="User not admin")
 
 
 def delete_user(user_id):
@@ -144,11 +114,7 @@ def delete_user(user_id):
     return resp
 
 
-@user_router.post('/test')
-async def test(
-    user: Any = Depends(get_user_from_header)
-) -> Any:
-    return user
+
 
 def remove_user_files(user):
     print(user['email'].split("@")[0])
@@ -187,9 +153,6 @@ async def register(
         return f'error user {email} not found after creation'
     print(f"> error? {resp.status_code} {resp.text} ")
     return resp
-
-def update_user(user_id, payload):
-    return requests.get(f"{KEYCLOAK_URL}/admin/realms/{KEYCLOAK_REALM}/users/{user_id}", headers=get_admin_headers(), data=json.dumps(payload))
 
 
 def ban_user(user):

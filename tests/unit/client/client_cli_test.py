@@ -49,6 +49,6 @@ def test_port_error(monkeypatch):
 
 
 def test_client_report(monkeypatch, tmp_path, mock_config):
-    monkeypatch.setattr("syftbox.lib.logger.zip_logs", lambda p, **kw: Path(str(p) + ".log"))
+    monkeypatch.setattr("syftbox.client.logger.zip_logs", lambda p, **kw: Path(str(p) + ".log"))
     result = runner.invoke(client_cli, ["report"])
     assert result.exit_code == 0

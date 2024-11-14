@@ -8,7 +8,7 @@ from venv import logger
 
 import psutil
 
-from syftbox import __version__
+from syftbox.__version__ import __version__
 from syftbox.app.manager import list_app
 from syftbox.lib.client_config import SyftClientConfig
 from syftbox.lib.types import PathLike

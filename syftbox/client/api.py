@@ -29,8 +29,10 @@ def create_api(client: SyftClientInterface) -> FastAPI:
         CORSMiddleware,
         allow_origins=[
             "http://localhost",
+            "http://localhost:5001",
             "http://localhost:8080",
             "http://localhost:8081",
+            "http://localhost:8083",
             "https://syftbox.openmined.org",
         ],  # Allow localhost on any port and specific domain
         allow_credentials=True,

@@ -54,6 +54,10 @@ class ServerSettings(BaseSettings):
         return self.data_folder / "snapshot"
 
     @property
+    def logs_folder(self) -> Path:
+        return self.data_folder / "logs"
+
+    @property
     def user_file_path(self) -> Path:
         return self.data_folder / "users.json"
 

@@ -9,8 +9,8 @@ import pytest
 from fastapi.testclient import TestClient
 from py_fast_rsync import signature
 
+from syftbox.client.exceptions import SyftServerError
 from syftbox.client.plugins.sync.endpoints import (
-    SyftServerError,
     apply_diff,
     download_bulk,
     get_datasite_states,

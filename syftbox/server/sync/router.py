@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from loguru import logger
 
 from syftbox.lib.lib import PermissionTree, SyftPermission, filter_metadata
+from syftbox.server.analytics import log_analytics_event, log_file_change_event
 from syftbox.server.settings import ServerSettings, get_server_settings
 from syftbox.server.sync.db import (
     get_all_datasites,
@@ -113,7 +114,13 @@ def get_metadata(
     email: str = Depends(get_current_user),
 ) -> FileMetadata:
     try:
-        return file_store.get_metadata(req.path_like)
+        metadata = file_store.get_metadata(req.path_like)
+        log_analytics_event(
+            "/sync/get_metadata",
+            email=email,
+            file_metadata=metadata,
+        )
+        return metadata
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -139,6 +146,14 @@ def apply_diffs(
         raise HTTPException(status_code=400, detail="invalid syftpermission contents, skipped writing")
 
     file_store.put(req.path, result)
+
+    log_file_change_event(
+        "/sync/apply_diff",
+        email=email,
+        relative_path=req.path,
+        file_store=file_store,
+    )
+
     return ApplyDiffResponse(path=req.path, current_hash=new_hash, previous_hash=file.metadata.hash)
 
 
@@ -148,6 +163,13 @@ def delete_file(
     file_store: FileStore = Depends(get_file_store),
     email: str = Depends(get_current_user),
 ) -> JSONResponse:
+    log_file_change_event(
+        "/sync/delete",
+        email=email,
+        relative_path=req.path,
+        file_store=file_store,
+    )
+
     file_store.delete(req.path)
     return JSONResponse(content={"status": "success"})
 
@@ -158,7 +180,6 @@ def create_file(
     file_store: FileStore = Depends(get_file_store),
     email: str = Depends(get_current_user),
 ) -> JSONResponse:
-    #
     relative_path = RelativePath(file.filename)
     if "%" in file.filename:
         raise HTTPException(status_code=400, detail="filename cannot contain '%'")
@@ -174,6 +195,13 @@ def create_file(
     file_store.put(
         relative_path,
         contents,
+    )
+
+    log_file_change_event(
+        "/sync/create",
+        email=email,
+        relative_path=relative_path,
+        file_store=file_store,
     )
     return JSONResponse(content={"status": "success"})
 

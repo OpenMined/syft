@@ -64,7 +64,6 @@ def server(
     """Run the SyftBox server"""
 
     if ctx.invoked_subcommand is not None:
-        # If a subcommand is being invoked, just return
         return
 
     # lazy import to improve CLI startup performance
