@@ -1693,6 +1693,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pyjwt"
+version = "2.9.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/fb/68/ce067f09fca4abeca8771fe667d89cc347d1e99da3e093112ac329c6020e/pyjwt-2.9.0.tar.gz", hash = "sha256:7e1e5b56cc735432a7369cbfa0efe50fa113ebecdc04ae6922deba8b84582d0c", size = 78825 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/79/84/0fdf9b18ba31d69877bd39c9cd6052b47f3761e9910c15de788e519f079f/PyJWT-2.9.0-py3-none-any.whl", hash = "sha256:3b02fb0f44517787776cf48f2ae25d8e14f300e6d7545a4315cee571a415e850", size = 22344 },
+]
+
+[[package]]
 name = "pytest"
 version = "8.3.3"
 source = { registry = "https://pypi.org/simple" }
@@ -2079,6 +2088,7 @@ dependencies = [
     { name = "py-fast-rsync" },
     { name = "pydantic", extra = ["email"] },
     { name = "pydantic-settings" },
+    { name = "pyjwt" },
     { name = "pytest" },
     { name = "python-multipart" },
     { name = "pyyaml" },
@@ -2093,6 +2103,7 @@ dependencies = [
 dev = [
     { name = "bump2version" },
     { name = "faker" },
+    { name = "httpx" },
     { name = "ipykernel" },
     { name = "locust" },
     { name = "pre-commit" },
@@ -2119,6 +2130,7 @@ requires-dist = [
     { name = "py-fast-rsync" },
     { name = "pydantic", extras = ["email"], specifier = ">=2.9.2" },
     { name = "pydantic-settings", specifier = ">=2.5.2" },
+    { name = "pyjwt", specifier = ">=2.9.0" },
     { name = "pytest", specifier = ">=8.3.3" },
     { name = "python-multipart", specifier = ">=0.0.12" },
     { name = "pyyaml", specifier = ">=6.0.2" },
@@ -2133,8 +2145,10 @@ requires-dist = [
 dev = [
     { name = "bump2version", specifier = ">=1.0.1" },
     { name = "faker", specifier = ">=30.3.0" },
+    { name = "httpx", specifier = ">=0.27.2" },
     { name = "ipykernel", specifier = ">=6.29.5" },
     { name = "locust", specifier = ">=2.32.0" },
+    { name = "pre-commit", specifier = ">=4.0.0" },
     { name = "pre-commit", specifier = ">=4.0.1" },
     { name = "pytest", specifier = ">=8.3.3" },
     { name = "pytest-cov", specifier = ">=5.0.0" },
