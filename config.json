@@ -1,1 +1,0 @@
-{"config_path": "/home/teo/OpenMined/syft/config.json", "sync_folder": "/home/teo/OpenMined/syft/client", "port": 8080, "email": "test_test_1@openmined.org", "token": 7768448604123773686, "server_url": "https://syftbox.openmined.org", "email_token": null, "autorun_plugins": ["init", "create_datasite", "sync", "apps"]}
