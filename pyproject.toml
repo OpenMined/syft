@@ -58,7 +58,6 @@ dev-dependencies = [
     "pytest-timeout>=2.3.1",
     "pytest-xdist[psutil]>=3.6.1",
     "pytest>=8.3.3",
-    "pre-commit>=4.0.0",
 ]
 
 [tool.setuptools]
