@@ -48,7 +48,7 @@ def setup_config_interactive(
             
         password = register_password() if register else login_password()
         
-        token = get_token(email, password, ttl=get_ttl_hash())
+        # token = get_token(email, password, ttl=get_ttl_hash())
 
         # create a new config with the input params
         conf = SyftClientConfig(
@@ -57,7 +57,7 @@ def setup_config_interactive(
             email=email,
             server_url=server,
             port=port,
-            token=token,
+            # token=token,
             password=password,
         )
     else:

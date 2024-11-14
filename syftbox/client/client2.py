@@ -24,6 +24,7 @@ from syftbox.lib.client_config import SyftClientConfig
 from syftbox.lib.datasite import create_datasite
 from syftbox.lib.exceptions import SyftBoxException
 from syftbox.lib.ignore import IGNORE_FILENAME
+from syftbox.lib.keycloak import get_token
 from syftbox.lib.workspace import SyftWorkspace
 
 SCRIPT_DIR = Path(__file__).parent
@@ -194,7 +195,8 @@ class SyftClient:
         }
         response = self.server_client.post("/users/register", json=payload)
         response.raise_for_status()
-        return response.json().get("token")
+        token = get_token(self.config.email, self.config.password)
+        return token
 
     def __enter__(self):
         return self
