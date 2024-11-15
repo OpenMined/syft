@@ -55,7 +55,17 @@ class SyftClient:
 
         self.workspace = SyftWorkspace(self.config.data_dir)
         self.pid = PidFile(pidname="syftbox.pid", piddir=self.workspace.data_dir)
-        self.server_client = httpx.Client(base_url=str(self.config.server_url), follow_redirects=True)
+
+        self.server_client = httpx.Client(
+            base_url=str(self.config.server_url),
+            follow_redirects=True,
+            # We are sending email along with the bearer token
+            # to support fallback to email based authentication in case of keycloak failure
+            # or local development without keycloak
+            # To configure the server to use bypass keycloak authentication
+            # set the environment variable SYFTBOX_NO_AUTH=1
+            headers={"email": self.config.email, "Authorization": f"Bearer {self.config.access_token}"},
+        )
 
         # kwargs for making customization/unit testing easier
         # this will be replaced with a sophisticated plugin system
@@ -86,7 +96,7 @@ class SyftClient:
     @property
     def is_registered(self) -> bool:
         """Check if the current user is registered with the server"""
-        return bool(self.config.token)
+        return bool(self.config.access_token)
 
     @property
     def datasite(self) -> Path:
@@ -157,11 +167,11 @@ class SyftClient:
         if self.is_registered:
             return
         try:
-            token = self.__register_email()
+            access_token = self.__register_email()
             # TODO + FIXME - once we have JWT, we should not store token in config!
             # ideally in OS keychain (using keyring) or
             # in a separate location under self.workspace.plugins
-            self.config.token = str(token)
+            self.config.access_token = access_token
             self.config.save()
             logger.info("Email registration successful")
         except Exception as e:
@@ -190,8 +200,8 @@ class SyftClient:
         payload = {
             "email": self.config.email,
             "password": self.config.password,
-            "firstName": '', 
-            "lastName": '',
+            "firstName": "",
+            "lastName": "",
         }
         response = self.server_client.post("/users/register", json=payload)
         response.raise_for_status()
@@ -341,6 +351,16 @@ def run_client(
 
     try:
         client = SyftClient(client_config, log_level=log_level)
+
+        # authentication check
+        response = client.server_client.post("/sync/datasites")
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Failed to authenticate with the server: {e}")
+            if response.status_code == 401:
+                logger.info("Please login to refresh your session.")
+
         # we don't want to run migration if another instance of client is already running
         bool(client.check_pidfile()) and run_migration(client_config)
         (not syftbox_env.DISABLE_ICONS) and client.copy_icons()

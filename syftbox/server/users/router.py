@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, List
 import fastapi
 from fastapi import Depends
 from pydantic import BaseModel
@@ -10,16 +10,6 @@ user_router = fastapi.APIRouter(
     prefix="/users",
     tags=["users"],
 )
-
-class RegisterResponse(BaseModel):
-    bearer_token: str
-
-
-@user_router.post('/test')
-async def test(
-    user: Any = Depends(get_user_from_header)
-) -> Any:
-    return user
 
 def remove_user_files(user):
     print(user['email'].split("@")[0])
@@ -73,7 +63,7 @@ def ban_user(user):
         "enabled": False
     }
     return update_user(user_id, payload)
-    
+
 @user_router.post('/ban')
 async def ban(
     email: str,

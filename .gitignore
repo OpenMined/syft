@@ -165,8 +165,8 @@ cython_debug/
 **/Thumbs.db
 
 # syft dirs
-/data/
-/users/
+data/
+users/
 .clients/
 .server/
 .e2e/
