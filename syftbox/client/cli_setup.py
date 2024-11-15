@@ -4,7 +4,7 @@ SyftBox CLI - Setup scripts
 
 from pathlib import Path
 
-from loguru import logger
+import requests
 from rich import print as rprint
 from rich.prompt import Confirm, Prompt
 
@@ -13,18 +13,23 @@ from syftbox.lib.constants import DEFAULT_DATA_DIR
 from syftbox.lib.exceptions import ClientConfigException
 from syftbox.lib.keycloak import get_token
 from syftbox.lib.validators import DIR_NOT_EMPTY, is_valid_dir, is_valid_email
+from syftbox.lib.keycloak import keycloak_reset_password
 
 __all__ = ["setup_config_interactive"]
 
 
+def user_exists(email, server) -> bool:
+    response = requests.get(f"{server}/users/check_user", params={'email': email})
+    print(response.text)
+    response.raise_for_status()
+    return response.text == "true"
+
 def setup_config_interactive(
-    config_path: Path,
-    email: str,
-    data_dir: Path,
-    server: str,
-    port: int,
-    register: bool,
-    reset_password: bool,
+    config_path: Path, 
+    email: str, 
+    data_dir: Path, 
+    server: str, 
+    port: int, 
 ) -> SyftClientConfig:
     """Setup the client configuration interactively. Called from CLI"""
 
@@ -39,6 +44,8 @@ def setup_config_interactive(
     except ClientConfigException:
         pass
 
+    register = not user_exists(email, server)
+    print("register: ", register)
     if not conf:
         # first time setup
         if not data_dir or data_dir == DEFAULT_DATA_DIR:
@@ -69,19 +76,20 @@ def setup_config_interactive(
             conf.set_server_url(server)
         if port != conf.client_url.port:
             conf.set_port(port)
-
-    if reset_password:
-        if register:
-            rprint("You cannot register and reset password at the same time!")
-            exit()
-        else:
-            new_password = register_password()
-            resp = reset_password(conf.user_id, new_password, conf.access_token)
-            if resp.status_code == 204:
-                rprint("[bold]Password reset succesful![/bold]")
-            else:
-                rprint("[bold red]An error occured![/bold red] '{resp.text}'")
-                exit()
+            
+    # if reset_password:
+    #     # infer this through the api
+    #     if True:
+    #         rprint("You cannot register and reset password at the same time!")
+    #         exit()
+    #     else:
+    #         new_password = register_password()
+    #         resp = keycloak_reset_password(conf.user_id, new_password, conf.token)
+    #         if resp.status_code == 204:
+    #             rprint("[bold]Password reset succesful![/bold]")
+    #         else:
+    #             rprint("[bold red]An error occured![/bold red] '{resp.text}'")
+    #             exit()
 
     # DO NOT SAVE THE CONFIG HERE.
     # We don't know if the client will accept the config yet
@@ -130,4 +138,4 @@ def register_password() -> str:
 
 
 def login_password() -> str:
-    return Prompt.ask("[bold]Password:[/bold]")
+    return Prompt.ask("[bold]Password[/bold]")

@@ -89,8 +89,6 @@ def client(
     port: Annotated[int, PORT_OPTS] = DEFAULT_PORT,
     open_dir: Annotated[bool, OPEN_OPTS] = True,
     verbose: Annotated[bool, VERBOSE_OPTS] = False,
-    register: Annotated[bool, REGISTER_OPTS] = False,
-    reset_password: Annotated[bool, RESET_PASS_OPTS] = False
 ):
     """Run the SyftBox client"""
 
@@ -111,7 +109,7 @@ def client(
         rprint(f"[bold red]Error:[/bold red] Client cannot start because port {port} is already in use!")
         raise Exit(1)
 
-    client_config = setup_config_interactive(config_path, email, data_dir, server, port, register, reset_password)
+    client_config = setup_config_interactive(config_path, email, data_dir, server, port)
     log_level = "DEBUG" if verbose else "INFO"
     code = run_client(client_config=client_config, open_dir=open_dir, log_level=log_level)
     raise Exit(code)

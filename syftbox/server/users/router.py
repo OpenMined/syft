@@ -12,12 +12,12 @@ from syftbox.server.sync.file_store import FileStore
 from syftbox.server.sync.router import get_file_store
 from syftbox.server.users.auth2 import User, UserManager, UserNotFoundError, get_user_manager
 
+from syftbox.lib.keycloak import create_user, get_admin_user, get_user_by_email, get_user_from_header, get_users, send_action_email, update_user
+
 user_router = fastapi.APIRouter(
     prefix="/users",
     tags=["users"],
 )
-
-
 
 
 def get_headers(token):
@@ -75,6 +75,19 @@ def register(
     return access_token
 
 
+@user_router.get("/check_user")
+async def check_user(email: str) -> bool:
+    user = get_user_by_email(email)
+    if len(user) > 0:
+        return True
+    return False
+
+def ban_user(user):
+    user_id = user['id']
+    payload = {
+        "enabled": False
+    }
+    return update_user(user_id, payload)
 
 @user_router.post('/ban')
 def ban(

@@ -10,10 +10,14 @@ TOKEN_TIMEOUT = 3600
 # CLIENT_ID = "syftbox"
 # CLIENT_SECRET = "uyOaMdYsEtDfoNxKQ1jIT0CuP1EJa0J8"
 CLIENT_ID = "syftbox"
-CLIENT_SECRET = "lkmr29tXVE5I1jHuv5ia1xEZk1ewAbgd"
+# CLIENT_SECRET = "uyOaMdYsEtDfoNxKQ1jIT0CuP1EJa0J8"
+# CLIENT_SECRET = "lkmr29tXVE5I1jHuv5ia1xEZk1ewAbgd"
+CLIENT_SECRET = "4mfuPQzalMXRouwcCsTbXdO0iqIwCJd5"
 ADMIN_UNAME = "info@openmined.org"
 ADMIN_PASSWORD = "changethis"
-KEYCLOAK_URL = "http://20.56.213.46:8080"
+
+KEYCLOAK_URL = "https://auth.syftbox.openmined.org"
+# KEYCLOAK_URL = "http://20.56.213.46:8080"
 KEYCLOAK_REALM = "master"
 
 
@@ -54,7 +58,7 @@ def get_headers(token):
     return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
 
-def reset_password(user_id, new_password, token):
+def keycloak_reset_password(user_id, new_password, token):
     data = {"type": "password", "temporary": False, "value": new_password}
     resp = requests.put(
         f"{KEYCLOAK_URL}/realms/{KEYCLOAK_REALM}/users/{user_id}/reset-password", headers=get_headers(token), data=data
@@ -115,3 +119,11 @@ def update_user(user_id, payload):
         headers=get_admin_headers(),
         data=json.dumps(payload),
     )
+
+
+def get_user_by_email(email):
+    response = requests.get(
+        f"{KEYCLOAK_URL}/admin/realms/{KEYCLOAK_REALM}/users/", headers=get_admin_headers(), params={"email": email}
+    )
+    response.raise_for_status()
+    return response.json()
