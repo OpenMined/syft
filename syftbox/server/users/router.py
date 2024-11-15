@@ -12,7 +12,7 @@ from syftbox.server.sync.file_store import FileStore
 from syftbox.server.sync.router import get_file_store
 from syftbox.server.users.auth2 import User, UserManager, UserNotFoundError, get_user_manager
 
-from syftbox.lib.keycloak import create_user, get_admin_user, get_user_by_email, get_user_from_header, get_users, send_action_email, update_user
+from syftbox.lib.keycloak import get_admin_user, get_user_by_email, get_user_from_header, get_users, send_action_email, update_user
 
 user_router = fastapi.APIRouter(
     prefix="/users",
