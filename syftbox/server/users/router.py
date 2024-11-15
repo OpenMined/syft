@@ -8,6 +8,8 @@ import json
 
 from syftbox.lib.keycloak import ADMIN_PASSWORD, ADMIN_UNAME, CLIENT_ID, CLIENT_SECRET, KEYCLOAK_REALM, KEYCLOAK_URL, send_action_email, update_user
 from syftbox.server.settings import ServerSettings, get_server_settings
+from syftbox.server.sync.file_store import FileStore
+from syftbox.server.sync.router import get_file_store
 from syftbox.server.users.auth2 import User, UserManager, UserNotFoundError, get_user_manager
 
 user_router = fastapi.APIRouter(
@@ -106,7 +108,8 @@ def unban(
 @user_router.post('/delete')
 def delete(
     email_to_delete: str,
-    user_manager: UserManager = Depends(get_user_manager)
+    user_manager: UserManager = Depends(get_user_manager),
+    file_store: FileStore = Depends(get_file_store)
 ):
     try:
         user = user_manager.get_details(email_to_delete)
@@ -115,6 +118,12 @@ def delete(
         return {"status": "error", "message": e.response.json()}
     except UserNotFoundError:
         return {"status": "error", "message": "User not found"}
+
+    # NOTE: Deleting too many files at once can cause a request timeout
+    # better to delete files in batches
+    files = file_store.list(user.email)
+    for file in files:
+        file_store.delete(file)
     return {"status": f"User {email_to_delete} deleted"}
 
 @user_router.post('/login')
