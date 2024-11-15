@@ -22,7 +22,7 @@ from loguru import logger
 from typing_extensions import Any, Union
 
 from syftbox.__version__ import __version__
-from syftbox.lib.keycloak import CLIENT_ID, KEYCLOAK_REALM, KEYCLOAK_URL
+from syftbox.lib.keycloak import CLIENT_ID, KEYCLOAK_REALM, KEYCLOAK_URL, create_keycloak_admin_token
 from syftbox.lib.lib import (
     Jsonable,
     get_datasites,
@@ -34,7 +34,7 @@ from syftbox.server.settings import ServerSettings, get_server_settings
 
 from .sync import db, hash
 from .sync.router import router as sync_router
-from .users.router import create_keycloak_admin_token, user_router
+from .users.router import user_router
 
 current_dir = Path(__file__).parent
 
