@@ -108,6 +108,16 @@ class UserManager:
         resp = self.client.put(f"/admin/realms/{self.realm}/users/{user.id}", json={"enabled": False})
         resp.raise_for_status()
 
+    def unban_user(self, user: KeycloakUser):
+        """Raises HTTPError if user is not found or if there is an error"""
+        resp = self.client.put(f"/admin/realms/{self.realm}/users/{user.id}", json={"enabled": True})
+        resp.raise_for_status()
+
+    def delete_user(self, user: KeycloakUser):
+        """Raises HTTPError if user is not found or if there is an error"""
+        resp = self.client.delete(f"/admin/realms/{self.realm}/users/{user.id}")
+        resp.raise_for_status()
+
     def send_action_email(self, user_id: str, actions: List[str]):
         resp = self.client.put(
                 f"/admin/realms/{self.realm}/users/{user_id}/execute-actions-email?client_id={CLIENT_ID}",

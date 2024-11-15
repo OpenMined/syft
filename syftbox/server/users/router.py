@@ -89,6 +89,34 @@ def ban(
     # TODO remove user files
     return {"status": f"User {email_to_ban} banned"}
 
+@user_router.post('/unban')
+def unban(
+    email_to_unban: str,
+    user_manager: UserManager = Depends(get_user_manager)
+):
+    try:
+        user = user_manager.get_details(email_to_unban)
+        user_manager.unban_user(user)
+    except httpx.HTTPStatusError as e:
+        return {"status": "error", "message": e.response.json()}
+    except UserNotFoundError:
+        return {"status": "error", "message": "User not found"}
+    return {"status": f"User {email_to_unban} unbanned"}
+
+@user_router.post('/delete')
+def delete(
+    email_to_delete: str,
+    user_manager: UserManager = Depends(get_user_manager)
+):
+    try:
+        user = user_manager.get_details(email_to_delete)
+        user_manager.delete_user(user)
+    except httpx.HTTPStatusError as e:
+        return {"status": "error", "message": e.response.json()}
+    except UserNotFoundError:
+        return {"status": "error", "message": "User not found"}
+    return {"status": f"User {email_to_delete} deleted"}
+
 @user_router.post('/login')
 def login(
     user: User,
