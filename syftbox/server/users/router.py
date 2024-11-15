@@ -4,7 +4,7 @@ from fastapi import Depends
 from pydantic import BaseModel
 
 
-from syftbox.lib.keycloak import create_user, get_admin_user, get_user_from_header, get_users, send_action_email, update_user
+from syftbox.lib.keycloak import create_user, get_admin_user, get_user_by_email, get_user_from_header, get_users, send_action_email, update_user
 
 user_router = fastapi.APIRouter(
     prefix="/users",
@@ -59,6 +59,13 @@ async def register(
     print(f"> error? {resp.status_code} {resp.text} ")
     return resp
 
+
+@user_router.get("/check_user")
+async def check_user(email: str) -> bool:
+    user = get_user_by_email(email)
+    if len(user) > 0:
+        return True
+    return False
 
 def ban_user(user):
     user_id = user['id']
