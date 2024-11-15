@@ -13,23 +13,23 @@ from syftbox.lib.constants import DEFAULT_DATA_DIR
 from syftbox.lib.exceptions import ClientConfigException
 from syftbox.lib.keycloak import get_token
 from syftbox.lib.validators import DIR_NOT_EMPTY, is_valid_dir, is_valid_email
-from syftbox.lib.keycloak import keycloak_reset_password
 
 __all__ = ["setup_config_interactive"]
 
 
 def user_exists(email, server) -> bool:
-    response = requests.get(f"{server}/users/check_user", params={'email': email})
+    response = requests.get(f"{server}/users/check_user", params={"email": email})
     print(response.text)
     response.raise_for_status()
     return response.text == "true"
 
+
 def setup_config_interactive(
-    config_path: Path, 
-    email: str, 
-    data_dir: Path, 
-    server: str, 
-    port: int, 
+    config_path: Path,
+    email: str,
+    data_dir: Path,
+    server: str,
+    port: int,
 ) -> SyftClientConfig:
     """Setup the client configuration interactively. Called from CLI"""
 
@@ -56,7 +56,7 @@ def setup_config_interactive(
 
         password = register_password() if register else login_password()
 
-        access_token = get_token(email, password)
+        # access_token = get_token(email, password)
 
         # create a new config with the input params
         conf = SyftClientConfig(
@@ -65,18 +65,19 @@ def setup_config_interactive(
             email=email,
             server_url=server,
             port=port,
-            access_token=access_token,
+            password=password,
+            # access_token=access_token,
         )
     else:
         if conf.access_token is None:
-            logger.info("No access token found in the config. Please login again.")
+            # logger.info("No access token found in the config. Please login again.")
             pwd = login_password()
             conf.access_token = get_token(conf.email, pwd)
         if server and server != conf.server_url:
             conf.set_server_url(server)
         if port != conf.client_url.port:
             conf.set_port(port)
-            
+
     # if reset_password:
     #     # infer this through the api
     #     if True:
