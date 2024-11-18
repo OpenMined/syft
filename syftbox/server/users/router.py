@@ -32,24 +32,11 @@ async def register(
     lastName = user.lastName
     password = user.password
     resp = create_user(email=email, firstName=firstName, lastName=lastName, password=password)
-    print(resp, type(resp))
-    if resp.status_code in [200, 201]:
-        # Keycloak does not return the id of the user just created, currently
-        # iterating through all the users and check the username
-        users = get_users()
-        print(users)
-        if isinstance(users, str):
-            return users
-        for user in users:
-            if user['username'] == email:
-                user_id = user['id']
-                actions = ["VERIFY_EMAIL"]
-                resp = send_action_email(user_id=user_id, actions=actions)
-                print(resp.status_code, resp.text)
-                return "Email sent!"
-        return f'error user {email} not found after creation'
-    print(f"> error? {resp.status_code} {resp.text} ")
-    return resp
+    resp.raise_for_status()
+    user = get_user_by_email(email)
+    actions = ["VERIFY_EMAIL"]
+    resp = send_action_email(user_id=user["user_id"], actions=actions)
+    return "Email sent!"
 
 
 @user_router.get("/check_user")

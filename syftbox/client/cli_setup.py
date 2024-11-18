@@ -53,23 +53,6 @@ def setup_config_interactive(
         if not email:
             email = prompt_email()
 
-        if register:
-            password = register_password()
-
-            # access_token = get_token(email, password)
-            payload = {
-                "email": email,
-                "password": password,
-                "firstName": "",
-                "lastName": "",
-            }
-            response = requests.post(f"{server}/users/register", json=payload)
-            response.raise_for_status()
-            access_token = get_token(email, password)
-        else:
-            password = login_password()
-            access_token = get_token(email, password)
-
         # create a new config with the input params
         conf = SyftClientConfig(
             path=config_path,
@@ -77,7 +60,6 @@ def setup_config_interactive(
             email=email,
             server_url=server,
             port=port,
-            access_token=access_token
         )
     else:
         if server and server != conf.server_url:
@@ -88,7 +70,16 @@ def setup_config_interactive(
     if conf.access_token is None:
         register = not user_exists(email, server)
         pwd = register_password() if register else login_password()
-        conf.access_token = get_token(conf.email, pwd)
+        if register:
+            payload = {
+                "email": email,
+                "password": pwd,
+                "firstName": "",
+                "lastName": "",
+            }
+            response = requests.post(f"{server}/users/register", json=payload)
+            response.raise_for_status()
+        conf.access_token = get_token(email, pwd)
 
     while True:
         response = httpx.post(
