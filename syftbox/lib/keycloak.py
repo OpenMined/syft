@@ -28,6 +28,7 @@ def get_token(username, password):
         "username": username,
         "password": password,
         "grant_type": "password",
+        "scope": "openid"
     }
 
     resp = requests.post(f"{KEYCLOAK_URL}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/token", data=data)
