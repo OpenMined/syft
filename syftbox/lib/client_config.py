@@ -55,14 +55,14 @@ class SyftClientConfig(BaseModel):
     )
     """Depracated: Use access_token instead. API token for the user"""
 
-    access_token: str = Field(default=None, description="Access token for the user")
+    access_token: Optional[str] = Field(default=None, description="Access token for the user")
     """Access token for the user"""
 
     # WARN: we don't need `path` to be serialized, hence exclude=True
     path: Path = Field(exclude=True, description="Path to the config file")
     """Path to the config file"""
 
-    password: str = Field(description="Password for the user")
+    password: Optional[str] = Field(default=None, description="Password for the user")
 
     @field_validator("client_url", mode="before")
     def port_to_url(cls, val):

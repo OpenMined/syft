@@ -1,10 +1,12 @@
 from typing import Any, List
 import fastapi
 from fastapi import Depends
+import httpx
 from pydantic import BaseModel
 
 
-from syftbox.lib.keycloak import create_user, get_admin_user, get_user_by_email, get_user_from_header, get_users, send_action_email, update_user
+from syftbox.lib.keycloak import CLIENT_ID, CLIENT_SECRET, create_user, get_admin_user, get_user_by_email, get_user_from_header, get_users, send_action_email, update_user
+from syftbox.server.settings import ServerSettings, get_server_settings
 
 user_router = fastapi.APIRouter(
     prefix="/users",
@@ -80,3 +82,22 @@ async def ban(
             remove_user_files(user)
             return "User Banned"
     return "User Not Found"
+
+@user_router.post('/token')
+def get_token(username: str, password: str, server_settings: ServerSettings = Depends(get_server_settings)) -> str:
+    # read from server settings
+    data = {
+        "client_id": CLIENT_ID,
+        "client_secret": CLIENT_SECRET,
+        "username": username,
+        "password": password,
+        "grant_type": "password",
+        "scope": "openid",
+    }
+
+    resp = httpx.post(f"{server_settings.keycloak_url}/realms/{server_settings.keycloak_realm}/protocol/openid-connect/token", data=data)
+    if resp.status_code == 200:
+        token = resp.json()["access_token"]
+        return token
+    else:
+        raise Exception(f"Token request returned code {resp.status_code} with message {resp.text}")

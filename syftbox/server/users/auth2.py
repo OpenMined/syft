@@ -52,11 +52,11 @@ class UserManager:
 
         user_info = KeycloakUserInfoResponse(**resp.json())
 
-        if not user_info.email_verified:
-            # If email is not verified, we give user 24 hours to verify it
-            user_details = self.get_details(user_info.email)
-            if not user_details.is_new():
-                raise AuthenticationError("Email not verified")
+        # if not user_info.email_verified:
+        #     # If email is not verified, we give user 24 hours to verify it
+        #     user_details = self.get_details(user_info.email)
+        #     if not user_details.is_new():
+        #         raise AuthenticationError("Email not verified")
 
         return user_info
 
