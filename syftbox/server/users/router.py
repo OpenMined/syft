@@ -4,7 +4,7 @@ from fastapi import Depends
 from pydantic import BaseModel
 
 
-from syftbox.lib.keycloak import create_user, get_admin_user, get_user_by_email, get_user_from_header, get_users, send_action_email, update_user
+from syftbox.lib.keycloak import create_user, get_admin_user, get_user_by_email, get_user_from_header, get_users, send_action_email, send_reset_password_email, update_user
 
 user_router = fastapi.APIRouter(
     prefix="/users",
@@ -41,7 +41,7 @@ async def register(
         for user in users:
             if user['username'] == email:
                 user_id = user['id']
-                actions = ["UPDATE_PASSWORD"]
+                actions = ["VERIFY_EMAIL"]
                 resp = send_action_email(user_id=user_id, actions=actions)
                 print(resp.status_code, resp.text)
                 return "Email sent!"
@@ -56,6 +56,10 @@ async def check_user(email: str) -> bool:
     if len(user) > 0:
         return True
     return False
+
+@user_router.post("/reset_password_email")
+async def reset_password(email: str) -> str:
+    return send_reset_password_email(email=email).text
 
 def ban_user(user):
     user_id = user['id']

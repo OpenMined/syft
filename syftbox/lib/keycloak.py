@@ -59,16 +59,6 @@ def get_headers(token):
     return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
 
-def keycloak_reset_password(user_id, new_password, token):
-    data = {
-        "type": "password", 
-        "temporary": False, 
-        "value": new_password 
-    }
-    resp = requests.put(f"{KEYCLOAK_URL}/realms/{KEYCLOAK_REALM}/users/{user_id}/reset-password", headers=get_headers(token), data=data)
-    return resp
-
-
 def create_keycloak_admin_token() -> str:
     return get_token(ADMIN_UNAME, ADMIN_PASSWORD)
 
@@ -100,6 +90,13 @@ def send_action_email(user_id: str, actions: List[str]):
         data=json.dumps(actions),
     )
 
+def send_reset_password_email(email: str):
+    users = get_user_by_email(email)
+    if len(users) == 0:
+        raise HTTPException(status_code=401, detail="User not found")
+    user_id = users[0]['id']
+    actions = ["UPDATE_PASSWORD"]
+    return send_action_email(user_id=user_id, actions=actions)
 
 def get_users():
     resp = requests.get(f"{KEYCLOAK_URL}/admin/realms/{KEYCLOAK_REALM}/users/", headers=get_admin_headers())

@@ -1,5 +1,6 @@
 from pathlib import Path
 
+import requests
 from rich import print as rprint
 from typer import Context, Exit, Option, Typer
 from typing_extensions import Annotated
@@ -113,6 +114,26 @@ def client(
     log_level = "DEBUG" if verbose else "INFO"
     code = run_client(client_config=client_config, open_dir=open_dir, log_level=log_level)
     raise Exit(code)
+
+
+def server_reset_password(email, server):
+    response = requests.post(f'{server}/users/reset_password_email', params={'email': email})
+    return response
+
+@app.command()
+def reset_password(
+    email: Annotated[str, EMAIL_OPTS] = None,
+    server: Annotated[str, SERVER_OPTS] = DEFAULT_SERVER_URL,
+):
+    from syftbox.client.cli_setup import prompt_email
+    if email is None:
+        email = prompt_email()
+    
+    resp = server_reset_password(email=email, server=server)
+    if resp.status_code == 200:
+        rprint("[bold]Email for password reset sent![/bold]")
+    else:
+        rprint(f"[red]Error[/red]: {resp.text}")
 
 
 @app.command()

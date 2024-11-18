@@ -119,7 +119,7 @@ class SyftClient:
 
         self.config.save()  # commit config changes (like migration) to disk after PID is created
         self.workspace.mkdirs()  # create the workspace directories
-        self.register_self()  # register the email with the server
+        # self.register_self()  # register the email with the server
         self.init_datasite()  # init the datasite on local machine
 
         # start plugins/components

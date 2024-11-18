@@ -62,8 +62,6 @@ class SyftClientConfig(BaseModel):
     path: Path = Field(exclude=True, description="Path to the config file")
     """Path to the config file"""
 
-    password: str = Field(description="Password for the user")
-
     @field_validator("client_url", mode="before")
     def port_to_url(cls, val):
         if isinstance(val, int):

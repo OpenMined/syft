@@ -42,10 +42,9 @@ run-server port="5001" uvicorn_args="":
 # ---------------------------------------------------------------------------------------------------------------------
 
 # # Reset password
-# [group('client')]
-# reset-password email
-
-
+[group('client')]
+reset-password email server="https://syftbox.openmined.org"
+    uv run syftbox/client/cli.py reset-password -e email --server={{ server }}
 
 # ---------------------------------------------------------------------------------------------------------------------
 
