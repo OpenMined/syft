@@ -1,6 +1,6 @@
 from typing import Any, List
 import fastapi
-from fastapi import Depends
+from fastapi import Depends, HTTPException
 import httpx
 from pydantic import BaseModel
 
@@ -33,9 +33,12 @@ async def register(
     password = user.password
     resp = create_user(email=email, firstName=firstName, lastName=lastName, password=password)
     resp.raise_for_status()
-    user = get_user_by_email(email)
+    users = get_user_by_email(email)
+    if len(users) == 0:
+        raise HTTPException(status_code=500, detail="Something went wrong during registration.")
+    user = users[0]
     actions = ["VERIFY_EMAIL"]
-    resp = send_action_email(user_id=user["user_id"], actions=actions)
+    resp = send_action_email(user_id=user["id"], actions=actions)
     return "Email sent!"
 
 
