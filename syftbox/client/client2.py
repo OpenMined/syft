@@ -320,16 +320,6 @@ def run_client(
 
     try:
         client = SyftClient(client_config, log_level=log_level)
-
-        # authentication check
-        response = client.server_client.post("/sync/datasites")
-        try:
-            response.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            logger.error(f"Failed to authenticate with the server: {e}")
-            if response.status_code == 401:
-                logger.info("Please login to refresh your session.")
-
         # we don't want to run migration if another instance of client is already running
         bool(client.check_pidfile()) and run_migration(client_config)
         (not syftbox_env.DISABLE_ICONS) and client.copy_icons()

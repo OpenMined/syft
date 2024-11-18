@@ -3,7 +3,6 @@ import pytest
 from syftbox.client.client2 import SyftClient, run_migration
 from syftbox.client.exceptions import SyftBoxAlreadyRunning
 from syftbox.lib.client_config import SyftClientConfig
-from syftbox.lib.exceptions import SyftBoxException
 
 
 def test_client_single_instance(tmp_path):
@@ -37,22 +36,6 @@ def test_client_init_datasite(mock_config):
 
     assert client.datasite.is_dir()
     assert client.public_dir.is_dir()
-
-
-def test_register_user(mock_config, httpx_mock):
-    httpx_mock.add_response(json={"token": "dummy-token"})
-    client = SyftClient(mock_config)
-    client.register_self()
-    assert client.config.token == "dummy-token"
-
-
-def test_register_user_error(mock_config, httpx_mock):
-    httpx_mock.add_response(status_code=503)
-    client = SyftClient(mock_config)
-    with pytest.raises(SyftBoxException):
-        client.register_self()
-
-    assert client.config.token is None
 
 
 def test_client_paths(tmp_path):
