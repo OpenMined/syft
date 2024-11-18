@@ -7,6 +7,7 @@ from fastapi import Depends, HTTPException, Header, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 import httpx
 
+from syftbox.lib.keycloak import get_admin_headers
 from syftbox.server.settings import ServerSettings, get_server_settings
 
 class AuthenticationError(Exception):
@@ -61,10 +62,7 @@ class UserManager:
         return user_info
 
     def get_details(self, email: str) -> KeycloakUserRepresentation:
-        headers = {
-            'Authorization': f'Bearer {self.server_settings.keycloak_admin_token}',
-            'Content-Type': 'application/json'
-        }
+        headers = get_admin_headers()
         resp = httpx.get(f"{self.server_settings.keycloak_url}/admin/realms/master/users", headers=headers, params={"email": email})
         resp.raise_for_status()
         data = resp.json()

@@ -22,9 +22,7 @@ from syftbox.client.plugins.sync.manager import SyncManager
 from syftbox.client.utils import error_reporting, file_manager, macos
 from syftbox.lib.client_config import SyftClientConfig
 from syftbox.lib.datasite import create_datasite
-from syftbox.lib.exceptions import SyftBoxException
 from syftbox.lib.ignore import IGNORE_FILENAME
-from syftbox.lib.keycloak import get_token
 from syftbox.lib.workspace import SyftWorkspace
 
 SCRIPT_DIR = Path(__file__).parent
@@ -119,7 +117,6 @@ class SyftClient:
 
         self.config.save()  # commit config changes (like migration) to disk after PID is created
         self.workspace.mkdirs()  # create the workspace directories
-        # self.register_self()  # register the email with the server
         self.init_datasite()  # init the datasite on local machine
 
         # start plugins/components
@@ -162,21 +159,6 @@ class SyftClient:
             return
         create_datasite(self.workspace.datasites, self.config.email)
 
-    def register_self(self):
-        """Register the user's email with the SyftBox cache server"""
-        if self.is_registered:
-            return
-        try:
-            access_token = self.__register_email()
-            # TODO + FIXME - once we have JWT, we should not store token in config!
-            # ideally in OS keychain (using keyring) or
-            # in a separate location under self.workspace.plugins
-            self.config.access_token = access_token
-            self.config.save()
-            logger.info("Email registration successful")
-        except Exception as e:
-            raise SyftBoxException(f"Failed to register with the server - {e}") from e
-
     @lru_cache(1)
     def as_context(self) -> "SyftClientContext":
         """Return a implementation of SyftClientInterface to be injected into sub-systems"""
@@ -194,19 +176,6 @@ class SyftClient:
             )
         )
         return self.__local_server.run()
-
-    def __register_email(self) -> str:
-        # TODO - this should probably be wrapped in a SyftCacheServer API?
-        payload = {
-            "email": self.config.email,
-            "password": self.config.password,
-            "firstName": "",
-            "lastName": "",
-        }
-        response = self.server_client.post("/users/register", json=payload)
-        response.raise_for_status()
-        token = get_token(self.config.email, self.config.password)
-        return token
 
     def __enter__(self):
         return self
@@ -351,16 +320,6 @@ def run_client(
 
     try:
         client = SyftClient(client_config, log_level=log_level)
-
-        # authentication check
-        response = client.server_client.post("/sync/datasites")
-        try:
-            response.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            logger.error(f"Failed to authenticate with the server: {e}")
-            if response.status_code == 401:
-                logger.info("Please login to refresh your session.")
-
         # we don't want to run migration if another instance of client is already running
         bool(client.check_pidfile()) and run_migration(client_config)
         (not syftbox_env.DISABLE_ICONS) and client.copy_icons()

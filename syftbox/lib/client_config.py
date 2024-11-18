@@ -55,7 +55,7 @@ class SyftClientConfig(BaseModel):
     )
     """Depracated: Use access_token instead. API token for the user"""
 
-    access_token: str = Field(default=None, description="Access token for the user")
+    access_token: Optional[str] = Field(default=None, description="Access token for the user")
     """Access token for the user"""
 
     # WARN: we don't need `path` to be serialized, hence exclude=True

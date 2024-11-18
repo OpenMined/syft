@@ -21,7 +21,9 @@ class ServerSettings(BaseSettings):
 
     no_auth: bool = False
     """If True, server will **not** require authentication!"""
-    keycloak_url: str = "http://20.56.213.46:8080"
+    keycloak_url: str = "https://auth.syftbox.openmined.org"
+    """Required when no_auth is False"""
+    keycloak_realm: str = "master"
     """Required when no_auth is False"""
     keycloak_admin_token: str | None = None
     """Required when no_auth is False"""

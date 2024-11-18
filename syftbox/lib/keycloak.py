@@ -28,7 +28,7 @@ def get_token(username, password):
         "username": username,
         "password": password,
         "grant_type": "password",
-        "scope": "openid"
+        "scope": "openid",
     }
 
     resp = requests.post(f"{KEYCLOAK_URL}/realms/{KEYCLOAK_REALM}/protocol/openid-connect/token", data=data)
@@ -57,6 +57,14 @@ def get_user_info(token: str):
 
 def get_headers(token):
     return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+
+def keycloak_reset_password(user_id, new_password, token):
+    data = {"type": "password", "temporary": False, "value": new_password}
+    resp = requests.put(
+        f"{KEYCLOAK_URL}/realms/{KEYCLOAK_REALM}/users/{user_id}/reset-password", headers=get_headers(token), data=data
+    )
+    return resp
 
 
 def create_keycloak_admin_token() -> str:
@@ -129,11 +137,16 @@ def delete_user(user_id):
 
 
 def update_user(user_id, payload):
-    return requests.get(f"{KEYCLOAK_URL}/admin/realms/{KEYCLOAK_REALM}/users/{user_id}", headers=get_admin_headers(), data=json.dumps(payload))
+    return requests.get(
+        f"{KEYCLOAK_URL}/admin/realms/{KEYCLOAK_REALM}/users/{user_id}",
+        headers=get_admin_headers(),
+        data=json.dumps(payload),
+    )
 
 
 def get_user_by_email(email):
-    response = requests.get(f"{KEYCLOAK_URL}/admin/realms/{KEYCLOAK_REALM}/users/", headers=get_admin_headers(), params={"email": email})
+    response = requests.get(
+        f"{KEYCLOAK_URL}/admin/realms/{KEYCLOAK_REALM}/users/", headers=get_admin_headers(), params={"email": email}
+    )
     response.raise_for_status()
     return response.json()
-

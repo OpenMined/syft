@@ -4,6 +4,7 @@ SyftBox CLI - Setup scripts
 
 from pathlib import Path
 
+import httpx
 import requests
 from rich import print as rprint
 from rich.prompt import Confirm, Prompt
@@ -44,8 +45,6 @@ def setup_config_interactive(
     except ClientConfigException:
         pass
 
-    register = not user_exists(email, server)
-    print("register: ", register)
     if not conf:
         # first time setup
         if not data_dir or data_dir == DEFAULT_DATA_DIR:
@@ -78,32 +77,33 @@ def setup_config_interactive(
             email=email,
             server_url=server,
             port=port,
-            password=password,
             access_token=access_token
         )
     else:
-        if conf.access_token is None:
-            # logger.info("No access token found in the config. Please login again.")
-            pwd = login_password()
-            conf.access_token = get_token(conf.email, pwd)
         if server and server != conf.server_url:
             conf.set_server_url(server)
         if port != conf.client_url.port:
             conf.set_port(port)
 
-    # if reset_password:
-    #     # infer this through the api
-    #     if True:
-    #         rprint("You cannot register and reset password at the same time!")
-    #         exit()
-    #     else:
-    #         new_password = register_password()
-    #         resp = keycloak_reset_password(conf.user_id, new_password, conf.token)
-    #         if resp.status_code == 204:
-    #             rprint("[bold]Password reset succesful![/bold]")
-    #         else:
-    #             rprint("[bold red]An error occured![/bold red] '{resp.text}'")
-    #             exit()
+    if conf.access_token is None:
+        register = not user_exists(email, server)
+        pwd = register_password() if register else login_password()
+        conf.access_token = get_token(conf.email, pwd)
+
+    while True:
+        response = httpx.post(
+            f"{conf.server_url}sync/datasites",
+            headers={"Authorization": f"Bearer {conf.access_token}", "email": conf.email},
+        )
+        if response.status_code == 401:
+            rprint("[bold red]Wrong email or password![/bold red]")
+            pwd = login_password()
+            conf.access_token = get_token(conf.email, pwd)
+            continue
+
+        # crash on other errors, break on success
+        response.raise_for_status()
+        break
 
     # DO NOT SAVE THE CONFIG HERE.
     # We don't know if the client will accept the config yet
@@ -143,8 +143,8 @@ def prompt_email() -> str:
 
 def register_password() -> str:
     while True:
-        password = Prompt.ask("[bold]Enter your password[/bold]")
-        verify_password = Prompt.ask("[bold]Verify your password[/bold]")
+        password = Prompt.ask("[bold]Enter your password[/bold]", password=True)
+        verify_password = Prompt.ask("[bold]Verify your password[/bold]", password=True)
         if password == verify_password:
             break
         rprint("[bold red]Passwords don't match! Please try again.[/bold red]")
@@ -152,4 +152,4 @@ def register_password() -> str:
 
 
 def login_password() -> str:
-    return Prompt.ask("[bold]Password[/bold]")
+    return Prompt.ask("[bold]Password[/bold]", password=True)
