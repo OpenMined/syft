@@ -7,6 +7,7 @@ from fastapi import Depends, HTTPException, Header, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 import httpx
 
+from syftbox.lib.keycloak import get_admin_headers
 from syftbox.server.settings import ServerSettings, get_server_settings
 
 class AuthenticationError(Exception):
@@ -52,19 +53,16 @@ class UserManager:
 
         user_info = KeycloakUserInfoResponse(**resp.json())
 
-        # if not user_info.email_verified:
-        #     # If email is not verified, we give user 24 hours to verify it
-        #     user_details = self.get_details(user_info.email)
-        #     if not user_details.is_new():
-        #         raise AuthenticationError("Email not verified")
+        if not user_info.email_verified:
+            # If email is not verified, we give user 24 hours to verify it
+            user_details = self.get_details(user_info.email)
+            if not user_details.is_new():
+                raise AuthenticationError("Email not verified")
 
         return user_info
 
     def get_details(self, email: str) -> KeycloakUserRepresentation:
-        headers = {
-            'Authorization': f'Bearer {self.server_settings.keycloak_admin_token}',
-            'Content-Type': 'application/json'
-        }
+        headers = get_admin_headers()
         resp = httpx.get(f"{self.server_settings.keycloak_url}/admin/realms/master/users", headers=headers, params={"email": email})
         resp.raise_for_status()
         data = resp.json()
