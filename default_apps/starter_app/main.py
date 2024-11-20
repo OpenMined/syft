@@ -7,6 +7,7 @@ DEFAULT_APPS = [
     "https://github.com/OpenMined/ring",
     "https://github.com/OpenMined/github_app_updater",
     "https://github.com/OpenMined/logged_in",
+    "https://github.com/OpenMined/inbox",
 ]
 
 

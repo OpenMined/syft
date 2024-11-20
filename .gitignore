@@ -166,7 +166,7 @@ cython_debug/
 
 # syft dirs
 data/
-users/
+./users/
 .clients/
 .server/
 .e2e/
@@ -186,3 +186,5 @@ notebooks/
 dev_space/
 
 !tests/**/.env
+
+*.env

@@ -24,13 +24,17 @@ class FileStore:
         return self.server_settings.file_db_path
 
     def delete(self, path: RelativePath) -> None:
-        with get_db(self.db_path) as conn:
-            try:
-                db.delete_file_metadata(conn, str(path))
-            except ValueError:
-                pass
-            abs_path = self.server_settings.snapshot_folder / path
-            abs_path.unlink(missing_ok=True)
+        conn = get_db(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute("BEGIN IMMEDIATE;")
+        try:
+            db.delete_file_metadata(cursor, str(path))
+        except ValueError:
+            pass
+        abs_path = self.server_settings.snapshot_folder / path
+        abs_path.unlink(missing_ok=True)
+        conn.commit()
+        cursor.close()
 
     def get(self, path: RelativePath) -> SyftFile:
         with get_db(self.db_path) as conn:

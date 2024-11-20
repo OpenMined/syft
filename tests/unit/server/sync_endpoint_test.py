@@ -9,8 +9,8 @@ import pytest
 from fastapi.testclient import TestClient
 from py_fast_rsync import signature
 
+from syftbox.client.exceptions import SyftServerError
 from syftbox.client.plugins.sync.endpoints import (
-    SyftServerError,
     apply_diff,
     download_bulk,
     get_datasite_states,
@@ -91,14 +91,9 @@ def test_syft_client_push_flow(client: TestClient):
 
 
 def test_get_remote_state(client: TestClient):
-    metadata = get_remote_state(client, TEST_DATASITE_NAME, Path(TEST_DATASITE_NAME))
+    metadata = get_remote_state(client, Path(TEST_DATASITE_NAME))
 
     assert len(metadata) == 3
-
-
-def test_get_remote_state_perms(client: TestClient):
-    metadata = get_remote_state(client, "random@user.com", Path(TEST_DATASITE_NAME))
-    assert not metadata
 
 
 def test_get_metadata(client: TestClient):
@@ -245,8 +240,14 @@ def test_get_all_datasite_states(client: TestClient):
 
 
 def test_download_snapshot(client: TestClient):
-    metadata = get_remote_state(client, TEST_DATASITE_NAME, Path(TEST_DATASITE_NAME))
+    metadata = get_remote_state(client, Path(TEST_DATASITE_NAME))
     paths = [m.path.as_posix() for m in metadata]
     data = download_bulk(client, paths)
     zip_file = zipfile.ZipFile(BytesIO(data))
     assert len(zip_file.filelist) == 3
+
+
+def test_whoami(client: TestClient):
+    response = client.post("/auth/whoami")
+    response.raise_for_status()
+    assert response.json() == {"email": TEST_DATASITE_NAME}

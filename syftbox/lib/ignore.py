@@ -42,7 +42,7 @@ Icon
 """
 
 
-def create_default_ignore_file(dir: PathLike) -> None:
+def create_default_ignore_file(dir: Path) -> None:
     """Create a default _.syftignore file in the dir"""
     ignore_file = to_path(dir) / IGNORE_FILENAME
     if not ignore_file.is_file():
@@ -51,7 +51,7 @@ def create_default_ignore_file(dir: PathLike) -> None:
         ignore_file.write_text(DEFAULT_IGNORE)
 
 
-def get_ignore_rules(dir: PathLike) -> Optional[pathspec.PathSpec]:
+def get_ignore_rules(dir: Path) -> Optional[pathspec.PathSpec]:
     """Get the ignore rules from the _.syftignore file in the dir"""
     ignore_file = to_path(dir) / IGNORE_FILENAME
     if ignore_file.is_file():
@@ -61,14 +61,74 @@ def get_ignore_rules(dir: PathLike) -> Optional[pathspec.PathSpec]:
     return None
 
 
-def filter_ignored_paths(dir: PathLike, paths: list[Path]) -> list[Path]:
-    """Filter out paths that are ignored by the _.syftignore file in the dir"""
-    ignore_rules = get_ignore_rules(dir)
+def is_within_symlinked_path(path: Path, datasites_dir: PathLike) -> bool:
+    """
+    Returns True if the path is within a symlinked path.
+
+    Symlinks are checked up to the datasites_dir.
+    """
+    base_dir = to_path(datasites_dir)
+    for parent in path.parents:
+        if parent == base_dir:
+            break
+        if parent.is_symlink():
+            return True
+    return False
+
+
+def filter_symlinks(datasites_dir: Path, relative_paths: list[Path]) -> list[Path]:
+    result = []
+    for path in relative_paths:
+        abs_path = datasites_dir / path
+
+        is_symlinked = abs_path.is_symlink() or is_within_symlinked_path(abs_path, datasites_dir)
+        if not is_symlinked:
+            result.append(path)
+    return result
+
+
+def filter_hidden_files(relative_paths: list[Path]) -> list[Path]:
+    result = []
+    for path in relative_paths:
+        if not any(part.startswith(".") for part in path.parts):
+            result.append(path)
+    return result
+
+
+def filter_ignored_paths(
+    datasites_dir: Path,
+    relative_paths: list[Path],
+    ignore_hidden_files: bool = True,
+    ignore_symlinks: bool = True,
+) -> list[Path]:
+    """
+    Filter out paths that are ignored. Ignore rules:
+    - By default hidden files, or files within hidden directories are ignored.
+    - By default symlinks are ignored, or files within symlinked directories are ignored.
+    - files that match the ignore rules in the _.syftignore file are ignored.
+
+    Args:
+        datasites_dir (Path): Directory containing datasites.
+        relative_paths (list[Path]): List of relative paths to filter. Paths are relative to datasites_dir.
+        ignore_hidden_files (bool, optional): If True, all hidden files and directories are filtered. Defaults to True.
+        ignore_symlinks (bool, optional): if True, all symlinked files and folders are filtered. Defaults to True.
+
+    Returns:
+        list[Path]: List of filtered relative paths.
+    """
+
+    if ignore_hidden_files:
+        relative_paths = filter_hidden_files(relative_paths)
+
+    if ignore_symlinks:
+        relative_paths = filter_symlinks(datasites_dir, relative_paths)
+
+    ignore_rules = get_ignore_rules(datasites_dir)
     if ignore_rules is None:
-        return paths
+        return relative_paths
 
     filtered_paths = []
-    for path in paths:
+    for path in relative_paths:
         if not ignore_rules.match_file(path):
             filtered_paths.append(path)
 

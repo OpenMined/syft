@@ -1,4 +1,5 @@
 import asyncio
+import json
 import platform
 import shutil
 from functools import lru_cache
@@ -9,10 +10,12 @@ import uvicorn
 from loguru import logger
 from pid import PidFile, PidFileAlreadyLockedError, PidFileAlreadyRunningError
 
+from syftbox.__version__ import __version__
 from syftbox.client.api import create_api
 from syftbox.client.base import SyftClientInterface
 from syftbox.client.env import syftbox_env
-from syftbox.client.exceptions import SyftBoxAlreadyRunning, SyftInitializationError
+from syftbox.client.exceptions import SyftBoxAlreadyRunning, SyftInitializationError, SyftServerError
+from syftbox.client.logger import setup_logger
 from syftbox.client.plugins.apps import AppRunner
 from syftbox.client.plugins.sync.manager import SyncManager
 from syftbox.client.utils import error_reporting, file_manager, macos
@@ -20,12 +23,12 @@ from syftbox.lib.client_config import SyftClientConfig
 from syftbox.lib.datasite import create_datasite
 from syftbox.lib.exceptions import SyftBoxException
 from syftbox.lib.ignore import IGNORE_FILENAME
-from syftbox.lib.logger import setup_logger
 from syftbox.lib.workspace import SyftWorkspace
 
 SCRIPT_DIR = Path(__file__).parent
 ASSETS_FOLDER = SCRIPT_DIR.parent / "assets"
 ICON_FOLDER = ASSETS_FOLDER / "icon"
+METADATA_FILENAME = ".metadata.json"
 
 
 class SyftClient:
@@ -50,7 +53,11 @@ class SyftClient:
 
         self.workspace = SyftWorkspace(self.config.data_dir)
         self.pid = PidFile(pidname="syftbox.pid", piddir=self.workspace.data_dir)
-        self.server_client = httpx.Client(base_url=str(self.config.server_url), follow_redirects=True)
+        self.server_client = httpx.Client(
+            base_url=str(self.config.server_url),
+            follow_redirects=True,
+            headers={"email": self.config.email, "Authorization": f"Bearer {self.config.access_token}"},
+        )
 
         # kwargs for making customization/unit testing easier
         # this will be replaced with a sophisticated plugin system
@@ -98,6 +105,7 @@ class SyftClient:
             self.pid.create()
         except PidFileAlreadyLockedError:
             raise SyftBoxAlreadyRunning(f"Another instance of SyftBox is running on {self.config.data_dir}")
+        self.create_metadata_file()
 
         logger.info("Started SyftBox client")
 
@@ -110,6 +118,15 @@ class SyftClient:
         self.sync_manager.start()
         self.app_runner.start()
         return self.__run_local_server()
+
+    @property
+    def metadata_path(self) -> Path:
+        return self.workspace.data_dir / METADATA_FILENAME
+
+    def create_metadata_file(self) -> None:
+        metadata_json = self.config.model_dump(mode="json")
+        metadata_json["version"] = __version__
+        self.metadata_path.write_text(json.dumps(metadata_json, indent=2))
 
     def shutdown(self):
         if self.__local_server:
@@ -229,18 +246,49 @@ class SyftClientContext(SyftClientInterface):
     def __repr__(self) -> str:
         return f"SyftClientContext<{self.config.email}, {self.config.data_dir}>"
 
+    def log_analytics_event(self, event_name: str, **kwargs) -> None:
+        """Log an event to the server"""
+        event_data = {
+            "event_name": event_name,
+            **kwargs,
+        }
 
-def run_migration(config: SyftClientConfig):
+        response = self.server_client.post("/log_event", headers={"email": self.email}, json=event_data)
+        if response.status_code != 200:
+            raise SyftServerError(f"Failed to log event: {response.text}")
+
+
+def run_apps_to_api_migration(new_ws: SyftWorkspace):
+    old_sync_folder = new_ws.data_dir
+    old_apps_dir = old_sync_folder / "apps"
+    new_apps_dir = new_ws.apps
+
+    if old_apps_dir.exists():
+        logger.info(f"Migrating directory apps —> {new_apps_dir.relative_to(new_ws.data_dir)}...")
+        if new_apps_dir.exists():
+            shutil.rmtree(new_apps_dir)
+        shutil.move(str(old_apps_dir), str(new_apps_dir))
+
+
+def run_migration(config: SyftClientConfig, migrate_datasite=True):
     # first run config migration
     config.migrate()
 
     # then run workspace migration
     new_ws = SyftWorkspace(config.data_dir)
 
+    # migrate workspace/apps to workspace/apis
+    run_apps_to_api_migration(new_ws)
+
     # check for old dir structure and migrate to new
     # data_dir == sync_folder
     old_sync_folder = new_ws.data_dir
     old_datasite_path = Path(old_sync_folder, config.email)
+
+    if not migrate_datasite:
+        return
+
+    # Option 2: if syftbox folder has old structure, migrate to new
     if old_datasite_path.exists():
         logger.info("Migrating to new datasite structure")
         new_ws.mkdirs()
@@ -263,9 +311,7 @@ def run_migration(config: SyftClientConfig):
 
 
 def run_client(
-    client_config: SyftClientConfig,
-    open_dir: bool = False,
-    log_level: str = "INFO",
+    client_config: SyftClientConfig, open_dir: bool = False, log_level: str = "INFO", migrate_datasite=True
 ) -> int:
     """Run the SyftBox client"""
     client = None
@@ -283,7 +329,7 @@ def run_client(
     try:
         client = SyftClient(client_config, log_level=log_level)
         # we don't want to run migration if another instance of client is already running
-        bool(client.check_pidfile()) and run_migration(client_config)
+        bool(client.check_pidfile()) and run_migration(client_config, migrate_datasite=migrate_datasite)
         (not syftbox_env.DISABLE_ICONS) and client.copy_icons()
         open_dir and client.open_datasites_dir()
         client.start()

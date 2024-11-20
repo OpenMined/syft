@@ -60,6 +60,13 @@ VERBOSE_OPTS = Option(
     help="Enable verbose mode",
 )
 
+
+
+TOKEN_OPTS = Option(
+    "--token",
+    help="Token for password reset",
+)
+
 # report command opts
 REPORT_PATH_OPTS = Option(
     "-o", "--output-dir",
@@ -87,7 +94,7 @@ def client(
         return
 
     # lazy import to imporve cli startup speed
-    from syftbox.client.cli_setup import setup_config_interactive
+    from syftbox.client.cli_setup import get_migration_decision, setup_config_interactive
     from syftbox.client.client2 import run_client
     from syftbox.client.utils.net import get_free_port, is_port_in_use
 
@@ -100,8 +107,13 @@ def client(
         raise Exit(1)
 
     client_config = setup_config_interactive(config_path, email, data_dir, server, port)
+
+    migrate_datasite = get_migration_decision(client_config.data_dir)
+
     log_level = "DEBUG" if verbose else "INFO"
-    code = run_client(client_config=client_config, open_dir=open_dir, log_level=log_level)
+    code = run_client(
+        client_config=client_config, open_dir=open_dir, log_level=log_level, migrate_datasite=migrate_datasite
+    )
     raise Exit(code)
 
 
@@ -113,8 +125,8 @@ def report(
     """Generate a report of the SyftBox client"""
     from datetime import datetime
 
+    from syftbox.client.logger import zip_logs
     from syftbox.lib.client_config import SyftClientConfig
-    from syftbox.lib.logger import zip_logs
 
     try:
         config = SyftClientConfig.load(config_path)

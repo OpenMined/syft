@@ -7,3 +7,7 @@ class SyftInitializationError(SyftBoxException):
 
 class SyftBoxAlreadyRunning(SyftBoxException):
     pass
+
+
+class SyftServerError(Exception):
+    pass

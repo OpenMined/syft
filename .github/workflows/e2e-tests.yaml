@@ -1,6 +1,10 @@
 name: Tests - E2E
 
 on:
+  push:
+    branches:
+      - main # adjust this to match your main branch name
+
   workflow_dispatch:
 
   workflow_call:

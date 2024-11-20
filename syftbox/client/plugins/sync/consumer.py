@@ -12,9 +12,9 @@ from loguru import logger
 from pydantic import BaseModel
 
 from syftbox.client.base import SyftClientInterface
+from syftbox.client.exceptions import SyftServerError
 from syftbox.client.plugins.sync.constants import MAX_FILE_SIZE_MB
 from syftbox.client.plugins.sync.endpoints import (
-    SyftServerError,
     apply_diff,
     create,
     delete,
@@ -26,6 +26,7 @@ from syftbox.client.plugins.sync.endpoints import (
 from syftbox.client.plugins.sync.exceptions import FatalSyncError, SyncEnvironmentError
 from syftbox.client.plugins.sync.queue import SyncQueue, SyncQueueItem
 from syftbox.client.plugins.sync.sync import DatasiteState, SyncSide
+from syftbox.lib.ignore import filter_ignored_paths
 from syftbox.lib.lib import SyftPermission
 from syftbox.server.sync.hash import hash_file
 from syftbox.server.sync.models import FileMetadata
@@ -79,11 +80,16 @@ def create_local(client: SyftClientInterface, remote_syncstate: FileMetadata):
     abs_path.write_bytes(content_bytes)
 
 
-def create_local_batch(client: SyftClientInterface, remote_syncstates: list[Path]):
+def create_local_batch(client: SyftClientInterface, remote_syncstates: list[Path]) -> list[str]:
     paths = [str(path) for path in remote_syncstates]
-    content_bytes = download_bulk(client.server_client, paths)
+    try:
+        content_bytes = download_bulk(client.server_client, paths)
+    except SyftServerError as e:
+        logger.error(e)
+        return []
     zip_file = zipfile.ZipFile(BytesIO(content_bytes))
     zip_file.extractall(client.workspace.datasites)
+    return zip_file.namelist()
 
 
 def create_remote(client: SyftClientInterface, local_syncstate: FileMetadata):
@@ -379,6 +385,8 @@ class LocalState(BaseModel):
     states: dict[Path, FileMetadata] = {}
 
     def insert(self, path: Path, state: FileMetadata):
+        if not isinstance(path, Path):
+            raise ValueError(f"path must be a Path object, got {path}")
         if not self.path.is_file():
             # If the LocalState file does not exist, the sync environment is corrupted and syncing should be aborted
 
@@ -439,17 +447,29 @@ class SyncConsumer:
                 logger.error(f"Failed to sync file {item.data.path}, it will be retried in the next sync. Reason: {e}")
 
     def download_all_missing(self, datasite_states: list[DatasiteState]):
-        missing_files = []
-        for datasite_state in datasite_states:
-            for file in datasite_state.remote_state:
-                path = file.path
-                if not self.previous_state.states.get(path):
-                    missing_files.append(path)
-        create_local_batch(self.client, missing_files)
-        for path in missing_files:
-            self.previous_state.insert(
-                path=path,
-                state=self.get_current_local_syncstate(path),
+        try:
+            missing_files: list[Path] = []
+            for datasite_state in datasite_states:
+                for file in datasite_state.remote_state:
+                    path = file.path
+                    if not self.previous_state.states.get(path):
+                        missing_files.append(path)
+            missing_files = filter_ignored_paths(self.client.workspace.datasites, missing_files)
+
+            logger.info(f"Downloading {len(missing_files)} files in batch")
+            received_files = create_local_batch(self.client, missing_files)
+            for path in received_files:
+                path = Path(path)
+                state = self.get_current_local_syncstate(path)
+                self.previous_state.insert(
+                    path=path,
+                    state=state,
+                )
+        except FatalSyncError as e:
+            raise e
+        except Exception as e:
+            logger.error(
+                f"Failed to download missing files, files will be downloaded individually instead. Reason: {e}"
             )
 
     def get_decisions(self, item: SyncQueueItem) -> SyncDecisionTuple:

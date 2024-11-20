@@ -61,6 +61,8 @@ def get_clean_env():
         "SHELL",
         "LANG",
         "LC_ALL",
+        "DISPLAY",  # X11 specific (Linux)
+        "DBUS_SESSION_BUS_ADDRESS",  # X11 specific (Linux)
         "SYSTEMROOT",  # Windows specific
     }
 

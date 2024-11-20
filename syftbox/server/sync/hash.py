@@ -10,6 +10,7 @@ from typing import Optional, Union
 from loguru import logger
 from py_fast_rsync import signature
 
+from syftbox.lib.ignore import filter_ignored_paths
 from syftbox.server.sync.models import FileMetadata
 
 
@@ -56,8 +57,7 @@ def hash_files(files: list[Path], root_dir: Path) -> list[FileMetadata]:
 def hash_dir(
     dir: Path,
     root_dir: Path,
-    include_hidden: bool = True,
-    include_symlinks: bool = True,
+    filter_ignored: bool = True,
 ) -> list[FileMetadata]:
     """
     hash all files in dir recursively, return a list of FileMetadata.
@@ -65,15 +65,19 @@ def hash_dir(
     ignore_folders should be relative to root_dir.
     returned Paths are relative to root_dir.
     """
-    files = collect_files(dir, include_hidden=include_hidden, include_symlinks=include_symlinks)
-    return hash_files(files, root_dir)
+    files = collect_files(dir)
+
+    relative_paths = [file.relative_to(root_dir) for file in files]
+    if filter_ignored:
+        relative_paths = filter_ignored_paths(root_dir, relative_paths)
+
+    absolute_paths = [root_dir / file for file in relative_paths]
+    return hash_files(absolute_paths, root_dir)
 
 
 def collect_files(
     dir: Union[Path, str],
     pattern: Union[str, re.Pattern, None] = None,
-    include_hidden: bool = True,
-    include_symlinks: bool = True,
 ) -> list[Path]:
     """Recursively collect files in a directory with options to include hidden files and symlinks"""
 
@@ -87,16 +91,10 @@ def collect_files(
         pattern = re.compile(pattern)
 
     for entry in dir.iterdir():
-        if not include_hidden and entry.name.startswith("."):
-            continue
-
-        if entry.is_symlink() and not include_symlinks:
-            continue
-
         if entry.is_file():
             if pattern is None or pattern.match(entry.as_posix()):
                 files.append(entry)
         elif entry.is_dir():
-            files.extend(collect_files(entry, pattern, include_hidden, include_symlinks))
+            files.extend(collect_files(entry, pattern))
 
     return files

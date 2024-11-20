@@ -14,7 +14,8 @@ from syftbox.lib.client_config import SyftClientConfig
 from syftbox.lib.types import PathLike, to_path
 from syftbox.lib.workspace import SyftWorkspace
 
-# this just makes it a bit clear what the default is for the appdata() method
+# this just makes it a bit clear what the default is for the api_data() method
+CURRENT_API_REQUEST_NAME = None
 MY_DATASITE = None
 
 
@@ -67,9 +68,35 @@ class Client:
         """
         return cls(conf=SyftClientConfig.load(filepath))
 
-    def appdata(self, app_name: str, datasite: Optional[str] = MY_DATASITE) -> Path:
+    @property
+    def api_request_name(self) -> str:
+        """Returns the name of root directory of the API request calling this property.
+
+        Use this property instead of hardcoding your API request's directory name,
+        as SyftBox may dynamically change it to prevent conflicts.
+        """
+        # The below works coz we set the cwd to the app's path before executing run.sh (see find_and_run_script method)
+        api_path = Path.cwd()
+        api_name = api_path.name
+        return api_name
+
+    def api_data(self, api_request_name: str = CURRENT_API_REQUEST_NAME, datasite: Optional[str] = MY_DATASITE) -> Path:
+        """
+        Gets the filesystem path to an application's API data directory for a specific datasite.
+
+        Args:
+            api_request_name (Optional[str], default=CURRENT_API_REQUEST_NAME): The name of the API request
+            whose API data path is needed.
+                If None, defaults to the name of the API request from which this method is being called.
+            datasite (Optional[str], default=MY_DATASITE): The datasite's email.
+                If None, defaults to the current user's configured email.
+
+        Returns:
+            Path: A filesystem path pointing to '<workspace>/datasites/<datasite>/api_data/<api_request_name>'.
+        """
+        api_request_name = api_request_name or self.api_request_name
         datasite = datasite or self.config.email
-        return self.workspace.datasites / datasite / "app_pipelines" / app_name
+        return self.workspace.datasites / datasite / "api_data" / api_request_name
 
     def makedirs(self, *paths: PathLike) -> None:
         """Create directories"""

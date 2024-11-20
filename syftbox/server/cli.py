@@ -37,6 +37,11 @@ RELOAD_OPTS = Option(
     rich_help_panel=SERVER_PANEL,
     help="Enable debug mode",
 )
+EMAIL_OPTS = Option(
+    "-e", "--email",
+    rich_help_panel=SERVER_PANEL,
+    help="Email to ban/unban",
+)
 SSL_KEY_OPTS = Option(
     "--key", "--ssl-keyfile",
     exists=True, file_okay=True, readable=True,
@@ -64,7 +69,6 @@ def server(
     """Run the SyftBox server"""
 
     if ctx.invoked_subcommand is not None:
-        # If a subcommand is being invoked, just return
         return
 
     # lazy import to improve CLI startup performance

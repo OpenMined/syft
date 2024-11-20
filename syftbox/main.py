@@ -4,7 +4,7 @@ from typing import Annotated, Optional
 from rich import print as rprint
 from typer import Exit, Option, Typer
 
-from syftbox import __version__
+from syftbox.__version__ import __version__
 from syftbox.app.cli import app as app_cli
 from syftbox.client.cli import app as client_cli
 from syftbox.server.cli import app as server_cli

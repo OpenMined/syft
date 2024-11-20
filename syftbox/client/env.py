@@ -17,7 +17,7 @@ class SyftEnvVars(BaseSettings):
     CLIENT_CONFIG_PATH: Path = Field(default=DEFAULT_CONFIG_PATH)
     """Path to the client configuration file."""
 
-    model_config = SettingsConfigDict(env_file=".env", env_prefix="SYFTBOX_")
+    model_config = SettingsConfigDict(env_file="client.env", env_prefix="SYFTBOX_")
 
 
 syftbox_env = SyftEnvVars()

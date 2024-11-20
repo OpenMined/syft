@@ -3,6 +3,7 @@ from pathlib import Path
 
 from locust import FastHttpUser, between, task
 
+import syftbox.client.exceptions
 from syftbox.client.plugins.sync import consumer, endpoints
 from syftbox.server.sync.hash import hash_file
 
@@ -34,7 +35,7 @@ class SyftBoxUser(FastHttpUser):
         local_syncstate = hash_file(filepath.absolute(), root_dir=filepath.parent.absolute())
         try:
             endpoints.create(self.client, local_syncstate.path, filepath.read_bytes())
-        except endpoints.SyftServerError:
+        except syftbox.client.exceptions.SyftServerError:
             pass
         return filepath
 

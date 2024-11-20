@@ -91,3 +91,35 @@ def test_ignore_datasite(datasite_1: SyftClientInterface, datasite_2: SyftClient
     ignore_path.unlink()
     _, local_changes = datasite_state.get_out_of_sync_files()
     assert len(local_changes) == num_files
+
+
+def test_ignore_symlinks(datasite_1: SyftClientInterface) -> None:
+    # create a symlinked folder containing a file
+    folder_to_symlink = Path(datasite_1.workspace.data_dir) / "folder"
+    folder_to_symlink.mkdir()
+    symlinked_file = folder_to_symlink / "file.txt"
+    symlinked_file.write_text("content")
+
+    symlinked_folder = Path(datasite_1.workspace.datasites) / "symlinked_folder"
+    symlinked_folder.symlink_to(folder_to_symlink)
+
+    paths = [
+        Path("symlinked_folder/file.txt"),
+        Path("symlinked_folder/non_existent_file.txt"),
+        Path("symlinked_folder/subfolder/file.txt"),
+    ]
+
+    filtered_paths = filter_ignored_paths(datasite_1.workspace.datasites, paths, ignore_symlinks=True)
+    assert filtered_paths == []
+
+
+def test_ignore_hidden_files(datasite_1: SyftClientInterface) -> None:
+    paths = [
+        Path(".hidden_file.txt"),  # Hidden files are filtered
+        Path("visible_file.txt"),  # Visible files are not filtered
+        Path("subfolder/.hidden_file.txt"),  # Hidden files in folders are filtered
+        Path(".subfolder/visible_file.txt"),  # Files in hidden folders are filtered
+    ]
+
+    filtered_paths = filter_ignored_paths(datasite_1.workspace.datasites, paths, ignore_hidden_files=True)
+    assert filtered_paths == [Path("visible_file.txt")]

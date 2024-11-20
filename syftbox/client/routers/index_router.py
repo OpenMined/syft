@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from fastapi.responses import PlainTextResponse
-
-from syftbox import __version__
+from syftbox.client.routers.common import APIContext
+from syftbox.__version__ import __version__
 
 router = APIRouter()
 
@@ -14,3 +14,8 @@ async def index():
 @router.get("/version")
 async def version():
     return {"version": __version__}
+
+
+@router.get("/metadata")
+async def metadata(ctx: APIContext):
+    return {"datasite": ctx.email}

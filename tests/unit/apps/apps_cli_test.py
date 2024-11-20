@@ -10,7 +10,7 @@ runner = CliRunner()
 
 @pytest.fixture
 def mock_apps_dir(mock_config):
-    apps_dir = mock_config.data_dir / "apps"
+    apps_dir = mock_config.data_dir / "apis"
     apps_dir.mkdir(exist_ok=True)
     yield apps_dir
 

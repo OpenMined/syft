@@ -40,6 +40,29 @@ class FileChangeInfo(BaseModel, frozen=True):
         return self.path < other.path
 
 
+def format_paths(path_list: list[Path]) -> str:
+    tree = ""
+    folders_seen = set()
+
+    for p in path_list:
+        parts = p.parts
+        for i in range(len(parts)):
+            current_path = "/".join(parts[: i + 1])
+            if current_path not in folders_seen:
+                depth = i
+                name = parts[i]
+                is_file = i == len(parts) - 1
+                prefix = "  " * depth + "├── "
+
+                if is_file:
+                    tree += f"{prefix}{name}\n"
+                else:
+                    tree += f"{prefix}{name}/\n"
+                folders_seen.add(current_path)
+
+    return tree
+
+
 class DatasiteState:
     def __init__(
         self, client: SyftClientInterface, email: str, remote_state: Optional[list[FileMetadata]] = None
@@ -59,21 +82,25 @@ class DatasiteState:
     def __repr__(self) -> str:
         return f"DatasiteState<{self.email}>"
 
+    def tree_repr(self) -> str:
+        remote_state = self.remote_state or []
+        rel_paths = sorted([file.path for file in remote_state])
+        path_str = format_paths(rel_paths)
+        return f"""DatasiteState:
+{path_str}
+        """
+
     @property
     def path(self) -> Path:
         p = self.client.workspace.datasites / self.email
         return p.expanduser().resolve()
 
     def get_current_local_state(self) -> list[FileMetadata]:
-        return hash_dir(
-            self.path, root_dir=self.client.workspace.datasites, include_hidden=False, include_symlinks=False
-        )
+        return hash_dir(self.path, root_dir=self.client.workspace.datasites)
 
     def get_remote_state(self) -> list[FileMetadata]:
         if self.remote_state is None:
-            self.remote_state = get_remote_state(
-                self.client.server_client, email=self.client.email, path=Path(self.email)
-            )
+            self.remote_state = get_remote_state(self.client.server_client, path=Path(self.email))
         return self.remote_state
 
     def is_in_sync(self) -> bool:
@@ -105,7 +132,12 @@ class DatasiteState:
         local_state_dict = {file.path: file for file in local_state}
         remote_state_dict = {file.path: file for file in remote_state}
         all_files = set(local_state_dict.keys()) | set(remote_state_dict.keys())
-        all_files_filtered = filter_ignored_paths(dir=self.client.workspace.datasites, paths=list(all_files))
+        all_files_filtered = filter_ignored_paths(
+            datasites_dir=self.client.workspace.datasites,
+            relative_paths=list(all_files),
+            ignore_hidden_files=True,
+            ignore_symlinks=True,
+        )
 
         all_changes = []
 

@@ -67,13 +67,13 @@ path_user_datasite() {
 path_ring_app() {
     # get path to client's ring app
     local user=$1
-    echo "$CLIENT_DIR/$user/apps/ring"
+    echo "$CLIENT_DIR/$user/apis/ring"
 }
 
-path_ring_pipeline() {
+path_ring_api_data() {
     # get path to client's ring app pipeline
     local user=$1
-    echo "$(path_user_datasite $user)/app_pipelines/ring"
+    echo "$(path_user_datasite $user)/api_data/ring"
 }
 
 wait_for_ring_app() {
@@ -91,21 +91,21 @@ ring_copy_secrets() {
 }
 
 ring_init() {
-    # place data.json in apps_pipelines/ring/running
+    # place data.json in api_data/ring/running
 
     local init_user="$1"
-    local running="$(path_ring_pipeline $init_user)/running"
+    local running="$(path_ring_api_data $init_user)/running"
 
     mkdir -p $running
     cp $SCRIPT_DATA_DIR/data.json $running/data.json
 }
 
 ring_wait_for_completion() {
-    # wait for data.json in apps_pipelines/ring/done
+    # wait for data.json in api_data/ring/done
 
     local user="$1"
     local timeout=${2:-30}
-    local done="$(path_ring_pipeline $user)/done"
+    local done="$(path_ring_api_data $user)/done"
 
     wait_for_path $done/data.json $timeout
 }
@@ -116,7 +116,7 @@ ring_validate() {
     local user="$1"
     local eresult="$2"
     local eidx="$3"
-    local done="$(path_ring_pipeline $user)/done"
+    local done="$(path_ring_api_data $user)/done"
 
     # jq read data.json
     # check if "data" == 558

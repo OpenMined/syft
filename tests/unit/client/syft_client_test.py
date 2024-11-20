@@ -81,7 +81,7 @@ def test_migration(mock_config):
     run_migration(mock_config)
 
     # check new workspace
-    assert (mock_config.data_dir / "apps").is_dir()
+    assert (mock_config.data_dir / "apis").is_dir()
     assert (mock_config.data_dir / "plugins").is_dir()
     assert (mock_config.data_dir / "datasites").is_dir()
 
