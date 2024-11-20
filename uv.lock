@@ -2188,7 +2188,6 @@ requires-dist = [
     { name = "postmarker", specifier = ">=1.0" },
     { name = "psutil", specifier = ">=6.0.0" },
     { name = "py-fast-rsync" },
-    { name = "pydantic", specifier = ">=2.9.2" },
     { name = "pydantic", extras = ["email"], specifier = ">=2.9.2" },
     { name = "pydantic-settings", specifier = ">=2.5.2" },
     { name = "pyjwt", specifier = ">=2.10.0" },
