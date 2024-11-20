@@ -25,13 +25,13 @@ class SyncManager:
     def is_alive(self) -> bool:
         return self.thread is not None and self.thread.is_alive()
 
-    def stop(self, blocking: bool = False):
+    def stop(self, blocking: bool = False) -> None:
         self.is_stop_requested = True
-        if blocking:
+        if blocking and self.thread is not None:
             self.thread.join()
 
-    def start(self):
-        def _start(manager: SyncManager):
+    def start(self) -> None:
+        def _start(manager: SyncManager) -> None:
             while not manager.is_stop_requested:
                 try:
                     manager.run_single_thread()
@@ -66,7 +66,7 @@ class SyncManager:
         ]
         return datasite_states
 
-    def enqueue_datasite_changes(self, datasite: DatasiteState):
+    def enqueue_datasite_changes(self, datasite: DatasiteState) -> None:
         try:
             permission_changes, file_changes = datasite.get_out_of_sync_files()
             total = len(permission_changes) + len(file_changes)
@@ -82,7 +82,7 @@ class SyncManager:
         for change in permission_changes + file_changes:
             self.enqueue(change)
 
-    def run_single_thread(self):
+    def run_single_thread(self) -> None:
         # NOTE first implementation will be unthreaded and just loop through all datasites
 
         datasite_states = self.get_datasite_states()

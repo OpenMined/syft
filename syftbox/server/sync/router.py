@@ -8,6 +8,7 @@ import py_fast_rsync
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from loguru import logger
+from typing_extensions import Generator
 
 from syftbox.lib.lib import PermissionTree, SyftPermission, filter_metadata
 from syftbox.server.analytics import log_analytics_event, log_file_change_event
@@ -32,13 +33,13 @@ from .models import (
 )
 
 
-def get_db_connection(request: Request):
+def get_db_connection(request: Request) -> Generator[sqlite3.Connection, None, None]:
     conn = get_db(request.state.server_settings.file_db_path)
     yield conn
     conn.close()
 
 
-def get_file_store(request: Request):
+def get_file_store(request: Request) -> Generator[FileStore, None, None]:
     store = FileStore(
         server_settings=request.state.server_settings,
     )

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from rich import print as rprint
 from rich.prompt import Confirm, Prompt
+from typing_extensions import Optional
 
 from syftbox.__version__ import __version__
 from syftbox.client.auth import authenticate_user
@@ -42,7 +43,7 @@ def prompt_delete_old_data_dir(data_dir: Path) -> bool:
     return Confirm.ask(msg)
 
 
-def get_migration_decision(data_dir: Path):
+def get_migration_decision(data_dir: Path) -> bool:
     migrate_datasite = False
     if data_dir.exists():
         if is_empty(data_dir):
@@ -66,7 +67,7 @@ def setup_config_interactive(
     """Setup the client configuration interactively. Called from CLI"""
 
     config_path = config_path.expanduser().resolve()
-    conf: SyftClientConfig = None
+    conf: Optional[SyftClientConfig] = None
     if data_dir:
         data_dir = data_dir.expanduser().resolve()
 
