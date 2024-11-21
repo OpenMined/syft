@@ -43,7 +43,7 @@ run-server port="5001" uvicorn_args="":
 
 # Run a local syftbox client on any available port between 8080-9000
 [group('client')]
-run-client name port="auto" server="http://localhost:5001":
+run-client name port="auto" server="http://localhost:5001" reset-token="false":
     #!/bin/bash
     set -eou pipefail
 
@@ -55,6 +55,9 @@ run-client name port="auto" server="http://localhost:5001":
     PORT="{{ port }}"
     if [[ "$PORT" == "auto" ]]; then PORT="0"; fi
 
+    RESET_TOKEN=""
+    if [[ "{{ reset-token }}" == "true" ]]; then RESET_TOKEN="--reset-token"; fi
+
     # Working directory for client is .clients/<email>
     DATA_DIR=.clients/$EMAIL
     mkdir -p $DATA_DIR
@@ -63,8 +66,9 @@ run-client name port="auto" server="http://localhost:5001":
     echo -e "Client     : {{ _cyan }}http://localhost:$PORT{{ _nc }}"
     echo -e "Server     : {{ _cyan }}{{ server }}{{ _nc }}"
     echo -e "Data Dir   : $DATA_DIR"
+    echo -e "Reset Token: {{ reset-token }}"
 
-    uv run syftbox/client/cli.py --config=$DATA_DIR/config.json --data-dir=$DATA_DIR --email=$EMAIL --port=$PORT --server={{ server }} --no-open-dir
+    uv run syftbox/client/cli.py --config=$DATA_DIR/config.json --data-dir=$DATA_DIR --email=$EMAIL --port=$PORT --server={{ server }} --no-open-dir $RESET_TOKEN
 
 # ---------------------------------------------------------------------------------------------------------------------
 

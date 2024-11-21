@@ -4,7 +4,7 @@ from pydantic import BaseModel, EmailStr
 
 from syftbox.lib.email import send_token_email
 from syftbox.server.settings import ServerSettings, get_server_settings
-from syftbox.server.users.auth import generate_access_token, generate_email_token, get_user_from_email_token, get_current_user
+from syftbox.server.users.auth import generate_access_token, generate_email_token, get_access_token, get_user_from_email_token, get_current_user, invalidate_token
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
@@ -56,6 +56,25 @@ def validate_email_token(
     """
     access_token = generate_access_token(server_settings, email)
     return AccessTokenResponse(access_token=access_token)
+
+
+@router.post("/invalidate_access_token")
+def invalidate_access_token(
+    token: str = Depends(get_access_token),
+    server_settings: ServerSettings = Depends(get_server_settings),
+) -> str:
+    """
+    Invalidate the access token/
+
+    Args:
+        token (str): Access token. Defaults to Depends(get_access_token).
+        server_settings (ServerSettings, optional): server settings. Defaults to Depends(get_server_settings).
+
+    Returns:
+        str: message
+    """
+    invalidate_token(server_settings, token)
+    return "Token invalidation succesful!"
 
 
 @router.post("/whoami")

@@ -134,6 +134,12 @@ def init_db(settings: ServerSettings) -> None:
     con.commit()
     con.close()
 
+def touch(path):
+    with open(path, 'a'):
+        os.utime(path, None)
+
+def init_banned_file(path):
+    touch(path)
 
 @contextlib.asynccontextmanager
 async def lifespan(app: FastAPI, settings: Optional[ServerSettings] = None):
@@ -149,6 +155,7 @@ async def lifespan(app: FastAPI, settings: Optional[ServerSettings] = None):
     logger.info("> Creating Folders")
 
     create_folders(settings.folders)
+    init_banned_file(settings.banned_tokens_path)
 
     users = Users(path=settings.user_file_path)
     logger.info("> Loading Users")

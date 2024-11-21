@@ -1,6 +1,7 @@
 import base64
 from datetime import datetime, timezone
 import json
+from pathlib import Path
 from typing_extensions import Annotated
 from fastapi import Depends, HTTPException, Header, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -114,6 +115,12 @@ def validate_token(server_settings: ServerSettings, token: str) -> dict:
     Returns:
         dict: decoded payload
     """
+    if check_line_in_file(token, server_settings.banned_tokens_path):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid Token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     if not server_settings.auth_enabled:
         return _validate_base64(server_settings, token)
     else:
@@ -171,6 +178,12 @@ def get_user_from_email_token(
     payload = validate_email_token(server_settings, credentials.credentials)
     return payload["email"]
 
+def get_access_token(
+    credentials: Annotated[HTTPAuthorizationCredentials, Security(bearer_scheme)],
+    server_settings: Annotated[ServerSettings, Depends(get_server_settings)],
+) -> str:
+    _ = validate_access_token(server_settings, credentials.credentials)
+    return credentials.credentials
 
 def get_current_user(
     credentials: Annotated[HTTPAuthorizationCredentials, Security(bearer_scheme)],
@@ -178,3 +191,27 @@ def get_current_user(
 ) -> str:
     payload = validate_access_token(server_settings, credentials.credentials)
     return payload["email"]
+
+
+def check_line_in_file(line: str, file_path: Path) -> bool:
+    with open(file_path, 'r') as f:
+        for file_line in f:
+            if file_line == line:
+                return True
+    return False
+
+def write_line_in_file(line: str, file_path: Path):
+    with open(file_path, 'a') as f:
+        f.writelines([line])        
+
+def delete_line_from_file(line: str, file_path: Path):        
+    with open(file_path, 'r') as f:
+        file_lines = f.readlines()
+    if line not in file_lines:
+        return
+    file_lines.remove(line)
+    with open(file_path, 'w') as f:
+        f.writelines(file_lines)
+        
+def invalidate_token(server_settings: ServerSettings, token: str):
+    write_line_in_file(token, server_settings.banned_tokens_path)

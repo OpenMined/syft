@@ -10,7 +10,7 @@ from rich import print as rprint
 from rich.prompt import Confirm, Prompt
 
 from syftbox.__version__ import __version__
-from syftbox.client.auth import authenticate_user
+from syftbox.client.auth import authenticate_user, invalidate_client_token
 from syftbox.client.client2 import METADATA_FILENAME
 from syftbox.lib.client_config import SyftClientConfig
 from syftbox.lib.constants import DEFAULT_DATA_DIR
@@ -61,7 +61,13 @@ def get_migration_decision(data_dir: Path):
 
 
 def setup_config_interactive(
-    config_path: Path, email: str, data_dir: Path, server: str, port: int, skip_auth: bool = False
+    config_path: Path, 
+    email: str, 
+    data_dir: Path, 
+    server: str, 
+    port: int, 
+    skip_auth: bool = False,
+    reset_token: bool = False, 
 ) -> SyftClientConfig:
     """Setup the client configuration interactively. Called from CLI"""
 
@@ -97,6 +103,12 @@ def setup_config_interactive(
             conf.set_server_url(server)
         if port != conf.client_url.port:
             conf.set_port(port)
+
+    rprint(f"[bold]{reset_token}, {conf.access_token}[/bold]")
+    if reset_token:
+        if conf.access_token:
+            invalidate_client_token(conf)
+            conf.access_token = None
 
     if not skip_auth:
         conf.access_token = authenticate_user(conf)
