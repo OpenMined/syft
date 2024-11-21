@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from syftbox.client.base import SyftClientInterface
-from syftbox.client.routers import app_router, datasite_router, index_router
+from syftbox.client.routers import app_router, datasite_router, index_router, sync_router
 
 
 class NoCacheMiddleware(BaseHTTPMiddleware):
@@ -46,6 +46,7 @@ def create_api(client: SyftClientInterface) -> FastAPI:
     app.include_router(index_router.router, tags=["index"])
     app.include_router(datasite_router.router, prefix="/datasites", tags=["datasites"])
     app.include_router(app_router.router, prefix="/apps", tags=["apps"])
+    app.include_router(sync_router.router, prefix="/sync", tags=["sync"])
 
     app.add_middleware(NoCacheMiddleware)
 
