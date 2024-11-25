@@ -69,7 +69,7 @@ async def copy_model_to_public(e2e_context: E2EContext, client: Client):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("e2e_context", [deployment_config()], indirect=True, ids=["basic_aggregator"])
+@pytest.mark.parametrize("e2e_context", [deployment_config()], indirect=True, ids=["model_aggregator"])
 async def test_e2e_model_aggregator(e2e_context: E2EContext):
     logger.info(f"Starting E2E '{e2e_context.e2e_name}'")
     e2e_context.reset_test_dir()

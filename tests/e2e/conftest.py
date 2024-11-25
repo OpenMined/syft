@@ -56,6 +56,11 @@ class Client:
         return self.data_dir / "apis"
 
     @property
+    def private_dir(self):
+        """data_dir/private"""
+        return self.data_dir / "private"
+
+    @property
     def my_datasite(self):
         """data_dir/datasites/{email}"""
         return self.datasite_dir / self.email
