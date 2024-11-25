@@ -509,8 +509,8 @@ def test_n_datasites(tmp_path: Path, server_client: TestClient, datasite_1: Syft
 
 def test_sync_health_check(datasite_1: SyftClientInterface):
     sync_service = SyncManager(datasite_1)
-    sync_service.check_server_sync_status()
+    sync_service.check_server_status()
 
     sync_service.client.server_client.headers["Authorization"] = "Bearer invalid_token"
     with pytest.raises(FatalSyncError):
-        sync_service.check_server_sync_status()
+        sync_service.check_server_status()

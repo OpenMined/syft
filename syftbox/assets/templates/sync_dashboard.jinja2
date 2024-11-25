@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Sync Dashboard</title>
+  <!-- Include Grid.js CSS -->
+  <link
+    href="https://unpkg.com/gridjs/dist/theme/mermaid.min.css"
+    rel="stylesheet"
+  />
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+    }
+    /* Header styles */
+    #header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 15px 20px;
+      background-color: #f8f9fa;
+      border-bottom: 1px solid #dee2e6;
+    }
+    #header h1 {
+      margin: 0;
+    }
+    #serviceStatus {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .label {
+      border-radius: 4px;
+      padding: 6px 8px;
+      white-space: nowrap;
+      overflow: hidden;
+      line-height: 1.2;
+      font-family: monospace;
+      text-transform: uppercase;
+    }
+    /* Label color classes */
+    .label-green {
+      background-color: #d5f1d5;
+      color: #256b24;
+    }
+    .label-red {
+      background-color: #f2d9de;
+      color: #9b2737;
+    }
+    .label-orange {
+      background-color: #fee9cd;
+      color: #b8520a;
+    }
+    .label-gray {
+      background-color: #ecebef;
+      color: #353243;
+    }
+    .gridjs-btn {
+      padding: 8px 12px;
+      font-size: 14px;
+      border: none;
+      border-radius: 4px;
+      background-color: #6c757d;
+      color: #fff;
+      cursor: pointer;
+      height: 36px;
+    }
+    /* Filter styles */
+    #filters {
+      margin: 20px;
+      margin-top: 20px;
+      display: flex;
+      align-items: flex-end;
+      gap: 25px;
+    }
+    .input-container {
+      position: relative;
+      width: 160px;
+    }
+    .input-container input,
+    .input-container select {
+      width: 100%;
+      padding: 8px;
+      font-size: 14px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      background: none;
+    }
+    .input-container label {
+      position: absolute;
+      top: 50%;
+      left: 8px;
+      transform: translateY(-50%);
+      color: #aaa;
+      font-size: 14px;
+      pointer-events: none;
+      transition: all 0.2s ease;
+      background-color: #fff;
+      padding: 0 4px;
+    }
+    .input-container input:focus + label,
+    .input-container input:not(:placeholder-shown) + label,
+    .input-container select:focus + label,
+    .input-container select:not([value=""]) + label {
+      top: -8px;
+      font-size: 12px;
+      color: #6c757d;
+    }
+    /* Adjust wrapper margin */
+    #wrapper {
+      margin: 20px;
+      margin-top: 0;
+    }
+    /* Results count styles */
+    #resultsCount {
+      margin-left: auto;
+      font-size: 14px;
+      color: #6c757d;
+    }
+  </style>
+</head>
+<body>
+  <div id="header">
+    <h1>Sync Dashboard</h1>
+    <div id="serviceStatus">
+      <span id="syncStatusLabel" class="label label-green">ACTIVE</span>
+      <button id="toggleSyncBtn" class="gridjs-btn">Pause Syncing</button>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div id="filters">
+    <div class="input-container">
+      <input type="text" id="searchInput" required>
+      <label for="searchInput">Search...</label>
+    </div>
+    <div class="input-container">
+      <input type="text" id="userFilter" required>
+      <label for="userFilter">User</label>
+    </div>
+    <div class="input-container">
+      <input type="text" id="appFilter" required>
+      <label for="appFilter">App name</label>
+    </div>
+    <div class="input-container">
+      <select id="statusFilter" required>
+        <option value="" disabled selected></option>
+        <option value="">All Statuses</option>
+        <option value="completed">Completed</option>
+        <option value="queued">Queued</option>
+        <option value="errored">Errored</option>
+        <option value="ignored">Ignored</option>
+        <option value="rejected">Rejected</option>
+      </select>
+      <label for="statusFilter">Status</label>
+    </div>
+    <div id="resultsCount">Total Results: 0</div>
+  </div>
+
+  <!-- Grid.js Table -->
+  <div id="wrapper"></div>
+
+  <!-- Include Grid.js JS -->
+  <script src="https://unpkg.com/gridjs/dist/gridjs.umd.js"></script>
+  <script>
+    // Toggle button functionality
+    const syncStatusLabel = document.getElementById('syncStatusLabel');
+    const toggleSyncBtn = document.getElementById('toggleSyncBtn');
+    let isSyncActive = true;
+
+    toggleSyncBtn.addEventListener('click', () => {
+      isSyncActive = !isSyncActive;
+      if (isSyncActive) {
+        syncStatusLabel.textContent = 'ACTIVE';
+        syncStatusLabel.classList.remove('label-red');
+        syncStatusLabel.classList.add('label-green');
+        toggleSyncBtn.textContent = 'Pause Syncing';
+      } else {
+        syncStatusLabel.textContent = 'INACTIVE';
+        syncStatusLabel.classList.remove('label-green');
+        syncStatusLabel.classList.add('label-red');
+        toggleSyncBtn.textContent = 'Start Syncing';
+      }
+    });
+
+    // Generate data
+    function generateData(count) {
+      const statuses = ['completed', 'queued', 'errored', 'ignored', 'rejected'];
+      const messages = {
+        errored: 'Network error',
+        ignored: 'File type not supported',
+        rejected: 'Access denied'
+      };
+      const apps = ['app1', 'app2', 'app3', 'app4', 'app5', 'ring'];
+      const users = [
+        'alice@openmined.org',
+        'bob@openmined.org',
+        'charlie@openmined.org',
+        'dave@openmined.org',
+        'eve@openmined.org'
+      ];
+      const data = [];
+      for (let i = 0; i < count; i++) {
+        const status = statuses[Math.floor(Math.random() * statuses.length)];
+        const app = apps[Math.floor(Math.random() * apps.length)];
+        const user = users[Math.floor(Math.random() * users.length)];
+        const isAppFile = Math.random() < 0.7;
+        const filePath = isAppFile
+          ? `${user}/app_data/${app}/file${i + 1}.txt`
+          : `${user}/other_folder/file${i + 1}.txt`;
+        data.push({
+          file_name: filePath,
+          user: user,
+          app: isAppFile ? app : null,
+          date: new Date(Date.now() - i * 60000).toISOString(),
+          status: status,
+          message: messages[status] || ''
+        });
+      }
+      return data;
+    }
+
+    // Data initialization
+    const data = generateData(1000);
+    const sortedData = data.sort((a, b) => new Date(b.date) - new Date(a.date));
+    let filteredData = sortedData;
+
+    // Debounce function
+    function debounce(func, wait) {
+      let timeout;
+      return function(...args) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func.apply(this, args), wait);
+      };
+    }
+
+    // Update URL Parameters
+    function updateURLParameters(params) {
+      const url = new URL(window.location.href);
+      Object.keys(params).forEach(key => {
+        if (params[key]) {
+          url.searchParams.set(key, params[key]);
+        } else {
+          url.searchParams.delete(key);
+        }
+      });
+      window.history.replaceState({}, '', url);
+    }
+
+    // Get Parameters from URL
+    function getURLParameters() {
+      const params = new URLSearchParams(window.location.search);
+      return {
+        search: params.get('search') || '',
+        user: params.get('user') || '',
+        app: params.get('app') || '',
+        status: params.get('status') || ''
+      };
+    }
+
+    // Update results count
+    function updateResultsCount(count) {
+      const resultsCount = document.getElementById('resultsCount');
+      resultsCount.textContent = `Total Results: ${count}`;
+    }
+
+    // Initialize Grid.js
+    const grid = new gridjs.Grid({
+      columns: [
+        { id: 'file_name', name: 'File Name' },
+        { id: 'date', name: 'Date' },
+        {
+          id: 'status',
+          name: 'Status',
+          formatter: (cell) => {
+            const statusClass = getStatusClass(cell);
+            return gridjs.html(`<span class="label ${statusClass}">${cell}</span>`);
+          }
+        },
+        { id: 'message', name: 'Message' }
+      ],
+      data: () => {
+        return filteredData.map(item => [
+          item.file_name,
+          formatDate(item.date),
+          item.status,
+          item.message || ''
+        ]);
+      },
+      search: false,
+      resizable: true,
+      language: {
+        'noRecordsFound': 'No matching records found'
+      }
+    }).render(document.getElementById('wrapper'));
+
+    // Apply filters
+    function applyFilters() {
+      const searchInput = document.getElementById('searchInput').value.trim().toLowerCase();
+      const userInput = document.getElementById('userFilter').value.trim().toLowerCase();
+      const appInput = document.getElementById('appFilter').value.trim().toLowerCase();
+      const statusInput = document.getElementById('statusFilter').value;
+
+      // Update URL with current filters
+      updateURLParameters({
+        search: searchInput || null,
+        user: userInput || null,
+        app: appInput || null,
+        status: statusInput || null
+      });
+
+      filteredData = sortedData.filter(item => {
+        let searchMatch = true;
+        let userMatch = true;
+        let appMatch = true;
+        let statusMatch = true;
+
+        // Search filter
+        if (searchInput) {
+          searchMatch = item.file_name.toLowerCase().includes(searchInput) ||
+                        (item.message && item.message.toLowerCase().includes(searchInput));
+        }
+
+        // Filter by user (exact match)
+        if (userInput) {
+          userMatch = item.user.toLowerCase() === userInput;
+        }
+
+        // Filter by app (exact match)
+        if (appInput) {
+          appMatch = item.app && item.app.toLowerCase() === appInput;
+        }
+
+        // Filter by status
+        if (statusInput) {
+          statusMatch = item.status === statusInput;
+        }
+
+        return searchMatch && userMatch && appMatch && statusMatch;
+      });
+
+      updateResultsCount(filteredData.length);
+      grid.forceRender();
+    }
+
+    // Debounced version of applyFilters
+    const debouncedApplyFilters = debounce(applyFilters, 300);
+
+    // Event listeners for inputs
+    const inputs = document.querySelectorAll('#filters input, #filters select');
+    inputs.forEach(input => {
+      input.addEventListener('input', debouncedApplyFilters);
+    });
+
+    // Set filters from URL on page load
+    window.addEventListener('DOMContentLoaded', () => {
+      const { search, user, app, status } = getURLParameters();
+
+      document.getElementById('searchInput').value = search;
+      document.getElementById('userFilter').value = user;
+      document.getElementById('appFilter').value = app;
+      document.getElementById('statusFilter').value = status;
+
+      applyFilters();
+    });
+
+    // Helper functions
+    function formatDate(dateStr) {
+      const options = {
+        year: 'numeric', month: 'short', day: 'numeric',
+        hour: 'numeric', minute: 'numeric', second: 'numeric',
+        hour12: false,
+        timeZone: 'UTC'
+      };
+      const date = new Date(dateStr);
+      return date.toLocaleDateString('en-US', options);
+    }
+
+    function getStatusClass(status) {
+      switch (status) {
+        case 'completed':
+          return 'label-green';
+        case 'queued':
+          return 'label-orange';
+        case 'errored':
+          return 'label-red';
+        case 'ignored':
+          return 'label-gray';
+        case 'rejected':
+          return 'label-red';
+        default:
+          return 'label-gray';
+      }
+    }
+  </script>
+</body>
+</html>

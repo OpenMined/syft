@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
@@ -63,6 +64,13 @@ def format_paths(path_list: list[Path]) -> str:
     return tree
 
 
+@dataclass
+class OutOfSyncFiles:
+    permissions: list[FileChangeInfo]
+    files: list[FileChangeInfo]
+    ignored: list[Path]
+
+
 class DatasiteState:
     def __init__(
         self, client: SyftClientInterface, email: str, remote_state: Optional[list[FileMetadata]] = None
@@ -109,7 +117,7 @@ class DatasiteState:
 
     def get_out_of_sync_files(
         self,
-    ) -> tuple[list[FileChangeInfo], list[FileChangeInfo]]:
+    ) -> OutOfSyncFiles:
         """
         calculate the files that are out of sync
 
@@ -138,9 +146,9 @@ class DatasiteState:
             ignore_hidden_files=True,
             ignore_symlinks=True,
         )
+        ignored_files = all_files - set(all_files_filtered)
 
         all_changes = []
-
         for afile in all_files_filtered:
             local_info = local_state_dict.get(afile)
             remote_info = remote_state_dict.get(afile)
@@ -156,15 +164,12 @@ class DatasiteState:
             if change_info is not None:
                 all_changes.append(change_info)
 
-        # TODO implement ignore rules
-        # ignore_rules = get_ignore_rules(local_state)
-        # filtered_changes = filter_ignored_changes(all_changes, ignore_rules)
-
         permission_changes, file_changes = split_permissions(all_changes)
-        # TODO debounce changes
-        # filtered_changes = filter_recent_local_changes(filtered_changes)
-
-        return permission_changes, file_changes
+        return OutOfSyncFiles(
+            permissions=permission_changes,
+            files=file_changes,
+            ignored=list(ignored_files),
+        )
 
 
 def split_permissions(
