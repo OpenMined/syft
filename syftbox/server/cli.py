@@ -65,7 +65,7 @@ def server(
     verbose: Annotated[bool, VERBOSE_OPTS] = False,
     ssl_key: Annotated[Optional[Path], SSL_KEY_OPTS] = None,
     ssl_cert: Annotated[Optional[Path], SSL_CERT_OPTS] = None,
-):
+) -> None:
     """Run the SyftBox server"""
 
     if ctx.invoked_subcommand is not None:
@@ -87,7 +87,7 @@ def server(
     )
 
 
-def main():
+def main() -> None:
     app()
 
 

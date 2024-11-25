@@ -51,14 +51,14 @@ repos:
     hooks:
       - id: prettier
 
-  # todo - re-enable mypy & fixes in a separate PR
-  # - repo: https://github.com/pre-commit/mirrors-mypy
-  #   rev: v1.10.0
-  #   hooks:
-  #     - id: mypy
-  #       name: "mypy"
-  #       always_run: true
-  #       files: ^syftbox
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.10.0
+    hooks:
+      - id: mypy
+        name: "mypy"
+        always_run: true
+        files: ^syftbox
+        args: ["--config-file=tox.ini", "--install-types", "--non-interactive"]
 
   # - repo: meta
   #   hooks:

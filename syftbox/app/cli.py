@@ -37,7 +37,7 @@ fi
 
 
 @app.command()
-def list(config_path: Annotated[Path, CONFIG_OPTS] = DEFAULT_CONFIG_PATH):
+def list(config_path: Annotated[Path, CONFIG_OPTS] = DEFAULT_CONFIG_PATH) -> None:
     """List all installed Syftbox apps"""
     workspace = get_workspace(config_path)
     result = list_app(workspace)
@@ -57,7 +57,7 @@ def install(
     branch: Annotated[str, BRANCH_OPTS] = "main",
     config_path: Annotated[Path, CONFIG_OPTS] = DEFAULT_CONFIG_PATH,
     called_by: Annotated[str, CALLED_BY_OPTS] = "user",
-):
+) -> None:
     """Install a new Syftbox app"""
     client = get_client(config_path)
     result = install_app(client.workspace, repository, branch)
@@ -77,7 +77,7 @@ def install(
 def uninstall(
     app_name: Annotated[str, UNINSTALL_ARGS],
     config_path: Annotated[Path, CONFIG_OPTS] = DEFAULT_CONFIG_PATH,
-):
+) -> None:
     """Uninstall a Syftbox app"""
     workspace = get_workspace(config_path)
     result = uninstall_app(app_name, workspace)
@@ -92,11 +92,11 @@ def uninstall(
 def run(
     app_name: str,
     config_path: Annotated[Path, CONFIG_OPTS] = DEFAULT_CONFIG_PATH,
-):
+) -> None:
     """Run a Syftbox app"""
     workspace = get_workspace(config_path)
 
-    extra_args = []
+    extra_args: list = []
     try:
         rprint(f"Running [bold]'{app_name}'[/bold]\nLocation: '{workspace.apps}'\n")
         result = find_and_run_script(str(workspace.apps / app_name), extra_args, str(config_path))
@@ -110,7 +110,7 @@ def run(
 
 
 @app.command(rich_help_panel="General Options")
-def env(with_syftbox: bool = False):
+def env(with_syftbox: bool = False) -> None:
     """Setup virtual env for app. With option to install syftbox matching client version"""
 
     script = APP_ENV_SCRIPT

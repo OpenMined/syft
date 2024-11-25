@@ -20,7 +20,7 @@ class FSWatchdog:
         self.event_handler = event_handler
         self._observer = Observer()
 
-    def start(self):
+    def start(self) -> None:
         # observer starts it's own thread
         self._observer.schedule(
             self.event_handler,
@@ -29,7 +29,7 @@ class FSWatchdog:
         )
         self._observer.start()
 
-    def stop(self):
+    def stop(self) -> None:
         self._observer.stop()
         self._observer.join()
 
