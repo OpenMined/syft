@@ -18,7 +18,8 @@ jobs:
     strategy:
       max-parallel: 99
       matrix:
-        e2e-test: ["ring", "basic_aggregator", "model_aggregator"]
+        e2e-test:
+          ["ring", "basic_aggregator", "model_aggregator", "fl_model_training"]
         python-version: ["3.9", "3.12"]
         os: [ubuntu-latest, macos-latest]
         # runner: [syftbox-sh-linux-x64, scaleway-macOS-arm64]
