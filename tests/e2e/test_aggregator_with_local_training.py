@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import secrets
 import shutil
 from pathlib import Path
@@ -90,6 +91,27 @@ async def wait_for_public_trained_models(e2e_context: E2EContext, client: Client
         assert model_file.exists()
 
 
+def verify_files_sha256(src: Path, dst: Path) -> bool:
+    """Compare two files using SHA256 hash."""
+    import hashlib
+
+    def get_file_hash(file_path: Path) -> str:
+        sha256_hash = hashlib.sha256()
+        with open(file_path, "rb") as f:
+            # Read file in chunks for memory efficiency
+            for byte_block in iter(lambda: f.read(4096), b""):
+                sha256_hash.update(byte_block)
+        return sha256_hash.hexdigest()
+
+    try:
+        src_hash = get_file_hash(src)
+        dst_hash = get_file_hash(dst)
+        return src_hash == dst_hash
+    except Exception as e:
+        logger.error(f"Hash verification for {src} and {dst} failed: {e}")
+        return False
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("e2e_context", [deployment_config()], indirect=True, ids=["aggregator_with_local_training"])
 async def test_e2e_aggregator_with_local_training(e2e_context: E2EContext):
@@ -110,8 +132,15 @@ async def test_e2e_aggregator_with_local_training(e2e_context: E2EContext):
     logger.info("Aggregator copies test data to the private folder")
     agg_private_dir = agg_client.private_dir / AGGREGATOR_API_NAME
     agg_private_dir.mkdir(parents=True, exist_ok=True)
+    agg_priv_data_path = agg_private_dir / "mnist_dataset.pt"
     test_dataset_path = agg_client.api_path(AGGREGATOR_API_NAME) / "samples" / "test_data" / "mnist_dataset.pt"
-    shutil.copy(test_dataset_path, agg_private_dir)
+    # shutil.copyfile(test_dataset_path, agg_priv_data_path)
+    cp_result = os.system(f"cp {str(test_dataset_path)} {str(agg_priv_data_path)}")
+    if cp_result != 0:
+        raise RuntimeError(f"Copy {test_dataset_path} failed with exit code {cp_result}")
+    if not verify_files_sha256(test_dataset_path, agg_priv_data_path):
+        raise RuntimeError(f"File copy verification failed: {test_dataset_path} -> {agg_priv_data_path}")
+    await e2e_context.wait_for_path(agg_priv_data_path, timeout=60, interval=1)
 
     clients: list[Client] = e2e_context.clients[1:]
     logger.info("Participants moving the MNIST data parts into private/model_local_training to train")
