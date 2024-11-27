@@ -41,6 +41,32 @@ jobs:
         with:
           version: "0.4.25"
 
+      - name: Free Disk Space (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          # remove Android library
+          sudo rm -rf /usr/local/lib/android || true
+
+          # remove .NET runtime
+          sudo rm -rf /usr/share/dotnet || true
+
+          # remove Haskell runtime
+          sudo rm -rf /opt/ghc || true
+          sudo rm -rf /usr/local/.ghcup || true
+
+      - name: Free Disk Space (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          # remove Android SDK
+          sudo rm -rfv /Users/runner/Library/Android/sdk
+
+          # remove .NET runtime
+          sudo rm -rf /usr/local/share/dotnet || true
+
+          # remove Haskell
+          sudo rm -rf /usr/local/ghc || true
+          sudo rm -rf /Users/runner/.ghcup || true
+
       - name: Install Just
         uses: extractions/setup-just@v2
         with:
