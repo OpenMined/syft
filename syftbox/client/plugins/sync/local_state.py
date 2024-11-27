@@ -68,9 +68,7 @@ class LocalState(BaseModel):
     ):
         if not isinstance(path, Path):
             raise ValueError(f"path must be a Path object, got {path}")
-        self.status_info[path] = SyncStatusInfo(
-            path=path, timestamp=datetime.now(), status=status, message=message, action=action
-        )
+        self.status_info[path] = SyncStatusInfo(path=path, status=status, message=message, action=action)
         if save:
             self.save()
 

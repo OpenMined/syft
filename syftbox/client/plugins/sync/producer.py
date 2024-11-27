@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from loguru import logger
 
 from syftbox.client.base import SyftClientInterface
@@ -33,8 +31,15 @@ class SyncProducer:
         ]
         return datasite_states
 
-    def add_ignored_to_local_state(self, ignored_paths: list[Path]) -> None:
-        for path in ignored_paths:
+    def add_ignored_to_local_state(self, datasite: DatasiteState) -> None:
+        """
+        NOTE: to keep logic simple, we do not remove ignored files from the local state here.
+        Instead, they will be overwritten once the consumer processes the file.
+
+        NOTE: To avoid spammy behaviour symlinks and hidden files are not included in the local state ignore list.
+        Example: the symlinked apps .venv folders can contain 10k+ files
+        """
+        for path in datasite.get_syftignore_matches():
             prev_status_info = self.local_state.status_info.get(path, None)
             # Only add to local state if it's not already ignored previously
             is_ignored_previously = prev_status_info is not None and prev_status_info.status == SyncStatus.IGNORED
@@ -47,22 +52,20 @@ class SyncProducer:
         and track the ignored files in the local state.
         """
         try:
-            out_of_sync_files = datasite.get_datasite_changes()
+            datasite_changes = datasite.get_datasite_changes()
 
-            if len(out_of_sync_files.permissions) or len(out_of_sync_files.files):
+            if len(datasite_changes.permissions) or len(datasite_changes.files):
                 logger.debug(
-                    f"Enqueuing {len(out_of_sync_files.permissions)} permissions and {len(out_of_sync_files.files)} files for {datasite.email}"
+                    f"Enqueuing {len(datasite_changes.permissions)} permissions and {len(datasite_changes.files)} files for {datasite.email}"
                 )
         except Exception as e:
             logger.error(f"Failed to get out of sync files for {datasite.email}. Reason: {e}")
             return
 
-        for change in out_of_sync_files.permissions + out_of_sync_files.files:
+        for change in datasite_changes.permissions + datasite_changes.files:
             self.enqueue(change)
 
-        # Exclude symlinks from logged ignored files to avoid spamming the logs
-        ignored_files = datasite.get_ignored_local_files(include_symlinks=False)
-        self.add_ignored_to_local_state(ignored_files)
+        self.add_ignored_to_local_state(datasite)
 
     def enqueue(self, change: FileChangeInfo) -> None:
         self.queue.put(SyncQueueItem(priority=change.get_priority(), data=change))

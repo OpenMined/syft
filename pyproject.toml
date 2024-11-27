@@ -29,6 +29,7 @@ dependencies = [
     "pydantic[email]>=2.9.2",
     "ruamel-yaml>=0.18.6",
     "pyjwt>=2.10.0",
+    "wcmatch>=10.0",
 ]
 
 [project.optional-dependencies]

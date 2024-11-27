@@ -1,13 +1,13 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 from loguru import logger
 
 from syftbox.client.base import SyftClientInterface
 from syftbox.client.plugins.sync.endpoints import get_remote_state
 from syftbox.client.plugins.sync.types import FileChangeInfo, SyncSide
-from syftbox.lib.ignore import filter_ignored_paths
+from syftbox.lib.ignore import filter_ignored_paths, get_syftignore_matches
 from syftbox.lib.lib import SyftPermission
 from syftbox.server.sync.hash import collect_files, hash_dir
 from syftbox.server.sync.models import FileMetadata
@@ -86,17 +86,20 @@ class DatasiteState:
         changes = self.get_datasite_changes()
         return len(changes.files) == 0 and len(changes.permissions) == 0
 
-    def get_ignored_local_files(self, include_hidden: bool = True, include_symlinks: bool = True) -> set[Path]:
+    def get_syftignore_matches(self) -> List[Path]:
+        """
+        Return the paths that are ignored by the syftignore file
+
+        NOTE: symlinks and hidden files are ignored by default, and not added here.
+        This is to avoid spamming the logs with .venv and .git folders.
+        """
         all_paths = collect_files(self.path)
         relative_paths = [file.relative_to(self.client.workspace.datasites) for file in all_paths]
-        filtered_paths = filter_ignored_paths(
+        return get_syftignore_matches(
             datasites_dir=self.client.workspace.datasites,
             relative_paths=relative_paths,
-            ignore_hidden_files=include_hidden,
-            ignore_symlinks=include_symlinks,
+            include_symlinks=False,
         )
-
-        return set(relative_paths) - set(filtered_paths)
 
     def get_datasite_changes(
         self,

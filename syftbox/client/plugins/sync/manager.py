@@ -57,6 +57,8 @@ class SyncManager:
                 except FatalSyncError as e:
                     logger.error(f"Syncing encountered a fatal error. {e}")
                     break
+                except Exception as e:
+                    logger.error(f"Syncing encountered an error: {e}. Retrying in {manager.sync_interval} seconds.")
 
         self.is_stop_requested = False
         t = Thread(target=_start, args=(self,), daemon=True)
