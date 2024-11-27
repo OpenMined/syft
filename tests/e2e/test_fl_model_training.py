@@ -14,7 +14,7 @@ PROJECT_NAME = "my_cool_fl_project"
 AGGREGATOR_CONFIG = {
     "project_name": PROJECT_NAME,
     "aggregator": "agg@openmined.org",
-    "participants": ["user1@openmined.org", "user2@openmined.org", "user3@openmined.org"],
+    "participants": ["user1@openmined.org", "user2@openmined.org"],
     "model_arch": "model_arch.py",
     "model_class_name": "FLModel",
     "model_weight": "global_model_weight.pt",
@@ -47,14 +47,6 @@ def deployment_config():
             Client(
                 name="user2",
                 port=8082,
-                server_port=5001,
-                apps=[
-                    "https://github.com/OpenMined/fl_client",
-                ],
-            ),
-            Client(
-                name="user3",
-                port=8083,
                 server_port=5001,
                 apps=[
                     "https://github.com/OpenMined/fl_client",
