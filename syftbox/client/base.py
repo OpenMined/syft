@@ -75,3 +75,7 @@ class SyftClientInterface(Protocol):
     def log_analytics_event(self, event_name: str, **kwargs) -> None:
         """Log an analytics event to the server."""
         ...  # pragma: no cover
+
+    def whoami(self) -> str:
+        """Get the email address of the current user from the server."""
+        ...  # pragma: no cover

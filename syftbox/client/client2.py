@@ -13,7 +13,7 @@ from syftbox.__version__ import __version__
 from syftbox.client.api import create_api
 from syftbox.client.base import SyftClientInterface
 from syftbox.client.env import syftbox_env
-from syftbox.client.exceptions import SyftBoxAlreadyRunning, SyftServerError
+from syftbox.client.exceptions import SyftAuthenticationError, SyftBoxAlreadyRunning, SyftServerError
 from syftbox.client.logger import setup_logger
 from syftbox.client.plugin_manager import PluginManager
 from syftbox.client.utils import error_reporting, file_manager, macos
@@ -261,6 +261,23 @@ class SyftClientContext(SyftClientInterface):
         response = self.server_client.post("/log_event", json=event_data)
         if response.status_code != 200:
             raise SyftServerError(f"Failed to log event: {response.text}")
+
+    def whoami(self) -> str:
+        try:
+            response = self.server_client.post("/auth/whoami")
+            if response.status_code == 401:
+                raise SyftAuthenticationError()
+            if response.status_code != 200:
+                raise SyftServerError(f"[/whoami] Server error: {response.status_code}, {response.text}")
+
+            data = response.json()
+            if "email" not in data:
+                raise SyftServerError("[/whoami] Missing email in response")
+
+            return data["email"]
+
+        except httpx.RequestError as e:
+            raise SyftServerError(f"[/whoami] Request failed: {e}") from e
 
 
 def run_apps_to_api_migration(new_ws: SyftWorkspace):

@@ -1,22 +1,21 @@
 from loguru import logger
 
-from syftbox.client.base import SyftClientInterface
 from syftbox.client.plugins.sync.datasite_state import DatasiteState
-from syftbox.client.plugins.sync.endpoints import get_datasite_states
 from syftbox.client.plugins.sync.local_state import LocalState
 from syftbox.client.plugins.sync.queue import SyncQueue, SyncQueueItem
+from syftbox.client.plugins.sync.sync_client import SyncClient
 from syftbox.client.plugins.sync.types import FileChangeInfo, SyncStatus
 
 
 class SyncProducer:
-    def __init__(self, client: SyftClientInterface, queue: SyncQueue, local_state: LocalState):
+    def __init__(self, client: SyncClient, queue: SyncQueue, local_state: LocalState):
         self.client = client
         self.queue = queue
         self.local_state = local_state
 
     def get_datasite_states(self) -> list[DatasiteState]:
         try:
-            remote_datasite_states = get_datasite_states(self.client.server_client, email=self.client.email)
+            remote_datasite_states = self.client.get_datasite_states()
         except Exception as e:
             logger.error(f"Failed to retrieve datasites from server, only syncing own datasite. Reason: {e}")
             remote_datasite_states = {}

@@ -4,7 +4,7 @@ from typing import Any
 
 import httpx
 
-from syftbox.client.exceptions import SyftAuthenticationError, SyftNotFound, SyftServerError
+from syftbox.client.exceptions import SyftNotFound, SyftServerError
 from syftbox.server.sync.models import ApplyDiffResponse, DiffResponse, FileMetadata
 
 
@@ -14,14 +14,6 @@ def handle_json_response(endpoint: str, response: httpx.Response) -> Any:
         return response.json()
 
     raise SyftServerError(f"[{endpoint}] call failed: {response.text}")
-
-
-def get_access_token(client: httpx.Client, email: str) -> str:
-    """Only for development purposes, should not be used in production"""
-    response = client.post("/auth/request_email_token", json={"email": email})
-    email_token = response.json()["email_token"]
-    response = client.post("/auth/validate_email_token", headers={"Authorization": f"Bearer {email_token}"})
-    return response.json()["access_token"]
 
 
 def get_datasite_states(client: httpx.Client, email: str) -> dict[str, list[FileMetadata]]:
@@ -132,32 +124,3 @@ def download_bulk(client: httpx.Client, paths: list[str]) -> bytes:
     )
     response.raise_for_status()
     return response.content
-
-
-def whoami(client: httpx.Client) -> str:
-    """
-    Performs a health check on the server by sending a POST request to the '/auth/whoami' endpoint.
-
-    Args:
-        client (httpx.Client): Client to use for the health check.
-
-    Raises:
-        AuthError: If the server responds with a 401 status code.
-        SyftServerError: If the server responds with any other non-200 status code.
-
-    Returns:
-        None: If the health check is successful.
-    """
-    try:
-        response = client.post("/auth/whoami")
-        if response.status_code == 200:
-            email = response.json()["email"]
-            return email
-        elif response.status_code == 401:
-            raise SyftAuthenticationError()
-        else:
-            raise SyftServerError(
-                f"Health check failed. Status code: {response.status_code}. Response: {response.text}"
-            )
-    except httpx.RequestError as e:
-        raise SyftServerError(f"Health check failed, could not connect to server. Reason: {e}")
