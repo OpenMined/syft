@@ -59,12 +59,10 @@ VERBOSE_OPTS = Option(
     is_flag=True,
     help="Enable verbose mode",
 )
-
-
-
-TOKEN_OPTS = Option(
-    "--token",
-    help="Token for password reset",
+RESET_TOKEN_OPTS = Option(
+    "--reset-token",
+    is_flag=True,
+    help="Reset Token in order to invalidate the current one",
 )
 
 # report command opts
@@ -86,6 +84,7 @@ def client(
     port: Annotated[int, PORT_OPTS] = DEFAULT_PORT,
     open_dir: Annotated[bool, OPEN_OPTS] = True,
     verbose: Annotated[bool, VERBOSE_OPTS] = False,
+    reset_token: Annotated[bool, RESET_TOKEN_OPTS] = False,
 ):
     """Run the SyftBox client"""
 
@@ -106,7 +105,8 @@ def client(
         rprint(f"[bold red]Error:[/bold red] Client cannot start because port {port} is already in use!")
         raise Exit(1)
 
-    client_config = setup_config_interactive(config_path, email, data_dir, server, port)
+    print(f"{reset_token=}")
+    client_config = setup_config_interactive(config_path, email, data_dir, server, port, reset_token=reset_token)
 
     migrate_datasite = get_migration_decision(client_config.data_dir)
 

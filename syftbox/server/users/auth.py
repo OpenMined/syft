@@ -1,12 +1,14 @@
 import base64
 from datetime import datetime, timezone
 import json
+from pathlib import Path
 from typing_extensions import Annotated
 from fastapi import Depends, HTTPException, Header, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 import httpx
 import jwt
 from syftbox.server.settings import ServerSettings, get_server_settings
+from syftbox.server.users.user_store import User, UserStore
 
 bearer_scheme = HTTPBearer()
 
@@ -66,6 +68,20 @@ def generate_email_token(server_settings: ServerSettings, email: str) -> str:
 
 def validate_access_token(server_settings: ServerSettings, token: str) -> dict:
     data = _validate_jwt(server_settings, token)
+    user_store = UserStore(server_settings=server_settings)
+    user = user_store.get_user_by_email(data['email'])
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if user.credentials != token:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid Token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     if data["type"] != ACCESS_TOKEN:
         raise HTTPException(
             status_code=401,
@@ -93,10 +109,19 @@ def get_user_from_email_token(
     payload = validate_email_token(server_settings, credentials.credentials)
     return payload["email"]
 
-
 def get_current_user(
     credentials: Annotated[HTTPAuthorizationCredentials, Security(bearer_scheme)],
     server_settings: Annotated[ServerSettings, Depends(get_server_settings)],
 ) -> str:
     payload = validate_access_token(server_settings, credentials.credentials)
     return payload["email"]
+
+
+def set_token(server_settings: ServerSettings, email: str, token: str):
+    user_store = UserStore(server_settings=server_settings)
+    user_store.update_user(User(email=email, credentials=token))
+
+
+def delete_token(server_settings: ServerSettings, email: str):
+    user_store = UserStore(server_settings=server_settings)
+    user_store.update_user(User(email=email, credentials=""))

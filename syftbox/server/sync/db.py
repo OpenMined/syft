@@ -3,7 +3,7 @@ import shutil
 import sqlite3
 import tempfile
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 from syftbox.server.settings import ServerSettings
 from syftbox.server.sync.models import FileMetadata
@@ -28,7 +28,48 @@ def get_db(path: str):
             file_size INTEGER NOT NULL,
             last_modified TEXT NOT NULL        )
         """)
+        # Create the table if it doesn't exist
+        conn.execute("""
+        CREATE TABLE IF NOT EXISTS users_credentials (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_email TEXT NOT NULL UNIQUE,
+            credentials TEXT NOT NULL          )
+        """)
     return conn
+
+
+def get_user_by_email(conn: sqlite3.Connection, email: str):
+    conn.execute("SELECT id, user_email, credentials FROM users_credentials WHERE user_email = ?", (email,))
+    user = conn.fetchone()
+    return user
+
+
+# maybe we should do update_user instead of set_credentials?
+def set_credentials(conn: sqlite3.Connection, email: str, credentials: str):
+    conn.execute("""
+        UPDATE users_credentials
+            SET credentials = ?
+            WHERE user_email = ?
+        """, (credentials, email,))
+
+
+def add_user(conn: sqlite3.Connection, email: str, credentials: str):
+    conn.execute("""
+    INSERT INTO users_credentials (user_email, credentials) 
+    VALUES (?, ?)
+    """, (email, credentials))
+    
+
+def get_all_users(conn: sqlite3.Connection):
+    conn.execute("SELECT * FROM users_credentials")
+    return conn.fecthall()
+
+
+def delete_user(conn: sqlite3.Connection, email: str):
+    conn.execute("""
+        DELETE FROM users_credentials
+        WHERE user_email = ?
+        """, (email,))
 
 
 def save_file_metadata(conn: sqlite3.Connection, metadata: FileMetadata):

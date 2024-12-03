@@ -45,6 +45,10 @@ def request_email_token(auth_client: httpx.Client, conf: SyftClientConfig) -> Op
     response.raise_for_status()
     return response.json().get("email_token", None)
 
+def prompt_get_token_from_email(email):
+    return Prompt.ask(
+            f"[yellow]Please enter the token sent to {email}. Also check your spam folder[/yellow]"
+        )
 
 def get_access_token(
     conf: SyftClientConfig,
@@ -63,9 +67,7 @@ def get_access_token(
         str: access token
     """
     if not email_token:
-        email_token = Prompt.ask(
-            f"[yellow]Please enter the token sent to {conf.email}. Also check your spam folder[/yellow]"
-        )
+        email_token = prompt_get_token_from_email(conf.email)
 
     response = auth_client.post(
         "/auth/validate_email_token",
@@ -81,6 +83,18 @@ def get_access_token(
     else:
         rprint(f"[red]An unexpected error occurred: {response.text}[/red]")
         raise typer.Exit(1)
+
+def invalidate_client_token(conf: SyftClientConfig):
+    auth_client = httpx.Client(base_url=str(conf.server_url))
+    
+    if has_valid_access_token(conf, auth_client):
+        response = auth_client.post(
+            "/auth/invalidate_access_token",
+            headers={"Authorization": f"Bearer {conf.access_token}"},
+        )
+        rprint(f"[bold]{response.text}[/bold]")
+    else:
+        rprint("[yellow]No valid access token found, skipping token reset[/yellow]")
 
 
 def authenticate_user(conf: SyftClientConfig, login_client: httpx.Client) -> str:
