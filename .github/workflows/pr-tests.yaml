@@ -18,13 +18,13 @@ jobs:
     strategy:
       max-parallel: 99
       matrix:
-        # os: [ubuntu-latest, macos-latest]
-        runner: [syftbox-sh-linux-x64, sh-macos-arm64]
+        os: [ubuntu-latest, macos-latest]
+        # runner: [syftbox-sh-linux-x64, scaleway-macOS-arm64]
         python-version: ["3.12", "3.11", "3.10", "3.9"]
       fail-fast: false
 
-    # runs-on: ${{ matrix.os }}
-    runs-on: ${{ matrix.runner }}
+    # runs-on: ${{ matrix.runner }}
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -48,22 +48,9 @@ jobs:
             pr-uv-${{ runner.os }}-py${{ matrix.python-version }}
 
       - name: Set up Python ${{ matrix.python-version }}
-        if: startsWith(matrix.runner, 'syftbox-sh-linux')
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-
-      # challenge here is actions/setup-python@v5 requires write access to /Users/runner/hostedtoolcache
-      # but current custom macos runner does not allow writing to that dir (even sudo won't work)
-      # so we need to use this weird way to install python on macos
-      - name: Set up Python ${{ matrix.python-version }} (uv managed)
-        if: startsWith(matrix.runner, 'sh-macos')
-        run: |
-          uv python install ${{ matrix.python-version }}
-          uv venv --python ${{ matrix.python-version }} .venv${{ matrix.python-version }}
-          uv tool update-shell
-          source $HOME/.profile
-          source .venv${{ matrix.python-version }}/bin/activate
 
       - name: Install tox
         run: |
@@ -82,11 +69,13 @@ jobs:
     strategy:
       max-parallel: 99
       matrix:
-        runner: [syftbox-sh-linux-x64, sh-macos-arm64]
+        os: [ubuntu-latest, macos-latest]
+        # runner: [syftbox-sh-linux-x64, scaleway-macOS-arm64]
         python-version: ["3.12", "3.9"]
       fail-fast: false
 
-    runs-on: ${{ matrix.runner }}
+    # runs-on: ${{ matrix.runner }}
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -110,22 +99,9 @@ jobs:
             pr-uv-${{ runner.os }}-py${{ matrix.python-version }}
 
       - name: Set up Python ${{ matrix.python-version }}
-        if: startsWith(matrix.runner, 'syftbox-sh-linux')
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-
-      # challenge here is actions/setup-python@v5 requires write access to /Users/runner/hostedtoolcache
-      # but current custom macos runner does not allow writing to that dir (even sudo won't work)
-      # so we need to use this weird way to install python on macos
-      - name: Set up Python ${{ matrix.python-version }} (uv managed)
-        if: startsWith(matrix.runner, 'syftbox-sh-mac')
-        run: |
-          uv python install ${{ matrix.python-version }}
-          uv venv --python ${{ matrix.python-version }} .venv${{ matrix.python-version }}
-          uv tool update-shell
-          source $HOME/.profile
-          source .venv${{ matrix.python-version }}/bin/activate
 
       - name: Install tox
         run: |

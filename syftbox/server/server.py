@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Header, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import (
     FileResponse,
@@ -30,6 +30,7 @@ from syftbox.server.analytics import log_analytics_event
 from syftbox.server.logger import setup_logger
 from syftbox.server.middleware import LoguruMiddleware
 from syftbox.server.settings import ServerSettings, get_server_settings
+from syftbox.server.users.auth import get_current_user
 
 from .emails.router import router as emails_router
 from .sync import db, hash
@@ -346,7 +347,10 @@ async def register(
 
 
 @app.post("/log_event")
-async def log_event(request: Request, email: Optional[str] = Header(default=None)):
+async def log_event(
+    request: Request,
+    email: str = Depends(get_current_user),
+):
     data = await request.json()
     log_analytics_event("/log_event", email, **data)
     return JSONResponse({"status": "success"}, status_code=200)
@@ -356,6 +360,12 @@ async def log_event(request: Request, email: Optional[str] = Header(default=None
 async def install():
     install_script = current_dir / "templates" / "install.sh"
     return FileResponse(install_script, media_type="text/plain")
+
+
+@app.get("/icon.png")
+async def icon():
+    icon_path = current_dir / "assets" / "icon.png"
+    return FileResponse(icon_path, media_type="image/png")
 
 
 @app.get("/info")

@@ -16,6 +16,7 @@ from typing_extensions import Any, Optional, Union
 from syftbox.client.base import SyftClientInterface
 from syftbox.lib.client_config import CONFIG_PATH_ENV
 
+APP_LOG_FILE_NAME_FORMAT = "{app_name}.log"
 DEFAULT_INTERVAL = 10
 RUNNING_APPS = {}
 DEFAULT_APPS_PATH = Path(os.path.join(os.path.dirname(__file__), "..", "..", "..", "default_apps")).absolute().resolve()
@@ -74,7 +75,7 @@ def get_clean_env():
     return clean_env
 
 
-def find_and_run_script(app_path: Path, extra_args: list, config_path: Path):
+def find_and_run_script(app_path: Path, extra_args: list, config_path: Path, app_log_dir: Path):
     script_path = os.path.join(app_path, "run.sh")
 
     clean_env = get_clean_env()
@@ -92,7 +93,70 @@ def find_and_run_script(app_path: Path, extra_args: list, config_path: Path):
 
         # Prepare the command based on whether there's a shebang or not
         command = ["sh", script_path] + extra_args
-        return subprocess.run(
+
+        result, _ = run_with_logging(
+            command,
+            app_path,
+            clean_env,
+            app_log_dir,
+        )
+        return result
+    else:
+        raise FileNotFoundError(f"run.sh not found in {app_path}")
+
+
+def create_app_logger(log_file: Path):
+    """Create an isolated logger for app runs"""
+    import logging
+    from logging.handlers import RotatingFileHandler
+
+    # Create a new logger instance
+    logger = logging.getLogger(f"app_logger_{log_file.name}")
+    logger.setLevel(logging.INFO)
+
+    # Remove any existing handlers
+    logger.handlers.clear()
+
+    # Create formatter
+    formatter = logging.Formatter("%(asctime)s | %(levelname)-8s | %(message)s", datefmt="%Y-%m-%d at %H:%M:%S")
+
+    # Create and configure file handler
+    file_handler = RotatingFileHandler(
+        filename=log_file,
+        maxBytes=100 * 1024 * 1024,  # 100Mb
+        backupCount=3,
+        encoding="utf-8",
+    )
+    file_handler.setFormatter(formatter)
+    file_handler.setLevel(logging.INFO)
+
+    # Add handler to logger
+    logger.addHandler(file_handler)
+
+    return logger, file_handler
+
+
+def run_with_logging(command: str, app_path: Path, clean_env: dict, log_path: Path):
+    """
+    Run a subprocess command and capture output to both a log file and return results.
+    """
+    # Create logs directory if it doesn't exist
+    log_path.mkdir(parents=True, exist_ok=True)
+
+    # Create a unique log filename with timestamp and app name
+    app_name = app_path.name
+    log_file = log_path / APP_LOG_FILE_NAME_FORMAT.format(app_name=app_name)
+
+    # Create isolated logger for this run
+    app_logger, file_handler = create_app_logger(log_file=log_file)
+
+    try:
+        # Log run metadata
+        app_logger.info(f"Working directory: {app_path}")
+        app_logger.info(f"Command: {command}")
+
+        # Run the subprocess
+        process = subprocess.run(
             command,
             cwd=app_path,
             check=True,
@@ -100,8 +164,35 @@ def find_and_run_script(app_path: Path, extra_args: list, config_path: Path):
             text=True,
             env=clean_env,
         )
-    else:
-        raise FileNotFoundError(f"run.sh not found in {app_path}")
+
+        # log this in app log
+        app_logger.info(
+            (
+                f"exit code: {process.returncode}\n"
+                f"===stdout===\n{process.stdout}"
+                f"===stderr===\n{process.stderr or '-'}"
+            )
+        )
+        # log this in console
+        logger.info(f"Process completed with exit code: {process.returncode}. Log file: {log_file}")
+        return process, log_file
+
+    except subprocess.CalledProcessError as e:
+        # log this in app log
+        app_logger.error(
+            ("process output\n" f"> exit code: {e.returncode}\n" f"> stdout:\n{e.stdout}" f"> stderr:\n{e.stderr}")
+        )
+        # log this in console
+        logger.error(f"Process failed with exit code: {e.returncode}")
+        raise e
+
+    except Exception as e:
+        app_logger.error(f"Unexpected error: {str(e)}")
+        raise e
+
+    finally:
+        app_logger.removeHandler(file_handler)
+        file_handler.close()
 
 
 def copy_default_apps(apps_path: Path):
@@ -163,7 +254,11 @@ def run_apps(apps_path: Path, client_config: Path):
                 logger.info("⏱  Scheduling a  new app run.")
                 thread = threading.Thread(
                     target=run_custom_app_config,
-                    args=(app_config, app_path, client_config),
+                    args=(
+                        app_config,
+                        app_path,
+                        client_config,
+                    ),
                 )
                 thread.start()
                 RUNNING_APPS[os.path.basename(app)] = thread
@@ -211,22 +306,24 @@ def run_custom_app_config(app_config: SimpleNamespace, app_path: Path, client_co
         logger.info(f"👟 Running {app_name} at scheduled time {current_time.strftime('%Y-%m-%d %H:%M:%S')}")
         logger.info(f"Running command: {app_config.app.run.command}")
         try:
-            result = subprocess.run(
+            app_log_dir = app_path / "logs"
+            run_with_logging(
                 app_config.app.run.command,
-                cwd=app_path,
-                check=True,
-                capture_output=True,
-                text=True,
-                env=clean_env,
+                app_path,
+                clean_env,
+                app_log_dir,
             )
-            logger.info(f"App '{app_name}' ran sucessfully.\nstdout:\n{result.stdout}stderr:\n{result.stderr}")
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Error running '{app_name}' - {e}\nstdout:\n{e.stdout}\nstderr:\n{e.stderr}")
-        except Exception as e:
-            logger.error(f"Error running '{app_name}' - {e}")
+            log_file = app_log_dir / APP_LOG_FILE_NAME_FORMAT.format(app_name=app_name)
+            logger.info(f"App '{app_name}' ran successfully. \nDetailed logs at: {log_file.resolve()}")
+        except subprocess.CalledProcessError as _:
+            logger.error(f"Error calling subprocess for api '{app_name}'")
+            logger.error(f"Check {app_name}'s api logs at: {log_file.resolve()}")
+        except Exception as _:
+            logger.error(f"Error running '{app_name}'")
+            logger.error(f"Check {app_name} api logs at: {log_file.resolve()}")
 
         if cron_iter is not None:
-            # Schedule the next exection
+            # Schedule the next execution
             next_execution = cron_iter.get_next(datetime)
             time_to_wait = int((next_execution - current_time).total_seconds())
             logger.info(
@@ -239,16 +336,23 @@ def run_custom_app_config(app_config: SimpleNamespace, app_path: Path, client_co
 
 def run_app(app_path: Path, config_path: Path):
     app_name = os.path.basename(app_path)
+    app_log_dir = app_path / "logs"
+    log_file = app_log_dir / APP_LOG_FILE_NAME_FORMAT.format(app_name=app_name)
 
     extra_args = []
     try:
         logger.info(f"Running '{app_name}' app")
-        result = find_and_run_script(app_path, extra_args, config_path)
-        logger.info(f"App '{app_name}' ran sucessfully.\nstdout:\n{result.stdout}stderr:\n{result.stderr}")
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Error running '{app_name}' - {e}\nstdout:\n{e.stdout}\nstderr:\n{e.stderr}")
-    except Exception as e:
-        logger.error(f"Error running '{app_name}' - {e}")
+        find_and_run_script(app_path, extra_args, config_path, app_log_dir)
+        logger.info(f"`{app_name}` App ran successfully. \nDetailed logs at: {log_file.resolve()}")
+    except FileNotFoundError as e:
+        logger.error(f"Error running '{app_name}'")
+        logger.error(f"Error: {str(e)}")
+    except subprocess.CalledProcessError as _:
+        logger.error(f"Error calling subprocess for api '{app_name}'")
+        logger.error(f"Check {app_name}'s api logs at: {log_file.resolve()}")
+    except Exception as _:
+        logger.error(f"Error running '{app_name}'")
+        logger.error(f"Check {app_name} api logs at: {log_file.resolve()}")
 
 
 class AppRunner:
@@ -256,21 +360,20 @@ class AppRunner:
         self.client = client
         self.__event = threading.Event()
         self.interval = interval
-        self.__run_thread: threading.Thread
+        self.__run_thread: threading.Thread = None
 
     def start(self):
         def run():
             bootstrap(self.client)
-
             while not self.__event.is_set():
                 try:
                     run_apps(
                         apps_path=self.client.workspace.apps,
                         client_config=self.client.config.path,
                     )
+                    self.__event.wait(self.interval)
                 except Exception as e:
-                    logger.error(f"Error running apps: {e}")
-                time.sleep(self.interval)
+                    logger.error(f"Error running apps: {str(e)}")
 
         self.__run_thread = threading.Thread(target=run)
         self.__run_thread.start()

@@ -105,7 +105,7 @@ class InstallRequest(BaseModel):
 
 @router.post("/install")
 async def install_app(request: InstallRequest):
-    command = ["syftbox", "app", "install", request.source]
+    command = ["syftbox", "app", "install", request.source, "--called-by", "api"]
     try:
         # Run the command and capture output
         result = subprocess.run(command, capture_output=True, text=True, check=True)
@@ -161,3 +161,29 @@ async def app_command(ctx: APIContext, app_name: str, request: dict):
                 return JSONResponse(status_code=500, content={"error": e.stderr.strip()})
 
     raise HTTPException(status_code=404, detail="App not found")
+
+
+@router.get("/logs/{app_name}")
+async def app_logs(ctx: APIContext, app_name: str):
+    apps_dir = ctx.workspace.apps
+    all_apps = get_all_apps(apps_dir)
+    app_details = None
+    for app in all_apps:
+        if app_name == app.name:
+            app_details = app
+
+    # Raise 404 if app not found
+    if app_details is None:
+        raise HTTPException(status_code=404, detail="App not found")
+
+    logs = []
+
+    # Read the log file if it exists
+    app_path = Path(app_details.path)
+
+    log_file = app_path / "logs" / f"{app_name}.log"
+    if log_file.exists():
+        with open(log_file, "r") as file:
+            logs = file.readlines()
+
+    return JSONResponse(content={"logs": logs})

@@ -12,7 +12,7 @@ from syftbox.lib.client_config import SyftClientConfig
 
 
 class ErrorReport(BaseModel):
-    client_config: dict
+    client_config: SyftClientConfig
     server_syftbox_version: Optional[str] = None
     client_syftbox_version: str = __version__
     python_version: str = sys.version
@@ -23,7 +23,7 @@ class ErrorReport(BaseModel):
     @classmethod
     def from_client_config(cls, client_config: SyftClientConfig):
         return cls(
-            client_config=client_config.as_dict(),
+            client_config=client_config,
             server_version=try_get_server_version(client_config.server_url),
         )
 

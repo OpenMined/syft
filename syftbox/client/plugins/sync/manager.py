@@ -5,22 +5,38 @@ from typing import Optional
 from loguru import logger
 
 from syftbox.client.base import SyftClientInterface
+from syftbox.client.exceptions import SyftAuthenticationError
 from syftbox.client.plugins.sync.consumer import SyncConsumer
-from syftbox.client.plugins.sync.endpoints import get_datasite_states
-from syftbox.client.plugins.sync.exceptions import FatalSyncError
+from syftbox.client.plugins.sync.endpoints import whoami
+from syftbox.client.plugins.sync.exceptions import FatalSyncError, SyncEnvironmentError
+from syftbox.client.plugins.sync.local_state import LocalState
+from syftbox.client.plugins.sync.producer import SyncProducer
 from syftbox.client.plugins.sync.queue import SyncQueue, SyncQueueItem
-from syftbox.client.plugins.sync.sync import DatasiteState, FileChangeInfo
+from syftbox.client.plugins.sync.types import FileChangeInfo
 
 
 class SyncManager:
-    def __init__(self, client: SyftClientInterface):
+    def __init__(self, client: SyftClientInterface, health_check_interval: int = 300):
         self.client = client
+        self.local_state = LocalState.for_client(client)
         self.queue = SyncQueue()
-        self.consumer = SyncConsumer(client=self.client, queue=self.queue)
+        self.producer = SyncProducer(client=self.client, queue=self.queue, local_state=self.local_state)
+        self.consumer = SyncConsumer(client=self.client, queue=self.queue, local_state=self.local_state)
+
         self.sync_interval = 1  # seconds
         self.thread: Optional[Thread] = None
         self.is_stop_requested = False
         self.sync_run_once = False
+        self.last_health_check = 0
+        self.health_check_interval = health_check_interval
+
+        self.setup()
+
+    def setup(self):
+        try:
+            self.local_state.load()
+        except Exception as e:
+            raise SyncEnvironmentError(f"Failed to load previous sync state: {e}")
 
     def is_alive(self) -> bool:
         return self.thread is not None and self.thread.is_alive()
@@ -34,11 +50,15 @@ class SyncManager:
         def _start(manager: SyncManager):
             while not manager.is_stop_requested:
                 try:
+                    if manager._should_perform_health_check():
+                        manager.check_server_status()
                     manager.run_single_thread()
                     time.sleep(manager.sync_interval)
                 except FatalSyncError as e:
-                    logger.error(f"Syncing encountered a fatal error: {e}")
+                    logger.error(f"Syncing encountered a fatal error. {e}")
                     break
+                except Exception as e:
+                    logger.error(f"Syncing encountered an error: {e}. Retrying in {manager.sync_interval} seconds.")
 
         self.is_stop_requested = False
         t = Thread(target=_start, args=(self,), daemon=True)
@@ -49,53 +69,37 @@ class SyncManager:
     def enqueue(self, change: FileChangeInfo) -> None:
         self.queue.put(SyncQueueItem(priority=change.get_priority(), data=change))
 
-    def get_datasite_states(self) -> list[DatasiteState]:
+    def _should_perform_health_check(self) -> bool:
+        return time.time() - self.last_health_check > self.health_check_interval
+
+    def check_server_status(self):
+        """
+        check if the server is still available for syncing,
+        if the user cannot authenticate, the sync will stop.
+
+        Raises:
+            FatalSyncError: If the server is not available.
+        """
         try:
-            remote_datasite_states = get_datasite_states(self.client.server_client, email=self.client.email)
+            _ = whoami(self.client.server_client)
+            logger.debug("Health check succeeded, server is available.")
+            self.last_health_check = time.time()
+        except SyftAuthenticationError as e:
+            # Auth errors will never recover, sync should be stopped
+            raise FatalSyncError(f"Health check failed, {e}")
         except Exception as e:
-            logger.error(f"Failed to retrieve datasites from server, only syncing own datasite. Reason: {e}")
-            remote_datasite_states = {}
-
-        # Ensure we are always syncing own datasite
-        if self.client.email not in remote_datasite_states:
-            remote_datasite_states[self.client.email] = []
-
-        datasite_states = [
-            DatasiteState(self.client, email, remote_state=remote_state)
-            for email, remote_state in remote_datasite_states.items()
-        ]
-        return datasite_states
-
-    def enqueue_datasite_changes(self, datasite: DatasiteState):
-        try:
-            permission_changes, file_changes = datasite.get_out_of_sync_files()
-            total = len(permission_changes) + len(file_changes)
-
-            if total != 0:
-                logger.debug(
-                    f"Enqueuing {len(permission_changes)} permissions and {len(file_changes)} files for {datasite.email}"
-                )
-        except Exception as e:
-            logger.error(f"Failed to get out of sync files for {datasite.email}. Reason: {e}")
-            permission_changes, file_changes = [], []
-
-        for change in permission_changes + file_changes:
-            self.enqueue(change)
+            logger.error(f"Health check failed: {e}. Retrying in {self.health_check_interval} seconds.")
 
     def run_single_thread(self):
-        # NOTE first implementation will be unthreaded and just loop through all datasites
-
-        datasite_states = self.get_datasite_states()
+        datasite_states = self.producer.get_datasite_states()
         logger.debug(f"Syncing {len(datasite_states)} datasites")
 
         if not self.sync_run_once:
             # Download all missing files at the start
-            self.consumer.download_all_missing(
-                datasite_states=datasite_states,
-            )
+            self.consumer.download_all_missing(datasite_states=datasite_states)
 
         for datasite_state in datasite_states:
-            self.enqueue_datasite_changes(datasite_state)
+            self.producer.enqueue_datasite_changes(datasite_state)
 
         # TODO stop consumer if self.is_stop_requested
         self.consumer.consume_all()

@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr
 
 from syftbox.lib.email import send_token_email
+from syftbox.server.analytics import log_analytics_event
 from syftbox.server.settings import ServerSettings, get_server_settings
 from syftbox.server.users.auth import delete_token, generate_access_token, generate_email_token, get_user_from_email_token, get_current_user, set_token
 from syftbox.server.users.user_store import User, UserStore
@@ -48,7 +49,8 @@ def get_token(req: EmailTokenRequest, server_settings: ServerSettings = Depends(
 
 @router.post("/validate_email_token")
 def validate_email_token(
-    email: str = Depends(get_user_from_email_token),
+    email: str,
+    email_from_token: str = Depends(get_user_from_email_token),
     server_settings: ServerSettings = Depends(get_server_settings),
 ) -> AccessTokenResponse:
     """
@@ -75,6 +77,8 @@ def validate_email_token(
         raise HTTPException(status_code=404, detail="User not found! Please register")
     return AccessTokenResponse(access_token=access_token)
 
+class WhoAmIResponse(BaseModel):
+    email: str
 
 @router.post("/invalidate_access_token")
 def invalidate_access_token(
@@ -100,16 +104,13 @@ def invalidate_access_token(
 @router.post("/whoami")
 def whoami(
     email: str = Depends(get_current_user),
-) -> str:
+) -> WhoAmIResponse:
     """
     Get the current users email.
     If the token is not valid or outdated, get_current_user will raise 401 Unauthorized.
 
-    Args:
-        email (str, optional): The user email, extracted from the access token in the Authorization header.
-            Defaults to Depends(get_current_user).
-
     Returns:
         str: email
     """
-    return email
+    log_analytics_event("/auth/whoami", email=email)
+    return WhoAmIResponse(email=email)

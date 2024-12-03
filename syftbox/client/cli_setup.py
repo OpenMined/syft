@@ -6,6 +6,8 @@ import json
 import shutil
 from pathlib import Path
 
+import httpx
+import typer
 from rich import print as rprint
 from rich.prompt import Confirm, Prompt
 
@@ -16,6 +18,7 @@ from syftbox.lib.client_config import SyftClientConfig
 from syftbox.lib.constants import DEFAULT_DATA_DIR
 from syftbox.lib.exceptions import ClientConfigException
 from syftbox.lib.validators import DIR_NOT_EMPTY, is_valid_dir, is_valid_email
+from syftbox.lib.workspace import SyftWorkspace
 
 __all__ = ["setup_config_interactive"]
 
@@ -53,7 +56,15 @@ def get_migration_decision(data_dir: Path):
             # 2. determine if we want to migrate
             if prompt_delete_old_data_dir(data_dir):
                 rprint("Removing old syftbox folder")
-                shutil.rmtree(str(data_dir))
+                apps_dir = SyftWorkspace(data_dir).apps
+                paths_to_exclude = [apps_dir]
+                # Remove everything except the paths in paths_to_exclude
+                for item in data_dir.iterdir():
+                    if item not in paths_to_exclude:
+                        if item.is_dir():
+                            shutil.rmtree(item)
+                        else:
+                            item.unlink()
                 migrate_datasite = False
             else:
                 migrate_datasite = True
@@ -68,6 +79,7 @@ def setup_config_interactive(
     port: int, 
     skip_auth: bool = False,
     reset_token: bool = False, 
+    skip_verify_install: bool = False,
 ) -> SyftClientConfig:
     """Setup the client configuration interactively. Called from CLI"""
 
@@ -104,14 +116,18 @@ def setup_config_interactive(
         if port != conf.client_url.port:
             conf.set_port(port)
 
-    rprint(f"[bold]{reset_token}, {conf.access_token}[/bold]")
     if reset_token:
         if conf.access_token:
             invalidate_client_token(conf)
             conf.access_token = None
+    
+    # Short-lived client for all pre-authentication requests
+    login_client = httpx.Client(base_url=str(conf.server_url))
+    if not skip_verify_install:
+        verify_installation(conf, login_client)
 
     if not skip_auth:
-        conf.access_token = authenticate_user(conf)
+        conf.access_token = authenticate_user(conf, login_client)
 
     # DO NOT SAVE THE CONFIG HERE.
     # We don't know if the client will accept the config yet
@@ -147,3 +163,31 @@ def prompt_email() -> str:
             rprint(f"[bold red]Invalid email[/bold red]: '{email}'")
             continue
         return email
+
+
+def verify_installation(conf: SyftClientConfig, client: httpx.Client) -> None:
+    try:
+        response = client.get("/info")
+        response.raise_for_status()
+        server_info = response.json()
+        server_version = server_info["version"]
+        local_version = __version__
+
+        if server_version == local_version:
+            return
+
+        should_continue = Confirm.ask(
+            f"\n[yellow]Server version ({server_version}) does not match your client version ({local_version}).\n"
+            f"[bold](recommended)[/bold] To update, run:\n\n"
+            f"[bold]curl -LsSf https://syftbox.openmined.org/install.sh | sh[/bold][/yellow]\n\n"
+            f"Continue without updating?"
+        )
+        if not should_continue:
+            raise typer.Exit()
+
+    except (httpx.HTTPError, KeyError):
+        should_continue = Confirm.ask(
+            "\n[bold red]Could not connect to the SyftBox server, continue anyway?[/bold red]"
+        )
+        if not should_continue:
+            raise typer.Exit()

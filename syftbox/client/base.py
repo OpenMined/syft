@@ -1,10 +1,31 @@
+from __future__ import annotations
+
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import httpx
 from typing_extensions import Protocol
 
 from syftbox.lib.client_config import SyftClientConfig
 from syftbox.lib.workspace import SyftWorkspace
+
+
+class Plugins(Protocol):
+    """All initialized plugins."""
+
+    if TYPE_CHECKING:
+        from syftbox.client.plugins.apps import AppRunner
+        from syftbox.client.plugins.sync.manager import SyncManager
+
+    @property
+    def sync_manager(self) -> SyncManager:
+        """SyncManager instance for managing synchronization tasks."""
+        ...
+
+    @property
+    def app_runner(self) -> AppRunner:
+        """AppRunner instance for managing application execution."""
+        ...
 
 
 class SyftClientInterface(Protocol):
@@ -28,9 +49,13 @@ class SyftClientInterface(Protocol):
     """Configuration settings for the Syft client."""
 
     workspace: SyftWorkspace
-    """Workspace instance managing data and computation."""
+    """Paths to different dirs in Syft"""
+
+    plugins: Plugins
+    """All initialized plugins."""
 
     server_client: httpx.Client
+    """HTTP client for server communication."""
 
     @property
     def email(self) -> str:

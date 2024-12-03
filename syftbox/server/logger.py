@@ -54,7 +54,7 @@ def setup_logger(logs_folder: Path, level: Union[str, int] = "DEBUG"):
     # Dedicated logger for analytics events
     # example usage: user_event_logger.info("User logged in")
     logger.add(
-        logs_folder / "analytics_{time:YYYY-MM-DD-HH-mm-ss}.log",
+        logs_folder / "analytics.log",
         rotation="100 MB",
         compression="zip",
         format=analytics_formatter,

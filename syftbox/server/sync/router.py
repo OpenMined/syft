@@ -10,7 +10,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from loguru import logger
 
 from syftbox.lib.lib import PermissionTree, SyftPermission, filter_metadata
-from syftbox.server.analytics import log_analytics_event, log_file_change_event
+from syftbox.server.analytics import log_file_change_event
 from syftbox.server.settings import ServerSettings, get_server_settings
 from syftbox.server.sync.db import (
     get_all_datasites,
@@ -115,11 +115,6 @@ def get_metadata(
 ) -> FileMetadata:
     try:
         metadata = file_store.get_metadata(req.path_like)
-        log_analytics_event(
-            "/sync/get_metadata",
-            email=email,
-            file_metadata=metadata,
-        )
         return metadata
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

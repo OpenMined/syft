@@ -185,6 +185,5 @@ experimental/
 notebooks/
 dev_space/
 
-!tests/**/.env
-
 *.env
+!tests/**/.env

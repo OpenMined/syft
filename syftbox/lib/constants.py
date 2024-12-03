@@ -20,3 +20,5 @@ DEFAULT_DATA_DIR = Path(Path.home(), "SyftBox")
 
 # Permissions file name
 PERM_FILE = "_.syftperm"
+
+SENDGRID_API_URL = "https://api.sendgrid.com/v3/mail/send"

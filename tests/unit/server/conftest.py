@@ -19,7 +19,13 @@ PERMFILE_DICT = {
 def get_access_token(client: TestClient, email: str) -> str:
     response = client.post("/auth/request_email_token", json={"email": email})
     email_token = response.json()["email_token"]
-    response = client.post("/auth/validate_email_token", headers={"Authorization": f"Bearer {email_token}"})
+    response = client.post(
+        "/auth/validate_email_token",
+        headers={"Authorization": f"Bearer {email_token}"},
+        params={"email": email},
+    )
+    if response.status_code != 200:
+        raise ValueError(f"Failed to get access token, {response.text}")
     return response.json()["access_token"]
 
 

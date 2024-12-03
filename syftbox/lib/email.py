@@ -2,11 +2,10 @@ import httpx
 from jinja2 import Template
 from loguru import logger
 
+from syftbox.lib.constants import SENDGRID_API_URL
 from syftbox.server.settings import ServerSettings
 
-SENDER_EMAIL = "noreply@openmined.org"
-SENDGRID_SERVER = "https://api.sendgrid.com/v3/mail/send"
-SMTP_PORT = 465
+SENDER_EMAIL = "SyftBox <auth@syftbox.openmined.org>"
 
 token_email_template = """
 <!doctype html>
@@ -161,7 +160,7 @@ def send_email(
     }
 
     try:
-        response = httpx.post(SENDGRID_SERVER, json=payload, headers=headers, timeout=10.0)
+        response = httpx.post(SENDGRID_API_URL, json=payload, headers=headers, timeout=10.0)
         response.raise_for_status()
         logger.info(f"Email sent to {receiver_email}")
         return {"success": True, "status_code": response.status_code}

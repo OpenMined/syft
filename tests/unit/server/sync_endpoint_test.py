@@ -245,3 +245,9 @@ def test_download_snapshot(client: TestClient):
     data = download_bulk(client, paths)
     zip_file = zipfile.ZipFile(BytesIO(data))
     assert len(zip_file.filelist) == 3
+
+
+def test_whoami(client: TestClient):
+    response = client.post("/auth/whoami")
+    response.raise_for_status()
+    assert response.json() == {"email": TEST_DATASITE_NAME}

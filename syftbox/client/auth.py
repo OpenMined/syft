@@ -20,7 +20,7 @@ def has_valid_access_token(conf: SyftClientConfig, auth_client: httpx.Client) ->
         rprint(f"[red]An unexpected error occurred: {response.text}, re-authenticating.[/red]")
         return False
 
-    authed_email = response.text[1:-1]
+    authed_email = response.json().get("email", None)
     is_valid = authed_email == conf.email
     if not is_valid:
         rprint(
@@ -72,6 +72,7 @@ def get_access_token(
     response = auth_client.post(
         "/auth/validate_email_token",
         headers={"Authorization": f"Bearer {email_token}"},
+        params={"email": conf.email},
     )
 
     if response.status_code == 200:
@@ -81,7 +82,7 @@ def get_access_token(
         return get_access_token(conf, auth_client)
     else:
         rprint(f"[red]An unexpected error occurred: {response.text}[/red]")
-        typer.Exit(1)
+        raise typer.Exit(1)
 
 def invalidate_client_token(conf: SyftClientConfig):
     auth_client = httpx.Client(base_url=str(conf.server_url))
@@ -96,11 +97,9 @@ def invalidate_client_token(conf: SyftClientConfig):
         rprint("[yellow]No valid access token found, skipping token reset[/yellow]")
 
 
-def authenticate_user(conf: SyftClientConfig) -> str:
-    auth_client = httpx.Client(base_url=str(conf.server_url))
-
-    if has_valid_access_token(conf, auth_client):
+def authenticate_user(conf: SyftClientConfig, login_client: httpx.Client) -> str:
+    if has_valid_access_token(conf, login_client):
         return conf.access_token
 
-    email_token = request_email_token(auth_client, conf)
-    return get_access_token(conf, auth_client, email_token)
+    email_token = request_email_token(login_client, conf)
+    return get_access_token(conf, login_client, email_token)

@@ -18,14 +18,30 @@ jobs:
     strategy:
       max-parallel: 99
       matrix:
-        # os: [ubuntu-latest, macos-latest]
-        e2e-test: ["ring"]
+        e2e-test:
+          [
+            "basic_aggregator",
+            "model_aggregator",
+            "aggregator_with_local_training",
+            "fl_model_training",
+          ]
         python-version: ["3.9", "3.12"]
-        runner: [syftbox-sh-linux-x64, sh-macos-arm64]
+        os: [ubuntu-latest, macos-latest]
+        # runner: [syftbox-sh-linux-x64, scaleway-macOS-arm64]
       fail-fast: false
 
-    runs-on: ${{ matrix.runner }}
+    # runs-on: ${{ matrix.runner }}
+    runs-on: ${{ matrix.os }}
     steps:
+
+      - name: Free Disk Space
+        run: |
+          sudo rm -rf /Users/runner/Library/Android/sdk || true
+          sudo rm -rf /usr/local/lib/android || true
+          sudo rm -rf /usr/share/dotnet || true
+          sudo rm -rf /opt/ghc || true
+          sudo rm -rf /usr/local/.ghcup || true
+
       - uses: actions/checkout@v4
 
       - name: Install uv
@@ -44,26 +60,9 @@ jobs:
           version: "1.7"
 
       - name: Set up Python ${{ matrix.python-version }}
-        if: startsWith(matrix.runner, 'syftbox-sh-linux')
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-
-      # challenge here is actions/setup-python@v5 requires write access to /Users/runner/hostedtoolcache
-      # but current custom macos runner does not allow writing to that dir (even sudo won't work)
-      # so we need to use this weird way to install python on macos
-      - name: Set up Python ${{ matrix.python-version }} (uv managed)
-        if: startsWith(matrix.runner, 'sh-macos')
-        run: |
-          uv python install ${{ matrix.python-version }}
-          uv venv --python ${{ matrix.python-version }} .venv${{ matrix.python-version }}
-          uv tool update-shell
-          source $HOME/.profile
-          source .venv${{ matrix.python-version }}/bin/activate
-
-      - name: Install SyftBox
-        run: |
-          uv tool install --upgrade .
 
       - name: Pre-test checks
         run: |
@@ -71,18 +70,14 @@ jobs:
           jq --version
           just --version
           curl --version
-          syftbox version
 
       - name: Run E2E Test for '${{ matrix.e2e-test }}'
-        # env for all e2e tests. use env file for test specific env vars
-        env:
-          SYFTBOX_DISABLE_ICONS: "true"
         run: |
           just reset
           just test-e2e ${{ matrix.e2e-test }}
 
       - name: Cleanup unnecessary files
-        if: ${{ failure() && startsWith(matrix.runner, 'sh-macos') }}
+        if: ${{ failure() }}
         run: |
           find . -type f -name "Icon*" -exec rm -f {} \;
           find . -type f -name "syftbox.pid" -exec rm -f {} \;

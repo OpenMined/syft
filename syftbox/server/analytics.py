@@ -102,7 +102,9 @@ def _parse_analytics_file(file_path: Path) -> list[dict]:
 
 
 def parse_analytics_logs(logs_dir: Path) -> list[dict]:
-    log_files = list(logs_dir.glob("analytics_*.log")) + list(logs_dir.glob("analytics_*.zip"))
+    # Load current log and all archived logs
+    log_files = list(logs_dir.glob("analytics.log")) + list(logs_dir.glob("analytics*.zip"))
+    logger.info(f"Loading logs from: {[f.as_posix() for f in log_files]}")
     events = []
     for log_file in log_files:
         events.extend(_parse_analytics_file(log_file))

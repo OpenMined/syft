@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from syftbox.client.base import SyftClientInterface
-from syftbox.client.plugins.sync.sync import DatasiteState
+from syftbox.client.plugins.sync.datasite_state import DatasiteState
 from syftbox.client.utils.dir_tree import create_dir_tree
 from syftbox.client.utils.display import display_file_tree
 from syftbox.lib.ignore import IGNORE_FILENAME, filter_ignored_paths
@@ -72,10 +72,10 @@ def test_ignore_datasite(datasite_1: SyftClientInterface, datasite_2: SyftClient
 
     # ds1 gets their local state of ds2
     datasite_state = DatasiteState(client=datasite_1, email=datasite_2.email)
-    _, local_changes = datasite_state.get_out_of_sync_files()
+    changes = datasite_state.get_datasite_changes()
 
-    assert len(local_changes) == num_visible_files
-    assert local_changes[0].path == Path(datasite_2.email) / "visible_file.txt"
+    assert len(changes.files) == num_visible_files
+    assert changes.files[0].path == Path(datasite_2.email) / "visible_file.txt"
 
     # ds1 ignores ds2
     ignore_path = Path(datasite_1.workspace.datasites) / IGNORE_FILENAME
@@ -84,13 +84,13 @@ def test_ignore_datasite(datasite_1: SyftClientInterface, datasite_2: SyftClient
         f.write(f"\n/{datasite_2.email}\n")
 
     # ds1 gets their local state of ds2
-    _, local_changes = datasite_state.get_out_of_sync_files()
-    assert len(local_changes) == 0
+    changes = datasite_state.get_datasite_changes()
+    assert len(changes.files) == 0
 
     # remove ignore file
     ignore_path.unlink()
-    _, local_changes = datasite_state.get_out_of_sync_files()
-    assert len(local_changes) == num_files
+    changes = datasite_state.get_datasite_changes()
+    assert len(changes.files) == num_files
 
 
 def test_ignore_symlinks(datasite_1: SyftClientInterface) -> None:

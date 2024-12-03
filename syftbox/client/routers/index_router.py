@@ -1,7 +1,8 @@
 from fastapi import APIRouter
 from fastapi.responses import PlainTextResponse
-from syftbox.client.routers.common import APIContext
+
 from syftbox.__version__ import __version__
+from syftbox.client.routers.common import APIContext
 
 router = APIRouter()
 

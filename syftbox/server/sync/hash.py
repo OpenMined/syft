@@ -1,6 +1,5 @@
 import base64
 import hashlib
-import re
 from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime, timezone
 from functools import partial
@@ -77,24 +76,31 @@ def hash_dir(
 
 def collect_files(
     dir: Union[Path, str],
-    pattern: Union[str, re.Pattern, None] = None,
+    include_hidden: bool = False,
+    follow_symlinks: bool = False,
 ) -> list[Path]:
-    """Recursively collect files in a directory with options to include hidden files and symlinks"""
-
+    """Collect files recursively, excluding files in hidden/symlinked directories unless specified."""
     dir = Path(dir)
     if not dir.is_dir():
         return []
-    files = []
 
-    # Compile the regex pattern if it's a string
-    if isinstance(pattern, str):
-        pattern = re.compile(pattern)
-
+    files: list[Path] = []
     for entry in dir.iterdir():
-        if entry.is_file():
-            if pattern is None or pattern.match(entry.as_posix()):
+        try:
+            # Skip hidden entries
+            if not include_hidden and entry.name.startswith("."):
+                continue
+
+            # Skip symlinked entries
+            if not follow_symlinks and entry.is_symlink():
+                continue
+
+            if entry.is_file():
                 files.append(entry)
-        elif entry.is_dir():
-            files.extend(collect_files(entry, pattern))
+            elif entry.is_dir():
+                files.extend(collect_files(entry, include_hidden, follow_symlinks))
+
+        except OSError:
+            continue
 
     return files
