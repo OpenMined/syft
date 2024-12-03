@@ -67,7 +67,7 @@ def generate_email_token(server_settings: ServerSettings, email: str) -> str:
 
 
 def validate_access_token(server_settings: ServerSettings, token: str) -> dict:
-    data = validate_token(server_settings, token)
+    data = _validate_jwt(server_settings, token)
     user_store = UserStore(server_settings=server_settings)
     user = user_store.get_user_by_email(data['email'])
     if not user:
