@@ -19,7 +19,7 @@ from syftbox.client.plugins.sync.endpoints import (
     get_remote_state,
 )
 from syftbox.lib.lib import FileMetadata
-from syftbox.server.sync.models import ApplyDiffResponse, DiffResponse
+from syftbox.server.models.sync_models import ApplyDiffResponse, DiffResponse
 from tests.unit.server.conftest import PERMFILE_FILE, TEST_DATASITE_NAME, TEST_FILE
 
 

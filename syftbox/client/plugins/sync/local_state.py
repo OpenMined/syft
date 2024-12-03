@@ -10,7 +10,8 @@ from typing_extensions import Self, Type
 from syftbox.client.base import SyftClientInterface
 from syftbox.client.plugins.sync.exceptions import SyncEnvironmentError
 from syftbox.client.plugins.sync.types import SyncActionType, SyncStatus
-from syftbox.server.sync.models import FileMetadata
+from syftbox.server.models.sync_models import FileMetadata
+
 
 LOCAL_STATE_FILENAME = "local_syncstate.json"
 

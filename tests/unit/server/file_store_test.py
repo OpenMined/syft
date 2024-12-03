@@ -2,9 +2,9 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+from syftbox.lib.hash import hash_file
+from syftbox.server.db.file_store import FileStore
 from syftbox.server.settings import ServerSettings
-from syftbox.server.sync.file_store import FileStore
-from syftbox.server.sync.hash import hash_file
 
 
 def test_put_atomic(tmpdir):

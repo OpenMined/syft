@@ -5,7 +5,8 @@ from typing import Any
 import httpx
 
 from syftbox.client.exceptions import SyftAuthenticationError, SyftNotFound, SyftServerError
-from syftbox.server.sync.models import ApplyDiffResponse, DiffResponse, FileMetadata
+from syftbox.server.models.sync_models import ApplyDiffResponse, DiffResponse, FileMetadata
+
 
 
 def handle_json_response(endpoint: str, response: httpx.Response) -> Any:

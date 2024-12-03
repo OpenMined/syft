@@ -10,7 +10,7 @@ from loguru import logger
 from py_fast_rsync import signature
 
 from syftbox.lib.ignore import filter_ignored_paths
-from syftbox.server.sync.models import FileMetadata
+from syftbox.server.models.sync_models import FileMetadata
 
 
 def hash_file(file_path: Path, root_dir: Optional[Path] = None) -> Optional[FileMetadata]:

@@ -8,7 +8,7 @@ from loguru import logger
 from pydantic import BaseModel
 
 from syftbox.server.logger import analytics_logger
-from syftbox.server.sync.file_store import FileStore
+from syftbox.server.db.file_store import FileStore
 
 
 def to_jsonable_dict(obj: dict) -> dict:

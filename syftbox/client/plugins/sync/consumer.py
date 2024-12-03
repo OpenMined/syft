@@ -27,8 +27,8 @@ from syftbox.client.plugins.sync.queue import SyncQueue, SyncQueueItem
 from syftbox.client.plugins.sync.types import SyncActionType, SyncDecisionType, SyncSide, SyncStatus
 from syftbox.lib.ignore import filter_ignored_paths
 from syftbox.lib.lib import SyftPermission
-from syftbox.server.sync.hash import hash_file
-from syftbox.server.sync.models import FileMetadata
+from syftbox.lib.hash import hash_file
+from syftbox.server.models.sync_models import FileMetadata
 
 
 def update_local(client: SyftClientInterface, local_syncstate: FileMetadata, remote_syncstate: FileMetadata):

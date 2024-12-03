@@ -11,15 +11,13 @@ from loguru import logger
 
 from syftbox.lib.lib import PermissionTree, SyftPermission, filter_metadata
 from syftbox.server.analytics import log_file_change_event
+from syftbox.server.db.db import get_all_datasites
+from syftbox.server.db.file_store import FileStore, SyftFile
+from syftbox.server.db.schema import get_db
 from syftbox.server.settings import ServerSettings, get_server_settings
-from syftbox.server.sync.db import (
-    get_all_datasites,
-    get_db,
-)
-from syftbox.server.sync.file_store import FileStore, SyftFile
 from syftbox.server.users.auth import get_current_user
 
-from .models import (
+from ...models.sync_models import (
     ApplyDiffRequest,
     ApplyDiffResponse,
     BatchFileRequest,

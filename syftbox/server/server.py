@@ -27,14 +27,16 @@ from syftbox.lib.lib import (
     get_datasites,
 )
 from syftbox.server.analytics import log_analytics_event
+from syftbox.server.db import db
+from syftbox.lib.hash import hash_files, collect_files
+from syftbox.server.db.schema import get_db
 from syftbox.server.logger import setup_logger
 from syftbox.server.middleware import LoguruMiddleware
 from syftbox.server.settings import ServerSettings, get_server_settings
 from syftbox.server.users.auth import get_current_user
 
 from .emails.router import router as emails_router
-from .sync import db, hash
-from .sync.router import router as sync_router
+from .api.v1.sync_router import router as sync_router
 from .users.router import router as users_router
 
 current_dir = Path(__file__).parent
@@ -122,11 +124,11 @@ def create_folders(folders: list[str]) -> None:
 def init_db(settings: ServerSettings) -> None:
     # might take very long as snapshot folder grows
     logger.info(f"> Collecting Files from {settings.snapshot_folder.absolute()}")
-    files = hash.collect_files(settings.snapshot_folder.absolute())
+    files = collect_files(settings.snapshot_folder.absolute())
     logger.info("> Hashing files")
-    metadata = hash.hash_files(files, settings.snapshot_folder)
+    metadata = hash_files(files, settings.snapshot_folder)
     logger.info(f"> Updating file hashes at {settings.file_db_path.absolute()}")
-    con = db.get_db(settings.file_db_path.absolute())
+    con = get_db(settings.file_db_path.absolute())
     cur = con.cursor()
     for m in metadata:
         db.save_file_metadata(cur, m)

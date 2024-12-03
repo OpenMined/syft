@@ -2,11 +2,11 @@ from pathlib import Path
 
 from pydantic import BaseModel
 
+from syftbox.lib.hash import hash_file
+from syftbox.server.db import db
+from syftbox.server.db.schema import get_db
+from syftbox.server.models.sync_models import AbsolutePath, FileMetadata, RelativePath
 from syftbox.server.settings import ServerSettings
-from syftbox.server.sync import db
-from syftbox.server.sync.db import get_db
-from syftbox.server.sync.hash import hash_file
-from syftbox.server.sync.models import AbsolutePath, FileMetadata, RelativePath
 
 
 class SyftFile(BaseModel):
@@ -44,7 +44,11 @@ class FileStore:
             if not Path(abs_path).exists():
                 self.delete(metadata.path.as_posix())
                 raise ValueError("File not found")
-            return SyftFile(metadata=metadata, data=self._read_bytes(abs_path), absolute_path=abs_path)
+            return SyftFile(
+                metadata=metadata,
+                data=self._read_bytes(abs_path),
+                absolute_path=abs_path,
+            )
 
     def exists(self, path: RelativePath) -> bool:
         with get_db(self.db_path) as conn:

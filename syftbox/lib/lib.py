@@ -9,7 +9,7 @@ from loguru import logger
 from typing_extensions import Any, Optional, Self, Union
 
 from syftbox.lib.constants import PERM_FILE
-from syftbox.server.sync.models import FileMetadata
+from syftbox.server.models.sync_models import FileMetadata
 
 USER_GROUP_GLOBAL = "GLOBAL"
 
