@@ -10,14 +10,7 @@ from fastapi.testclient import TestClient
 from py_fast_rsync import signature
 
 from syftbox.client.exceptions import SyftServerError
-from syftbox.client.plugins.sync.endpoints import (
-    apply_diff,
-    download_bulk,
-    get_datasite_states,
-    get_diff,
-    get_metadata,
-    get_remote_state,
-)
+from syftbox.client.plugins.sync.sync_client import SyncClient
 from syftbox.lib.lib import FileMetadata
 from syftbox.server.sync.models import ApplyDiffResponse, DiffResponse
 from tests.unit.server.conftest import PERMFILE_FILE, TEST_DATASITE_NAME, TEST_FILE
@@ -90,14 +83,14 @@ def test_syft_client_push_flow(client: TestClient):
     assert result["current_hash"] == expected_hash == sha256local
 
 
-def test_get_remote_state(client: TestClient):
-    metadata = get_remote_state(client, Path(TEST_DATASITE_NAME))
+def test_get_remote_state(sync_client: SyncClient):
+    metadata = sync_client.get_remote_state(Path(TEST_DATASITE_NAME))
 
     assert len(metadata) == 3
 
 
-def test_get_metadata(client: TestClient):
-    metadata = get_metadata(client, Path(TEST_DATASITE_NAME) / TEST_FILE)
+def test_get_metadata(sync_client: SyncClient):
+    metadata = sync_client.get_metadata(Path(TEST_DATASITE_NAME) / TEST_FILE)
     assert metadata.path == Path(TEST_DATASITE_NAME) / TEST_FILE
 
     # check serde works
@@ -105,38 +98,39 @@ def test_get_metadata(client: TestClient):
     assert isinstance(metadata.signature_bytes, bytes)
 
 
-def test_apply_diff(client: TestClient):
+def test_apply_diff(sync_client: SyncClient):
     local_data = b"This is my local data"
 
-    remote_metadata = get_metadata(client, Path(TEST_DATASITE_NAME) / TEST_FILE)
+    remote_metadata = sync_client.get_metadata(Path(TEST_DATASITE_NAME) / TEST_FILE)
 
     diff = py_fast_rsync.diff(remote_metadata.signature_bytes, local_data)
     expected_hash = hashlib.sha256(local_data).hexdigest()
 
     # Apply local_data to server
-    response = apply_diff(client, Path(TEST_DATASITE_NAME) / TEST_FILE, diff, expected_hash)
+    response = sync_client.apply_diff(Path(TEST_DATASITE_NAME) / TEST_FILE, diff, expected_hash)
     assert response.current_hash == expected_hash
 
     # check file was written correctly
-    snapshot_file_path = client.app_state["server_settings"].snapshot_folder / Path(TEST_DATASITE_NAME) / TEST_FILE
+    snapshot_folder = sync_client.server_client.app_state["server_settings"].snapshot_folder
+    snapshot_file_path = snapshot_folder / Path(TEST_DATASITE_NAME) / TEST_FILE
     remote_data = snapshot_file_path.read_bytes()
     assert local_data == remote_data
 
     # another diff with incorrect hash
-    remote_metadata = get_metadata(client, Path(TEST_DATASITE_NAME) / TEST_FILE)
+    remote_metadata = sync_client.get_metadata(Path(TEST_DATASITE_NAME) / TEST_FILE)
     diff = py_fast_rsync.diff(remote_metadata.signature_bytes, local_data)
     wrong_hash = "wrong_hash"
 
     with pytest.raises(SyftServerError):
-        apply_diff(client, Path(TEST_DATASITE_NAME) / TEST_FILE, diff, wrong_hash)
+        sync_client.apply_diff(Path(TEST_DATASITE_NAME) / TEST_FILE, diff, wrong_hash)
 
 
-def test_get_diff(client: TestClient):
+def test_get_diff(sync_client: SyncClient):
     local_data = b"This is my local data"
     sig = signature.calculate(local_data)
 
     file_path = Path(TEST_DATASITE_NAME) / TEST_FILE
-    response = get_diff(client, file_path, sig)
+    response = sync_client.get_diff(file_path, sig)
     assert response.path == file_path
 
     # apply and check hash
@@ -148,26 +142,22 @@ def test_get_diff(client: TestClient):
     # diff nonexistent file
     file_path = Path(TEST_DATASITE_NAME) / "nonexistent_file.txt"
     with pytest.raises(SyftServerError):
-        get_diff(client, file_path, sig)
+        sync_client.get_diff(file_path, sig)
 
 
-def test_delete_file(client: TestClient):
-    response = client.post(
-        "/sync/delete",
-        json={"path": f"{TEST_DATASITE_NAME}/{TEST_FILE}"},
-    )
+def test_delete_file(sync_client: SyncClient):
+    sync_client.delete(Path(TEST_DATASITE_NAME) / TEST_FILE)
 
-    response.raise_for_status()
-    snapshot_folder = client.app_state["server_settings"].snapshot_folder
+    snapshot_folder = sync_client.server_client.app_state["server_settings"].snapshot_folder
     path = Path(f"{snapshot_folder}/{TEST_DATASITE_NAME}/{TEST_FILE}")
     assert not path.exists()
 
     with pytest.raises(SyftServerError):
-        get_metadata(client, Path(TEST_DATASITE_NAME) / TEST_FILE)
+        sync_client.get_metadata(Path(TEST_DATASITE_NAME) / TEST_FILE)
 
 
-def test_create_file(client: TestClient):
-    snapshot_folder = client.app_state["server_settings"].snapshot_folder
+def test_create_file(sync_client: SyncClient):
+    snapshot_folder = sync_client.server_client.app_state["server_settings"].snapshot_folder
     new_fname = "new.txt"
     contents = b"Some content"
     path = Path(f"{snapshot_folder}/{TEST_DATASITE_NAME}/{new_fname}")
@@ -177,51 +167,46 @@ def test_create_file(client: TestClient):
         f.write(contents)
 
     with open(path, "rb") as f:
-        files = {"file": (f"{TEST_DATASITE_NAME}/{new_fname}", f.read())}
-        response = client.post("/sync/create", files=files)
-    response.raise_for_status()
+        sync_client.create(relative_path=Path(TEST_DATASITE_NAME) / new_fname, data=f.read())
     assert path.exists()
 
 
-def test_permfile(client: TestClient):
+def test_create_permfile(sync_client: SyncClient):
     invalid_contents = b"wrong permfile"
     folder = "test"
+    relative_path = Path(TEST_DATASITE_NAME) / folder / PERMFILE_FILE
 
     # invalid
-    files = {"file": (f"{TEST_DATASITE_NAME}/{folder}/{PERMFILE_FILE}", invalid_contents)}
-    with pytest.raises(Exception):
-        response = client.post("/sync/create", files=files)
-        response.raise_for_status()
+    with pytest.raises(SyftServerError):
+        sync_client.create(relative_path=relative_path, data=invalid_contents)
 
     # valid
     valid_contents = b'{"admin": ["x@x.org"], "read": ["x@x.org"], "write": ["x@x.org"], "filepath": "~/_.syftperm", "terminal": false}'
-    files = {"file": (f"{TEST_DATASITE_NAME}/{folder}/{PERMFILE_FILE}", valid_contents)}
-    response = client.post("/sync/create", files=files)
-    response.raise_for_status()
+    sync_client.create(relative_path=relative_path, data=valid_contents)
 
 
-def test_update_permfile_success(client: TestClient):
+def test_update_permfile_success(sync_client: SyncClient):
     local_data = b'{"admin": ["x@x.org"], "read": ["x@x.org"], "write": ["x@x.org"], "filepath": "~/_.syftperm", "terminal": false}'
 
-    remote_metadata = get_metadata(client, Path(TEST_DATASITE_NAME) / PERMFILE_FILE)
+    remote_metadata = sync_client.get_metadata(Path(TEST_DATASITE_NAME) / PERMFILE_FILE)
 
     diff = py_fast_rsync.diff(remote_metadata.signature_bytes, local_data)
     expected_hash = hashlib.sha256(local_data).hexdigest()
 
-    response = apply_diff(client, Path(TEST_DATASITE_NAME) / PERMFILE_FILE, diff, expected_hash)
+    response = sync_client.apply_diff(Path(TEST_DATASITE_NAME) / PERMFILE_FILE, diff, expected_hash)
     assert isinstance(response, ApplyDiffResponse)
 
 
-def test_update_permfile_failure(client: TestClient):
+def test_update_permfile_failure(sync_client: SyncClient):
     local_data = b'3gwrehtytrterfewdw ["x@x.org"], "read": ["x@x.org"], "write": ["x@x.org"], "filepath": "~/_.syftperm", "terminal": false}'
 
-    remote_metadata = get_metadata(client, Path(TEST_DATASITE_NAME) / PERMFILE_FILE)
+    remote_metadata = sync_client.get_metadata(Path(TEST_DATASITE_NAME) / PERMFILE_FILE)
 
     diff = py_fast_rsync.diff(remote_metadata.signature_bytes, local_data)
     expected_hash = hashlib.sha256(local_data).hexdigest()
 
     with pytest.raises(SyftServerError):
-        apply_diff(client, Path(TEST_DATASITE_NAME) / PERMFILE_FILE, diff, expected_hash)
+        sync_client.apply_diff(Path(TEST_DATASITE_NAME) / PERMFILE_FILE, diff, expected_hash)
 
 
 def test_list_datasites(client: TestClient):
@@ -230,8 +215,8 @@ def test_list_datasites(client: TestClient):
     response.raise_for_status()
 
 
-def test_get_all_datasite_states(client: TestClient):
-    response = get_datasite_states(client, email=TEST_DATASITE_NAME)
+def test_get_all_datasite_states(sync_client: SyncClient):
+    response = sync_client.get_datasite_states()
     assert len(response) == 1
 
     metadatas = response[TEST_DATASITE_NAME]
@@ -239,10 +224,10 @@ def test_get_all_datasite_states(client: TestClient):
     assert all(isinstance(m, FileMetadata) for m in metadatas)
 
 
-def test_download_snapshot(client: TestClient):
-    metadata = get_remote_state(client, Path(TEST_DATASITE_NAME))
-    paths = [m.path.as_posix() for m in metadata]
-    data = download_bulk(client, paths)
+def test_download_snapshot(sync_client: SyncClient):
+    metadata = sync_client.get_remote_state(Path(TEST_DATASITE_NAME))
+    paths = [m.path for m in metadata]
+    data = sync_client.download_bulk(paths)
     zip_file = zipfile.ZipFile(BytesIO(data))
     assert len(zip_file.filelist) == 3
 

@@ -8,22 +8,13 @@ import py_fast_rsync
 from loguru import logger
 from pydantic import BaseModel
 
-from syftbox.client.base import SyftClientInterface
 from syftbox.client.exceptions import SyftServerError
 from syftbox.client.plugins.sync.constants import MAX_FILE_SIZE_MB
 from syftbox.client.plugins.sync.datasite_state import DatasiteState
-from syftbox.client.plugins.sync.endpoints import (
-    apply_diff,
-    create,
-    delete,
-    download,
-    download_bulk,
-    get_diff,
-    get_metadata,
-)
 from syftbox.client.plugins.sync.exceptions import FatalSyncError, SyncEnvironmentError
 from syftbox.client.plugins.sync.local_state import LocalState
 from syftbox.client.plugins.sync.queue import SyncQueue, SyncQueueItem
+from syftbox.client.plugins.sync.sync_client import SyncClient
 from syftbox.client.plugins.sync.types import SyncActionType, SyncDecisionType, SyncSide, SyncStatus
 from syftbox.lib.ignore import filter_ignored_paths
 from syftbox.lib.lib import SyftPermission
@@ -31,9 +22,13 @@ from syftbox.server.sync.hash import hash_file
 from syftbox.server.sync.models import FileMetadata
 
 
-def update_local(client: SyftClientInterface, local_syncstate: FileMetadata, remote_syncstate: FileMetadata):
-    diff = get_diff(client.server_client, local_syncstate.path, local_syncstate.signature_bytes)
-    abs_path = client.workspace.datasites / local_syncstate.path
+def update_local(
+    sync_client: SyncClient,
+    local_syncstate: FileMetadata,
+) -> None:
+    diff = sync_client.get_diff(local_syncstate.path, local_syncstate.signature)
+
+    abs_path = sync_client.workspace.datasites / local_syncstate.path
     local_data = abs_path.read_bytes()
 
     new_data = py_fast_rsync.apply(local_data, diff.diff_bytes)
@@ -48,46 +43,53 @@ def update_local(client: SyftClientInterface, local_syncstate: FileMetadata, rem
     abs_path.write_bytes(new_data)
 
 
-def update_remote(client: SyftClientInterface, local_syncstate: FileMetadata, remote_syncstate: FileMetadata):
-    abs_path = client.workspace.datasites / local_syncstate.path
+def update_remote(
+    sync_client: SyncClient,
+    local_syncstate: FileMetadata,
+    remote_syncstate: FileMetadata,
+) -> None:
+    abs_path = sync_client.workspace.datasites / local_syncstate.path
     local_data = abs_path.read_bytes()
-
     diff = py_fast_rsync.diff(remote_syncstate.signature_bytes, local_data)
-    apply_diff(client.server_client, local_syncstate.path, diff, local_syncstate.hash)
+    sync_client.apply_diff(
+        relative_path=local_syncstate.path,
+        diff=diff,
+        expected_hash=local_syncstate.hash,
+    )
 
 
-def delete_local(client: SyftClientInterface, remote_syncstate: FileMetadata):
-    abs_path = client.workspace.datasites / remote_syncstate.path
+def delete_local(sync_client: SyncClient, remote_syncstate: FileMetadata) -> None:
+    abs_path = sync_client.workspace.datasites / remote_syncstate.path
     abs_path.unlink()
 
 
-def delete_remote(client: SyftClientInterface, local_syncstate: FileMetadata):
-    delete(client.server_client, local_syncstate.path)
+def delete_remote(sync_client: SyncClient, remote_syncstate: FileMetadata) -> None:
+    sync_client.delete(remote_syncstate.path)
 
 
-def create_local(client: SyftClientInterface, remote_syncstate: FileMetadata):
-    abs_path = client.workspace.datasites / remote_syncstate.path
-    content_bytes = download(client.server_client, remote_syncstate.path)
+def create_local(sync_client: SyncClient, remote_syncstate: FileMetadata):
+    abs_path = sync_client.workspace.datasites / remote_syncstate.path
+    content_bytes = sync_client.download(remote_syncstate.path)
     abs_path.parent.mkdir(parents=True, exist_ok=True)
     abs_path.write_bytes(content_bytes)
 
 
-def create_local_batch(client: SyftClientInterface, remote_syncstates: list[Path]) -> list[str]:
+def create_local_batch(sync_client: SyncClient, remote_syncstates: list[Path]) -> list[str]:
     paths = [str(path) for path in remote_syncstates]
     try:
-        content_bytes = download_bulk(client.server_client, paths)
+        content_bytes = sync_client.download_bulk(paths)
     except SyftServerError as e:
         logger.error(e)
         return []
     zip_file = zipfile.ZipFile(BytesIO(content_bytes))
-    zip_file.extractall(client.workspace.datasites)
+    zip_file.extractall(sync_client.workspace.datasites)
     return zip_file.namelist()
 
 
-def create_remote(client: SyftClientInterface, local_syncstate: FileMetadata):
-    abs_path = client.workspace.datasites / local_syncstate.path
+def create_remote(sync_client: SyncClient, local_syncstate: FileMetadata):
+    abs_path = sync_client.workspace.datasites / local_syncstate.path
     data = abs_path.read_bytes()
-    create(client.server_client, local_syncstate.path, data)
+    sync_client.create(local_syncstate.path, data)
 
 
 class SyncDecision(BaseModel):
@@ -99,7 +101,7 @@ class SyncDecision(BaseModel):
     is_executed: bool = False
     message: Optional[str] = None
 
-    def execute(self, client: SyftClientInterface):
+    def execute(self, client: SyncClient):
         try:
             if self.operation == SyncDecisionType.NOOP:
                 pass
@@ -114,7 +116,7 @@ class SyncDecision(BaseModel):
             elif self.action_type == SyncActionType.MODIFY_REMOTE:
                 update_remote(client, self.local_syncstate, self.remote_syncstate)
             elif self.action_type == SyncActionType.MODIFY_LOCAL:
-                update_local(client, self.local_syncstate, self.remote_syncstate)
+                update_local(client, self.local_syncstate)
 
             self.is_executed = True
 
@@ -377,7 +379,7 @@ class SyncDecisionTuple(BaseModel):
 
 
 class SyncConsumer:
-    def __init__(self, client: SyftClientInterface, queue: SyncQueue, local_state: LocalState):
+    def __init__(self, client: SyncClient, queue: SyncQueue, local_state: LocalState):
         self.client = client
         self.queue = queue
         self.local_state = local_state
@@ -492,6 +494,6 @@ class SyncConsumer:
 
     def get_current_server_state(self, path: Path) -> Optional[FileMetadata]:
         try:
-            return get_metadata(self.client.server_client, path)
+            return self.client.get_metadata(path)
         except SyftServerError:
             return None

@@ -7,21 +7,21 @@ from loguru import logger
 from syftbox.client.base import SyftClientInterface
 from syftbox.client.exceptions import SyftAuthenticationError
 from syftbox.client.plugins.sync.consumer import SyncConsumer
-from syftbox.client.plugins.sync.endpoints import whoami
 from syftbox.client.plugins.sync.exceptions import FatalSyncError, SyncEnvironmentError
 from syftbox.client.plugins.sync.local_state import LocalState
 from syftbox.client.plugins.sync.producer import SyncProducer
 from syftbox.client.plugins.sync.queue import SyncQueue, SyncQueueItem
+from syftbox.client.plugins.sync.sync_client import SyncClient
 from syftbox.client.plugins.sync.types import FileChangeInfo
 
 
 class SyncManager:
     def __init__(self, client: SyftClientInterface, health_check_interval: int = 300):
-        self.client = client
+        self.sync_client = SyncClient(client)
         self.local_state = LocalState.for_client(client)
         self.queue = SyncQueue()
-        self.producer = SyncProducer(client=self.client, queue=self.queue, local_state=self.local_state)
-        self.consumer = SyncConsumer(client=self.client, queue=self.queue, local_state=self.local_state)
+        self.producer = SyncProducer(client=self.sync_client, queue=self.queue, local_state=self.local_state)
+        self.consumer = SyncConsumer(client=self.sync_client, queue=self.queue, local_state=self.local_state)
 
         self.sync_interval = 1  # seconds
         self.thread: Optional[Thread] = None
@@ -36,7 +36,7 @@ class SyncManager:
         try:
             self.local_state.load()
         except Exception as e:
-            raise SyncEnvironmentError(f"Failed to load previous sync state: {e}")
+            raise SyncEnvironmentError(f"Failed to load previous sync state: {e}") from e
 
     def is_alive(self) -> bool:
         return self.thread is not None and self.thread.is_alive()
@@ -81,12 +81,12 @@ class SyncManager:
             FatalSyncError: If the server is not available.
         """
         try:
-            _ = whoami(self.client.server_client)
+            _ = self.sync_client.whoami()
             logger.debug("Health check succeeded, server is available.")
             self.last_health_check = time.time()
         except SyftAuthenticationError as e:
             # Auth errors will never recover, sync should be stopped
-            raise FatalSyncError(f"Health check failed, {e}")
+            raise FatalSyncError(f"Health check failed, {e}") from e
         except Exception as e:
             logger.error(f"Health check failed: {e}. Retrying in {self.health_check_interval} seconds.")
 

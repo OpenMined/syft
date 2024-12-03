@@ -6,7 +6,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from syftbox.client.base import SyftClientInterface
+from syftbox.client.base import Plugins, SyftClientInterface
+from syftbox.client.client2 import SyftClientContext
 from syftbox.lib.client_config import SyftClientConfig
 from syftbox.lib.datasite import create_datasite
 from syftbox.lib.workspace import SyftWorkspace
@@ -16,34 +17,21 @@ from syftbox.server.settings import ServerSettings
 from tests.unit.server.conftest import get_access_token
 
 
-class MockClient(SyftClientInterface):
-    def __init__(self, config, workspace, server_client):
-        self.config = config
-        self.workspace = workspace
-        self.server_client = server_client
+def authenticate_testclient(client: TestClient, email: str) -> None:
+    access_token = get_access_token(client, email)
+    client.headers["email"] = email
+    client.headers["Authorization"] = f"Bearer {access_token}"
 
-        access_token = get_access_token(self.server_client, self.email)
-        self.server_client.headers["Authorization"] = f"Bearer {access_token}"
 
-    @property
-    def email(self):
-        return self.config.email
-
-    @property
-    def datasite(self):
-        return Path(self.workspace.datasites, self.config.email)
-
-    @property
-    def all_datasites(self) -> list[str]:
-        """List all datasites in the workspace"""
-        return [d.name for d in self.workspace.datasites.iterdir() if (d.is_dir() and "@" in d.name)]
+class MockPluginManager(Plugins):
+    pass
 
 
 def setup_datasite(tmp_path: Path, server_client: TestClient, email: str) -> SyftClientInterface:
-    syft_path = tmp_path / email
+    data_dir = tmp_path / email
     config = SyftClientConfig(
-        path=syft_path / "config.json",
-        data_dir=syft_path,
+        path=data_dir / "config.json",
+        data_dir=data_dir,
         email=email,
         server_url=str(server_client.base_url),
         client_url="http://localhost:8080",
@@ -52,7 +40,13 @@ def setup_datasite(tmp_path: Path, server_client: TestClient, email: str) -> Syf
     ws = SyftWorkspace(config.data_dir)
     ws.mkdirs()
     create_datasite(ws.datasites, email)
-    return MockClient(config, ws, server_client)
+    authenticate_testclient(server_client, email)
+    return SyftClientContext(
+        config,
+        ws,
+        server_client,
+        MockPluginManager(),
+    )
 
 
 @pytest.fixture(scope="function")

@@ -1,8 +1,11 @@
 import json
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
+from syftbox.client.plugins.sync.sync_client import SyncClient
+from syftbox.lib.workspace import SyftWorkspace
 from syftbox.server.server import app
 from syftbox.server.settings import ServerSettings
 
@@ -60,6 +63,18 @@ def client(monkeypatch, tmp_path):
         access_token = get_access_token(client, TEST_DATASITE_NAME)
         client.headers["Authorization"] = f"Bearer {access_token}"
         yield client
+
+
+class MockClientContext:
+    def __init__(self, server_client: TestClient, path: Path):
+        self.email = TEST_DATASITE_NAME
+        self.workspace = SyftWorkspace(Path(path))
+        self.server_client = server_client
+
+
+@pytest.fixture(scope="function")
+def sync_client(client: TestClient, tmp_path: Path):
+    return SyncClient(client=MockClientContext(client, tmp_path))
 
 
 @pytest.fixture(scope="function")

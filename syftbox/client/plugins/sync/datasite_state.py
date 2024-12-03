@@ -4,8 +4,7 @@ from typing import List, Optional
 
 from loguru import logger
 
-from syftbox.client.base import SyftClientInterface
-from syftbox.client.plugins.sync.endpoints import get_remote_state
+from syftbox.client.plugins.sync.sync_client import SyncClient
 from syftbox.client.plugins.sync.types import FileChangeInfo, SyncSide
 from syftbox.lib.ignore import filter_ignored_paths, get_syftignore_matches
 from syftbox.lib.lib import SyftPermission
@@ -43,9 +42,7 @@ class DatasiteChanges:
 
 
 class DatasiteState:
-    def __init__(
-        self, client: SyftClientInterface, email: str, remote_state: Optional[list[FileMetadata]] = None
-    ) -> None:
+    def __init__(self, client: SyncClient, email: str, remote_state: Optional[list[FileMetadata]] = None) -> None:
         """A class to represent the state of a datasite
 
         Args:
@@ -54,7 +51,7 @@ class DatasiteState:
             remote_state (Optional[list[FileMetadata]], optional): Remote state of the datasite.
                 If not provided, it will be fetched from the server. Defaults to None.
         """
-        self.client: SyftClientInterface = client
+        self.client = client
         self.email: str = email
         self.remote_state: Optional[list[FileMetadata]] = remote_state
 
@@ -79,7 +76,7 @@ class DatasiteState:
 
     def get_remote_state(self) -> list[FileMetadata]:
         if self.remote_state is None:
-            self.remote_state = get_remote_state(self.client.server_client, path=Path(self.email))
+            self.remote_state = self.client.get_remote_state(Path(self.email))
         return self.remote_state
 
     def is_in_sync(self) -> bool:
@@ -113,15 +110,15 @@ class DatasiteState:
         """
         try:
             local_state = self.get_current_local_state()
-        except Exception:
-            logger.error(f"Failed to get local state for {self.email}")
-            return [], []
+        except Exception as e:
+            logger.error(f"Failed to get local state for {self.email}: {e}")
+            return DatasiteChanges(permissions=[], files=[])
 
         try:
             remote_state = self.get_remote_state()
-        except Exception:
-            logger.error(f"Failed to get remote state from server {self.email}")
-            return [], []
+        except Exception as e:
+            logger.error(f"Failed to get remote state for {self.email}: {e}")
+            return DatasiteChanges(permissions=[], files=[])
 
         local_state_dict = {file.path: file for file in local_state}
         remote_state_dict = {file.path: file for file in remote_state}

@@ -320,7 +320,9 @@ def test_invalid_sync_to_remote(server_client: TestClient, datasite_1: SyftClien
     }
 
     create_dir_tree(Path(datasite_1.datasite), tree)
-    sync_service_1.producer.enqueue_datasite_changes(datasite=DatasiteState(datasite_1, email=datasite_1.email))
+    sync_service_1.producer.enqueue_datasite_changes(
+        datasite=DatasiteState(sync_service_1.sync_client, email=datasite_1.email),
+    )
 
     queue = sync_service_1.queue
     consumer = sync_service_1.consumer
@@ -348,7 +350,9 @@ def test_invalid_sync_to_remote(server_client: TestClient, datasite_1: SyftClien
     permission_path = datasite_1.datasite / "invalid_on_modify" / "_.syftperm"
     permission_path.write_text("invalid permission")
 
-    sync_service_1.producer.enqueue_datasite_changes(datasite=DatasiteState(datasite_1, email=datasite_1.email))
+    sync_service_1.producer.enqueue_datasite_changes(
+        datasite=DatasiteState(sync_service_1.sync_client, email=datasite_1.email),
+    )
     items_to_sync = []
     while not queue.empty():
         items_to_sync.append(queue.get())
@@ -460,6 +464,6 @@ def test_sync_health_check(datasite_1: SyftClientInterface):
     sync_service = SyncManager(datasite_1)
     sync_service.check_server_status()
 
-    sync_service.client.server_client.headers["Authorization"] = "Bearer invalid_token"
+    sync_service.sync_client.server_client.headers["Authorization"] = "Bearer invalid_token"
     with pytest.raises(FatalSyncError):
         sync_service.check_server_status()
