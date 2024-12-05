@@ -2,16 +2,16 @@ from __future__ import annotations
 
 from typing_extensions import Optional
 
-from syftbox.client.base import Plugins, SyftClientInterface
+from syftbox.client.base import PluginManagerInterface, SyftBoxContextInterface
 from syftbox.client.exceptions import SyftPluginException
 from syftbox.client.plugins.apps import AppRunner
 from syftbox.client.plugins.sync.manager import SyncManager
 
 
-class PluginManager(Plugins):
+class PluginManager(PluginManagerInterface):
     def __init__(
         self,
-        client: SyftClientInterface,
+        client: SyftBoxContextInterface,
         sync_manager: Optional[SyncManager] = None,
         app_runner: Optional[AppRunner] = None,
         **kwargs,

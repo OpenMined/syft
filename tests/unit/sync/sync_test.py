@@ -8,7 +8,7 @@ import faker
 import pytest
 from fastapi.testclient import TestClient
 
-from syftbox.client.base import SyftClientInterface
+from syftbox.client.base import SyftBoxContextInterface
 from syftbox.client.plugins.sync.constants import MAX_FILE_SIZE_MB
 from syftbox.client.plugins.sync.datasite_state import DatasiteState
 from syftbox.client.plugins.sync.exceptions import FatalSyncError
@@ -31,12 +31,12 @@ fake = faker.Faker()
 #     return path_in_datasite
 
 
-def assert_files_not_on_datasite(client: SyftClientInterface, files: list[Path]):
+def assert_files_not_on_datasite(client: SyftBoxContextInterface, files: list[Path]):
     for file in files:
         assert not (client.workspace.datasites / file).exists(), f"File {file} exists on datasite {client.email}"
 
 
-def assert_files_on_datasite(client: SyftClientInterface, files: list[Path]):
+def assert_files_on_datasite(client: SyftBoxContextInterface, files: list[Path]):
     for file in files:
         assert (client.workspace.datasites / file).exists(), f"File {file} does not exist on datasite {client.email}"
 
@@ -60,7 +60,7 @@ def assert_dirtree_exists(base_path: Path, tree: DirTree) -> None:
             assert_dirtree_exists(local_path, content)
 
 
-def test_get_datasites(datasite_1: SyftClientInterface, datasite_2: SyftClientInterface):
+def test_get_datasites(datasite_1: SyftBoxContextInterface, datasite_2: SyftBoxContextInterface):
     emails = {datasite_1.email, datasite_2.email}
     sync_service = SyncManager(datasite_1)
     sync_service2 = SyncManager(datasite_2)
@@ -71,7 +71,7 @@ def test_get_datasites(datasite_1: SyftClientInterface, datasite_2: SyftClientIn
     assert {datasites[0].email, datasites[1].email} == emails
 
 
-def test_enqueue_changes(datasite_1: SyftClientInterface):
+def test_enqueue_changes(datasite_1: SyftBoxContextInterface):
     sync_service = SyncManager(datasite_1)
     datasites = sync_service.producer.get_datasite_states()
 
@@ -110,7 +110,9 @@ def test_enqueue_changes(datasite_1: SyftClientInterface):
         print(item.priority, item.data)
 
 
-def test_create_file(server_client: TestClient, datasite_1: SyftClientInterface, datasite_2: SyftClientInterface):
+def test_create_file(
+    server_client: TestClient, datasite_1: SyftBoxContextInterface, datasite_2: SyftBoxContextInterface
+):
     server_settings: ServerSettings = server_client.app_state["server_settings"]
     sync_service = SyncManager(datasite_1)
 
@@ -150,7 +152,7 @@ def test_create_file(server_client: TestClient, datasite_1: SyftClientInterface,
     assert_files_on_datasite(datasite_2, [Path(datasite_1.email) / "folder1" / "file.txt"])
 
 
-def test_modify(server_client: TestClient, datasite_1: SyftClientInterface):
+def test_modify(server_client: TestClient, datasite_1: SyftBoxContextInterface):
     server_settings: ServerSettings = server_client.app_state["server_settings"]
     sync_service_1 = SyncManager(datasite_1)
 
@@ -176,7 +178,9 @@ def test_modify(server_client: TestClient, datasite_1: SyftClientInterface):
     assert (server_settings.snapshot_folder / datasite_1.email / "folder1" / "file.txt").read_text() == new_content
 
 
-def test_modify_and_pull(server_client: TestClient, datasite_1: SyftClientInterface, datasite_2: SyftClientInterface):
+def test_modify_and_pull(
+    server_client: TestClient, datasite_1: SyftBoxContextInterface, datasite_2: SyftBoxContextInterface
+):
     server_settings: ServerSettings = server_client.app_state["server_settings"]
     sync_service_1 = SyncManager(datasite_1)
     sync_service_2 = SyncManager(datasite_2)
@@ -211,7 +215,7 @@ def test_modify_and_pull(server_client: TestClient, datasite_1: SyftClientInterf
 
 
 def test_modify_with_conflict(
-    server_client: TestClient, datasite_1: SyftClientInterface, datasite_2: SyftClientInterface
+    server_client: TestClient, datasite_1: SyftBoxContextInterface, datasite_2: SyftBoxContextInterface
 ):
     sync_service_1 = SyncManager(datasite_1)
     sync_service_2 = SyncManager(datasite_2)
@@ -264,7 +268,9 @@ def test_modify_with_conflict(
     assert file_path_2.read_text() == new_content_2
 
 
-def test_delete_file(server_client: TestClient, datasite_1: SyftClientInterface, datasite_2: SyftClientInterface):
+def test_delete_file(
+    server_client: TestClient, datasite_1: SyftBoxContextInterface, datasite_2: SyftBoxContextInterface
+):
     server_settings: ServerSettings = server_client.app_state["server_settings"]
     sync_service_1 = SyncManager(datasite_1)
     sync_service_2 = SyncManager(datasite_2)
@@ -298,7 +304,7 @@ def test_delete_file(server_client: TestClient, datasite_1: SyftClientInterface,
     assert Path(datasite_1.email) / "folder1" / "file.txt" not in remote_paths
 
 
-def test_invalid_sync_to_remote(server_client: TestClient, datasite_1: SyftClientInterface):
+def test_invalid_sync_to_remote(server_client: TestClient, datasite_1: SyftBoxContextInterface):
     sync_service_1 = SyncManager(datasite_1)
     sync_service_1.run_single_thread()
 
@@ -333,13 +339,13 @@ def test_invalid_sync_to_remote(server_client: TestClient, datasite_1: SyftClien
     assert len(items_to_sync) == 6  # 3 files + 3 permissions
 
     for item in items_to_sync:
-        decision_tuple = consumer.get_decisions(item)
+        sync_action = consumer.determine_action(item)
         abs_path = item.data.local_abs_path
 
         should_be_valid = item.data.path.parent.name in ["valid", "invalid_on_modify"]
         print(f"path: {abs_path}, should_be_valid: {should_be_valid}, parent: {item.data.path.parent}")
 
-        is_valid = decision_tuple.remote_decision.is_valid(abs_path=abs_path, show_warnings=True)
+        is_valid = sync_action.is_valid(client=sync_service_1.sync_client)
         assert is_valid == should_be_valid, f"path: {abs_path}, is_valid: {is_valid}"
 
     sync_service_1.run_single_thread()
@@ -359,14 +365,14 @@ def test_invalid_sync_to_remote(server_client: TestClient, datasite_1: SyftClien
     assert len(items_to_sync) == 4  # 2 invalid files + 2 invalid permissions
 
     for item in items_to_sync:
-        decision_tuple = consumer.get_decisions(item)
+        sync_action = consumer.determine_action(item)
         abs_path = item.data.local_abs_path
 
-        is_valid = decision_tuple.remote_decision.is_valid(abs_path=abs_path, show_warnings=True)
+        is_valid = sync_action.is_valid(client=sync_service_1.sync_client)
         assert not is_valid, f"path: {abs_path}, is_valid: {is_valid}"
 
 
-def test_sync_invalid_local_environment(datasite_1: SyftClientInterface):
+def test_sync_invalid_local_environment(datasite_1: SyftBoxContextInterface):
     sync_service = SyncManager(datasite_1)
     sync_service.sync_interval = 0.1
     sync_folder = Path(datasite_1.workspace.datasites)
@@ -402,7 +408,7 @@ def test_sync_invalid_local_environment(datasite_1: SyftClientInterface):
     assert not sync_service.is_alive()
 
 
-def test_skip_symlink(server_client: TestClient, datasite_1: SyftClientInterface):
+def test_skip_symlink(server_client: TestClient, datasite_1: SyftBoxContextInterface):
     sync_service = SyncManager(datasite_1)
     sync_service.run_single_thread()
 
@@ -438,7 +444,7 @@ def test_skip_symlink(server_client: TestClient, datasite_1: SyftClientInterface
     assert not (snapshot_folder / datasite_1.email / "symlinked_file.txt").exists()
 
 
-def test_skip_hidden_paths(server_client: TestClient, datasite_1: SyftClientInterface):
+def test_skip_hidden_paths(server_client: TestClient, datasite_1: SyftBoxContextInterface):
     sync_service = SyncManager(datasite_1)
     sync_service.run_single_thread()
 
@@ -460,7 +466,7 @@ def test_skip_hidden_paths(server_client: TestClient, datasite_1: SyftClientInte
     assert not (snapshot_folder / datasite_1.email / ".hidden_file.txt").exists()
 
 
-def test_sync_health_check(datasite_1: SyftClientInterface):
+def test_sync_health_check(datasite_1: SyftBoxContextInterface):
     sync_service = SyncManager(datasite_1)
     sync_service.check_server_status()
 

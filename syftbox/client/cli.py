@@ -95,7 +95,7 @@ def client(
 
     # lazy import to imporve cli startup speed
     from syftbox.client.cli_setup import get_migration_decision, setup_config_interactive
-    from syftbox.client.client2 import run_client
+    from syftbox.client.core import run_syftbox
     from syftbox.client.utils.net import get_free_port, is_port_in_use
 
     if port == 0:
@@ -111,7 +111,7 @@ def client(
     migrate_datasite = get_migration_decision(client_config.data_dir)
 
     log_level = "DEBUG" if verbose else "INFO"
-    code = run_client(
+    code = run_syftbox(
         client_config=client_config,
         open_dir=open_dir,
         log_level=log_level,

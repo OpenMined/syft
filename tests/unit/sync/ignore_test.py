@@ -1,8 +1,7 @@
 from pathlib import Path
 
-from syftbox.client.base import SyftClientInterface
+from syftbox.client.base import SyftBoxContextInterface
 from syftbox.client.plugins.sync.datasite_state import DatasiteState
-from syftbox.client.plugins.sync.sync_client import SyncClient
 from syftbox.client.utils.dir_tree import create_dir_tree
 from syftbox.client.utils.display import display_file_tree
 from syftbox.lib.ignore import IGNORE_FILENAME, filter_ignored_paths
@@ -59,9 +58,7 @@ def test_ignore_file(tmp_path):
     assert filtered_paths == expected_result
 
 
-def test_ignore_datasite(datasite_1: SyftClientInterface, datasite_2: SyftClientInterface) -> None:
-    sync_client_1 = SyncClient(datasite_1)
-
+def test_ignore_datasite(datasite_1: SyftBoxContextInterface, datasite_2: SyftBoxContextInterface) -> None:
     datasite_2_files = {
         datasite_2.email: {
             "visible_file.txt": "content",
@@ -74,7 +71,7 @@ def test_ignore_datasite(datasite_1: SyftClientInterface, datasite_2: SyftClient
     display_file_tree(Path(datasite_1.workspace.datasites))
 
     # ds1 gets their local state of ds2
-    datasite_state = DatasiteState(client=sync_client_1, email=datasite_2.email)
+    datasite_state = DatasiteState(context=datasite_1, email=datasite_2.email)
     changes = datasite_state.get_datasite_changes()
 
     assert len(changes.files) == num_visible_files
@@ -83,7 +80,6 @@ def test_ignore_datasite(datasite_1: SyftClientInterface, datasite_2: SyftClient
     # ds1 ignores ds2
     ignore_path = Path(datasite_1.workspace.datasites) / IGNORE_FILENAME
     with ignore_path.open("a") as f:
-        # /datasite_2/
         f.write(f"\n/{datasite_2.email}\n")
 
     # ds1 gets their local state of ds2
@@ -96,7 +92,7 @@ def test_ignore_datasite(datasite_1: SyftClientInterface, datasite_2: SyftClient
     assert len(changes.files) == num_files
 
 
-def test_ignore_symlinks(datasite_1: SyftClientInterface) -> None:
+def test_ignore_symlinks(datasite_1: SyftBoxContextInterface) -> None:
     # create a symlinked folder containing a file
     folder_to_symlink = Path(datasite_1.workspace.data_dir) / "folder"
     folder_to_symlink.mkdir()
@@ -116,7 +112,7 @@ def test_ignore_symlinks(datasite_1: SyftClientInterface) -> None:
     assert filtered_paths == []
 
 
-def test_ignore_hidden_files(datasite_1: SyftClientInterface) -> None:
+def test_ignore_hidden_files(datasite_1: SyftBoxContextInterface) -> None:
     paths = [
         Path(".hidden_file.txt"),  # Hidden files are filtered
         Path("visible_file.txt"),  # Visible files are not filtered

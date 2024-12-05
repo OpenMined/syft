@@ -11,8 +11,10 @@ from syftbox.lib.lib import SyftPermission
 
 class SyncStatus(str, Enum):
     QUEUED = "queued"
+    PROCESSING = "processing"
     SYNCED = "synced"
     ERROR = "error"
+    REJECTED = "rejected"
     IGNORED = "ignored"
 
 
@@ -51,9 +53,12 @@ class SyncActionType(str, Enum):
     MODIFY_REMOTE = "MODIFY_REMOTE"
     MODIFY_LOCAL = "MODIFY_LOCAL"
 
-
-class SyncDecisionType(str, Enum):
-    NOOP = "NOOP"
-    CREATE = "CREATE"
-    MODIFY = "MODIFY"
-    DELETE = "DELETE"
+    @property
+    def target_side(self) -> SyncSide:
+        if self in [
+            SyncActionType.CREATE_REMOTE,
+            SyncActionType.MODIFY_REMOTE,
+            SyncActionType.DELETE_REMOTE,
+        ]:
+            return SyncSide.REMOTE
+        return SyncSide.LOCAL

@@ -4,8 +4,9 @@ from pathlib import Path
 from locust import FastHttpUser, between, task
 
 import syftbox.client.exceptions
-from syftbox.client.plugins.sync import consumer
-from syftbox.client.plugins.sync.sync_client import SyncClient
+from syftbox.client.core import SyftBoxContext
+from syftbox.client.plugins.sync.sync_action import ModifyRemoteAction
+from syftbox.client.server_client import SyftBoxClient
 from syftbox.lib.workspace import SyftWorkspace
 from syftbox.server.sync.hash import hash_file
 from syftbox.server.sync.models import FileMetadata
@@ -23,9 +24,9 @@ class SyftBoxUser(FastHttpUser):
         self.email = "aziz@openmined.org"
         self.remote_state: dict[str, list[FileMetadata]] = {}
 
-        self.sync_client = SyncClient(
+        self.syft_context = SyftBoxContext(
             email=self.email,
-            client=self.client,
+            client=SyftBoxClient(conn=self.client),
             workspace=SyftWorkspace(data_dir=Path(".")),
         )
 
@@ -33,13 +34,13 @@ class SyftBoxUser(FastHttpUser):
 
     def init_file(self) -> Path:
         # create a file on local and send to server
-        filepath = self.client.sync_folder / file_name
+        filepath = self.syft_context.datasite / file_name
         filepath.parent.mkdir(parents=True, exist_ok=True)
         filepath.touch()
         filepath.write_text(uuid.uuid4().hex)
         local_syncstate = hash_file(filepath.absolute(), root_dir=filepath.parent.absolute())
         try:
-            self.sync_client.create(local_syncstate.path, filepath.read_bytes())
+            self.syft_context.client.sync.create(local_syncstate.path, filepath.read_bytes())
         except syftbox.client.exceptions.SyftServerError:
             pass
         return filepath
@@ -53,19 +54,19 @@ class SyftBoxUser(FastHttpUser):
             all_files.extend(remote_state)
 
         all_paths = [f.path for f in all_files][:10]
-        self.sync_client.download_bulk(all_paths)
+        self.syft_context.client.sync.download_bulk(all_paths)
 
     @task
     def apply_diff(self):
         self.filepath.write_text(uuid.uuid4().hex)
-        local_syncstate = hash_file(self.filepath, root_dir=self.client.sync_folder)
-        remote_syncstate = self.sync_client.get_metadata(self.filepath)
+        local_syncstate = hash_file(self.filepath, root_dir=self.syft_context.datasite)
+        remote_syncstate = self.syft_context.client.sync.get_metadata(self.filepath)
 
-        consumer.update_remote(
-            self.sync_client,
-            local_syncstate=local_syncstate,
-            remote_syncstate=remote_syncstate,
+        action = ModifyRemoteAction(
+            local_metadata=local_syncstate,
+            remote_metadata=remote_syncstate,
         )
+        action.execute(self.syft_context)
 
     @task
     def download(self):

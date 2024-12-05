@@ -1,14 +1,15 @@
 import sys
 from pathlib import Path
 
+from loguru import logger
 from rich import print as rprint
 from typer import Argument, Exit, Option, Typer
 from typing_extensions import Annotated
 
 from syftbox.__version__ import __version__
 from syftbox.app.manager import install_app, list_app, uninstall_app
-from syftbox.client.base import SyftClientInterface
-from syftbox.client.client2 import SyftClient
+from syftbox.client.base import SyftBoxContextInterface
+from syftbox.client.core import LocalSyftBox
 from syftbox.client.plugins.apps import find_and_run_script
 from syftbox.lib.client_config import SyftClientConfig
 from syftbox.lib.constants import DEFAULT_CONFIG_PATH
@@ -59,16 +60,20 @@ def install(
     called_by: Annotated[str, CALLED_BY_OPTS] = "user",
 ):
     """Install a new Syftbox app"""
-    client = get_client(config_path)
-    result = install_app(client.workspace, repository, branch)
+    context = get_syftbox_context(config_path)
+    result = install_app(context.workspace, repository, branch)
     if result.error:
         rprint(f"[bold red]Error:[/bold red] {result.error}")
         raise Exit(1)
 
     try:
-        client.log_analytics_event("app_install", app_name=result.app_name, called_by=called_by)
-    except Exception:
-        pass
+        context.client.log_analytics_event(
+            "app_install",
+            app_name=result.app_name,
+            called_by=called_by,
+        )
+    except Exception as e:
+        logger.debug(f"Failed to log analytics event: {e}")
 
     rprint(f"Installed app [bold]'{result.app_name}'[/bold]\nLocation: '{result.app_path}'")
 
@@ -128,10 +133,10 @@ def env(with_syftbox: bool = False):
 #     pass
 
 
-def get_client(config_path: Path) -> SyftClientInterface:
+def get_syftbox_context(config_path: Path) -> SyftBoxContextInterface:
     try:
         conf = SyftClientConfig.load(config_path)
-        client = SyftClient(conf)
+        client = LocalSyftBox(conf)
         return client.context
     except ClientConfigException:
         msg = (

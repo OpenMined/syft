@@ -6,11 +6,12 @@ from typing import TYPE_CHECKING
 import httpx
 from typing_extensions import Protocol
 
+from syftbox.client.exceptions import SyftAuthenticationError, SyftPermissionError, SyftServerError
 from syftbox.lib.client_config import SyftClientConfig
 from syftbox.lib.workspace import SyftWorkspace
 
 
-class Plugins(Protocol):
+class PluginManagerInterface(Protocol):
     """All initialized plugins."""
 
     if TYPE_CHECKING:
@@ -28,7 +29,7 @@ class Plugins(Protocol):
         ...
 
 
-class SyftClientInterface(Protocol):
+class SyftBoxContextInterface(Protocol):
     """
     Protocol defining the essential attributes required by SyftClient plugins/components.
 
@@ -45,17 +46,20 @@ class SyftClientInterface(Protocol):
         server_client: HTTP client for server communication
     """
 
+    if TYPE_CHECKING:
+        from syftbox.client.server_client import SyftBoxClient
+
     config: SyftClientConfig
     """Configuration settings for the Syft client."""
 
     workspace: SyftWorkspace
     """Paths to different dirs in Syft"""
 
-    plugins: Plugins
+    plugins: PluginManagerInterface
     """All initialized plugins."""
 
-    server_client: httpx.Client
-    """HTTP client for server communication."""
+    client: "SyftBoxClient"
+    """Client for communicating with the SyftBox server."""
 
     @property
     def email(self) -> str:
@@ -72,10 +76,35 @@ class SyftClientInterface(Protocol):
         """Path to the datasite directory for the current user."""
         ...  # pragma: no cover
 
-    def log_analytics_event(self, event_name: str, **kwargs) -> None:
-        """Log an analytics event to the server."""
-        ...  # pragma: no cover
 
-    def whoami(self) -> str:
-        """Get the email address of the current user from the server."""
-        ...  # pragma: no cover
+class ClientBase:
+    def __init__(self, conn: httpx.Client):
+        self.conn = conn
+
+    def raise_for_status(self, response: httpx.Response):
+        endpoint = response.request.url.path
+        if response.status_code == 401:
+            raise SyftAuthenticationError()
+        elif response.status == 403:
+            raise SyftPermissionError(f"No permission to access this resource: {response.text}")
+        elif response.status != 200:
+            raise SyftServerError(f"[{endpoint}] Server returned {response.status_code}: {response.text}")
+
+    @staticmethod
+    def _make_headers(config: SyftClientConfig) -> dict[str, str]:
+        if config.access_token is None:
+            raise ValueError("Missing access token in config, please login first")
+
+        return {
+            "email": config.email,
+            "Authorization": f"Bearer {config.access_token}",
+        }
+
+    @classmethod
+    def from_config(cls, config: SyftClientConfig):
+        conn = httpx.Client(
+            base_url=str(config.server_url),
+            follow_redirects=True,
+            headers=cls._make_headers(config),
+        )
+        return cls(conn)

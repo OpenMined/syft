@@ -2,43 +2,14 @@ import base64
 from pathlib import Path
 from typing import Union
 
-import httpx
-
-from syftbox.client.base import SyftClientInterface
-from syftbox.client.exceptions import SyftServerError
-from syftbox.lib.workspace import SyftWorkspace
+from syftbox.client.base import ClientBase
 from syftbox.server.sync.models import ApplyDiffResponse, DiffResponse, FileMetadata
 
 
-class SyncClient:
-    """
-    Client for handling file sync operations with the server.
-    """
-
-    def __init__(self, client: SyftClientInterface) -> None:
-        self.client = client
-
-    @property
-    def email(self) -> str:
-        return self.client.email
-
-    @property
-    def server_client(self) -> httpx.Client:
-        return self.client.server_client
-
-    @property
-    def workspace(self) -> SyftWorkspace:
-        return self.client.workspace
-
-    def whoami(self) -> str:
-        return self.client.whoami()
-
-    def raise_for_status(self, response: httpx.Response) -> None:
-        """Implements response error handling for all sync operations."""
-        # TODO handle different status codes
-        endpoint_path = response.url.path
-        if response.status_code != 200:
-            raise SyftServerError(f"[{endpoint_path}] call failed: {response.text}")
+class SyncClient(ClientBase):
+    def __init__(self, conn):
+        super().__init__(conn)
+        self.server_client = conn
 
     def get_datasite_states(self) -> dict[str, list[FileMetadata]]:
         response = self.server_client.post("/sync/datasite_states")

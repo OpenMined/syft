@@ -4,24 +4,21 @@ from typing import Optional
 
 from loguru import logger
 
-from syftbox.client.base import SyftClientInterface
+from syftbox.client.base import SyftBoxContextInterface
 from syftbox.client.exceptions import SyftAuthenticationError
 from syftbox.client.plugins.sync.consumer import SyncConsumer
 from syftbox.client.plugins.sync.exceptions import FatalSyncError, SyncEnvironmentError
-from syftbox.client.plugins.sync.local_state import LocalState
 from syftbox.client.plugins.sync.producer import SyncProducer
 from syftbox.client.plugins.sync.queue import SyncQueue, SyncQueueItem
-from syftbox.client.plugins.sync.sync_client import SyncClient
 from syftbox.client.plugins.sync.types import FileChangeInfo
 
 
 class SyncManager:
-    def __init__(self, client: SyftClientInterface, health_check_interval: int = 300):
-        self.sync_client = SyncClient(client)
-        self.local_state = LocalState.for_client(client)
+    def __init__(self, context: SyftBoxContextInterface, health_check_interval: int = 300):
+        self.context = context
         self.queue = SyncQueue()
-        self.producer = SyncProducer(client=self.sync_client, queue=self.queue, local_state=self.local_state)
-        self.consumer = SyncConsumer(client=self.sync_client, queue=self.queue, local_state=self.local_state)
+        self.producer = SyncProducer(context=self.context, queue=self.queue, local_state=self.local_state)
+        self.consumer = SyncConsumer(context=self.context, queue=self.queue, local_state=self.local_state)
 
         self.sync_interval = 1  # seconds
         self.thread: Optional[Thread] = None
@@ -81,7 +78,7 @@ class SyncManager:
             FatalSyncError: If the server is not available.
         """
         try:
-            _ = self.sync_client.whoami()
+            _ = self.context.client.auth.whoami()
             logger.debug("Health check succeeded, server is available.")
             self.last_health_check = time.time()
         except SyftAuthenticationError as e:
