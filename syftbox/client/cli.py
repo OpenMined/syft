@@ -2,9 +2,15 @@ from pathlib import Path
 
 from rich import print as rprint
 from typer import Context, Exit, Option, Typer
-from typing_extensions import Annotated
+from typing_extensions import Annotated, Optional
 
-from syftbox.lib.constants import DEFAULT_CONFIG_PATH, DEFAULT_DATA_DIR, DEFAULT_PORT, DEFAULT_SERVER_URL
+from syftbox.lib.constants import (
+    DEFAULT_BENCHMARK_RUNS,
+    DEFAULT_CONFIG_PATH,
+    DEFAULT_DATA_DIR,
+    DEFAULT_PORT,
+    DEFAULT_SERVER_URL,
+)
 
 app = Typer(
     name="SyftBox Client",
@@ -70,7 +76,13 @@ TOKEN_OPTS = Option(
 # report command opts
 REPORT_PATH_OPTS = Option(
     "-o", "--output-dir",
-    help="Directory to save the log file",
+    help="Directory to save the report file",
+)
+
+# benchmark command opts
+BENCHMARK_RUNS_OPTS = Option(
+    "--num_runs", "-n",
+    help="Number of runs for the benchmark",
 )
 
 # fmt: on
@@ -137,6 +149,25 @@ def report(
         output_path = Path(output_path, name).resolve()
         output_path_with_extension = zip_logs(output_path, log_dir=config.data_dir / "logs")
         rprint(f"Logs from {config.data_dir} saved at {output_path_with_extension}.")
+    except Exception as e:
+        rprint(f"[red]Error[/red]: {e}")
+        raise Exit(1)
+
+
+@app.command()
+def benchmark(
+    config_path: Annotated[Path, CONFIG_OPTS] = DEFAULT_CONFIG_PATH,
+    num_runs: Annotated[int, BENCHMARK_RUNS_OPTS] = DEFAULT_BENCHMARK_RUNS,
+    output_path: Annotated[Optional[Path], REPORT_PATH_OPTS] = Path(".").resolve(),
+):
+    """Run the SyftBox benchmark"""
+
+    # Lazy import to improve cli startup speed
+    from syftbox.client.benchmark import run_benchmark
+
+    try:
+        print(f"Running benchmark for {config_path} ...")
+        run_benchmark(config_path, output_path, num_runs)
     except Exception as e:
         rprint(f"[red]Error[/red]: {e}")
         raise Exit(1)

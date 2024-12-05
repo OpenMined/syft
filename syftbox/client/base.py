@@ -79,3 +79,15 @@ class SyftClientInterface(Protocol):
     def whoami(self) -> str:
         """Get the email address of the current user from the server."""
         ...  # pragma: no cover
+
+
+class MetricCollector(Protocol):
+    """
+    Protocol for classes that collect performance metrics.
+    """
+
+    client_config: SyftClientConfig
+
+    def collect_metrics(self, num_runs: int) -> dict:
+        """Calculate performance metrics."""
+        ...
