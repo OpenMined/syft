@@ -77,6 +77,14 @@ class ServerSettings(BaseSettings):
     @property
     def user_file_path(self) -> Path:
         return self.data_folder / "users.json"
+    
+    @property
+    def banned_tokens_path(self) -> Path:
+        return self.data_folder / "banned_tokens"
+
+    @property
+    def banned_users_path(self) -> Path:
+        return self.data_folder / "banned_users"
 
     @classmethod
     def from_data_folder(cls, data_folder: Union[Path, str]) -> Self:
