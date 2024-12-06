@@ -84,3 +84,31 @@ def test_globstar():
     computed_permission = ComputedPermission(user="user@example.org", file_path=Path("b/a.txt"))
     computed_permission.apply(rule)
     assert computed_permission.has_permission(PermissionType.READ)
+
+def test_computed_permissions():
+    base_rule = PermissionRule.from_rule_dict(
+        Path("."), {"path": "user@example.org/test/a.txt", "permissions": ["admin"], "user": "user@example.org"}, 0
+    )
+    computed_permission = ComputedPermission(user="user@example.org", file_path=Path("user@example.org/test/a.txt"))
+    computed_permission.apply(base_rule)
+    assert computed_permission.has_permission(PermissionType.READ)
+    assert computed_permission.has_permission(PermissionType.WRITE)
+    assert computed_permission.has_permission(PermissionType.CREATE)
+    assert computed_permission.has_permission(PermissionType.ADMIN)
+    
+    diff_user_rule = PermissionRule.from_rule_dict(
+        Path("."), {"path": "user@example.org/test/a.txt", "permissions": ["read"], "user": "user_2@example.org"}, 0
+    )
+    computed_permission = ComputedPermission(user="user_2@example.org", file_path=Path("user@example.org/test/a.txt"))
+    computed_permission.apply(diff_user_rule)
+    assert computed_permission.has_permission(PermissionType.READ)
+
+
+    no_read_rule = PermissionRule.from_rule_dict(
+        Path("."), {"path": "user@example.org/test/a.txt", "permissions": ["write", 'create'], "user": "user_2@example.org"}, 0
+    )
+    computed_permission = ComputedPermission(user="user_2@example.org", file_path=Path("user@example.org/test/a.txt"))
+    computed_permission.apply(no_read_rule)
+    assert not computed_permission.has_permission(PermissionType.READ)
+    assert computed_permission.has_permission(PermissionType.WRITE)
+    assert computed_permission.has_permission(PermissionType.CREATE)

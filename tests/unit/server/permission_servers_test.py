@@ -1,5 +1,5 @@
 import sqlite3
-from pathlib import Path
+from pathlib import Path, PosixPath
 from typing import Optional
 
 import pytest
@@ -7,6 +7,7 @@ import pytest
 from syftbox.lib.constants import PERM_FILE
 from syftbox.lib.permissions import PermissionFile, PermissionType
 from syftbox.server.db.db import (
+    get_filemetadata_with_read_access,
     get_read_permissions_for_user,
     get_rules_for_permfile,
     link_existing_rules_to_file,
@@ -15,6 +16,7 @@ from syftbox.server.db.db import (
 )
 from syftbox.server.db.file_store import computed_permission_for_user_and_path
 from syftbox.server.db.schema import get_db
+from syftbox.server.models.sync_models import FileMetadata
 
 
 @pytest.fixture
@@ -598,5 +600,22 @@ def test_for_email(connection_with_tables: sqlite3.Connection):
     assert res[0]["path"] == "alice@example.org/test/bob@example.org/data.txt"
     assert res[0]["read_permission"]
 
-    # TODO: test like clause
-    # TODO: add dir state test
+    # Check get_filemetadata_with_read_access used in sync/dir_state
+    dir_path = "alice@example.org/test"
+    email = 'bob@example.org'
+    res = get_filemetadata_with_read_access(connection_with_tables, email, dir_path)
+    assert len(res) == 1
+    file_metadata = res[0]
+    assert isinstance(file_metadata, FileMetadata)
+    assert file_metadata.path == PosixPath(f"alice@example.org/test/bob@example.org/data.txt")
+    assert file_metadata.hash == 'hash1'
+    assert file_metadata.signature == 'signature1'
+    assert file_metadata.file_size == 100
+    
+    
+    # Check like clause
+    res = [dict(x) for x in get_read_permissions_for_user(connection_with_tables, "bob@example.org", path_like="alice@example.org/test")]
+    assert len(res) == 1
+    assert res[0]["path"] == "alice@example.org/test/bob@example.org/data.txt"
+    assert res[0]["read_permission"]
+    
