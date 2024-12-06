@@ -216,3 +216,20 @@ reset:
 run-jupyter jupyter_args="":
     uv run --frozen --with "jupyterlab" \
         jupyter lab {{ jupyter_args }}
+
+auth email server="http://127.0.0.1:5001":
+    # get access token from dev server
+
+    EMAIL={{ email }} && \
+    EMAIL_TOKEN=$( \
+        curl -s -X 'POST' '{{server}}/auth/request_email_token' \
+            -H 'accept: application/json' \
+            -H 'Content-Type: application/json' \
+            -d "{\"email\": \"${EMAIL}\"}" \
+        | jq -r '.email_token' \
+    ) && \
+    curl -s -X 'POST' "{{server}}/auth/validate_email_token?email=${EMAIL}" \
+        -H 'accept: application/json' \
+        -H "Authorization: Bearer ${EMAIL_TOKEN}" \
+        -d '' \
+    | jq -r '.access_token'

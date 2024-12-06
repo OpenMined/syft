@@ -6,8 +6,9 @@ import httpx
 
 from syftbox.client.base import SyftClientInterface
 from syftbox.client.exceptions import SyftServerError
+from syftbox.client.plugins.sync.exceptions import SyftPermissionError
 from syftbox.lib.workspace import SyftWorkspace
-from syftbox.server.sync.models import ApplyDiffResponse, DiffResponse, FileMetadata
+from syftbox.server.models.sync_models import ApplyDiffResponse, DiffResponse, FileMetadata
 
 
 class SyncClient:
@@ -35,10 +36,11 @@ class SyncClient:
 
     def raise_for_status(self, response: httpx.Response) -> None:
         """Implements response error handling for all sync operations."""
-        # TODO handle different status codes
         endpoint_path = response.url.path
-        if response.status_code != 200:
-            raise SyftServerError(f"[{endpoint_path}] call failed: {response.text}")
+        if response.status_code == 403:
+            raise SyftPermissionError(f"[{endpoint_path}] permission denied: {response.text}")
+        elif response.status_code != 200:
+            raise SyftServerError(f"[{endpoint_path}] call failed ({response.status_code}): {response.text}")
 
     def get_datasite_states(self) -> dict[str, list[FileMetadata]]:
         response = self.server_client.post("/sync/datasite_states")
@@ -63,7 +65,7 @@ class SyncClient:
     def get_metadata(self, path: Path) -> FileMetadata:
         response = self.server_client.post(
             "/sync/get_metadata",
-            json={"path_like": path.as_posix()},
+            json={"path": path.as_posix()},
         )
         self.raise_for_status(response)
         return FileMetadata(**response.json())

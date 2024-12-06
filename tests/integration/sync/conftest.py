@@ -57,8 +57,8 @@ def server_app_with_lifespan(tmp_path: Path) -> FastAPI:
     """
     path = tmp_path / "server"
     path.mkdir()
-
     settings = ServerSettings.from_data_folder(path)
+    settings.auth_enabled = False
     lifespan_with_settings = partial(server_lifespan, settings=settings)
     server_app.router.lifespan_context = lifespan_with_settings
 

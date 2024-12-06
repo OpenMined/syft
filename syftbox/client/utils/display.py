@@ -3,6 +3,8 @@ from pathlib import Path
 from rich.console import Console
 from rich.tree import Tree
 
+from syftbox.lib.constants import PERM_FILE
+
 
 def display_file_tree(root_dir: Path):
     def add_dir(tree: Tree, path: Path):
@@ -10,7 +12,7 @@ def display_file_tree(root_dir: Path):
             if child.is_dir():
                 sub_tree = tree.add(f"📁 {child.name}")
                 add_dir(sub_tree, child)
-            elif child.name == "_.syftperm":
+            elif child.name == PERM_FILE:
                 tree.add(f"🛡️ {child.name}")
             else:
                 tree.add(f"📄 {child.name}")

@@ -6,10 +6,10 @@ from loguru import logger
 
 from syftbox.client.plugins.sync.sync_client import SyncClient
 from syftbox.client.plugins.sync.types import FileChangeInfo, SyncSide
+from syftbox.lib.hash import collect_files, hash_dir
 from syftbox.lib.ignore import filter_ignored_paths, get_syftignore_matches
-from syftbox.lib.lib import SyftPermission
-from syftbox.server.sync.hash import collect_files, hash_dir
-from syftbox.server.sync.models import FileMetadata
+from syftbox.lib.permissions import PermissionFile
+from syftbox.server.models.sync_models import FileMetadata
 
 
 def format_paths(path_list: list[Path]) -> str:
@@ -159,7 +159,7 @@ def split_permissions(
     permissions = []
     files = []
     for change in changes:
-        if SyftPermission.is_permission_file(change.path):
+        if PermissionFile.is_permission_file(change.path):
             permissions.append(change)
         else:
             files.append(change)
