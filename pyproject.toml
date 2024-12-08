@@ -30,6 +30,8 @@ dependencies = [
     "ruamel-yaml>=0.18.6",
     "pyjwt>=2.10.0",
     "wcmatch>=10.0",
+    "opentelemetry-instrumentation-fastapi>=0.49b2",
+    "opentelemetry-exporter-otlp>=1.28.2",
 ]
 
 [project.optional-dependencies]
