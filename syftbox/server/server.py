@@ -1,13 +1,10 @@
 import contextlib
-import json
 import os
 import platform
-import random
-import sys
-from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+import yaml
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import (
@@ -22,95 +19,25 @@ from loguru import logger
 from typing_extensions import Any, Optional, Union
 
 from syftbox.__version__ import __version__
+from syftbox.lib.constants import PERM_FILE
+from syftbox.lib.hash import collect_files, hash_files
 from syftbox.lib.lib import (
-    Jsonable,
     get_datasites,
 )
+from syftbox.lib.permissions import PermissionFile, migrate_permissions
 from syftbox.server.analytics import log_analytics_event
+from syftbox.server.db import db
+from syftbox.server.db.schema import get_db
 from syftbox.server.logger import setup_logger
 from syftbox.server.middleware import LoguruMiddleware
 from syftbox.server.settings import ServerSettings, get_server_settings
 from syftbox.server.users.auth import get_current_user
 
+from .api.v1.sync_router import router as sync_router
 from .emails.router import router as emails_router
-from .sync import db, hash
-from .sync.router import router as sync_router
 from .users.router import router as users_router
 
 current_dir = Path(__file__).parent
-
-
-def load_dict(cls, filepath: str) -> Optional[dict[str, Any]]:
-    try:
-        with open(filepath) as f:
-            data = f.read()
-            d = json.loads(data)
-            dicts = {}
-            for key, value in d.items():
-                dicts[key] = cls(**value)
-            return dicts
-    except Exception as e:
-        logger.info(f"Unable to load dict file: {filepath}. {e}")
-    return None
-
-
-def save_dict(obj: Any, filepath: str) -> None:
-    dicts = {}
-    for key, value in obj.items():
-        dicts[key] = value.to_dict()
-
-    with open(filepath, "w") as f:
-        f.write(json.dumps(dicts))
-
-
-@dataclass
-class User(Jsonable):
-    email: str
-    token: int  # TODO
-
-
-class Users:
-    def __init__(self, path: Path) -> None:
-        self.path = path
-        self.users = {}
-        self.load()
-
-    def load(self):
-        if os.path.exists(str(self.path)):
-            users = load_dict(User, str(self.path))
-        else:
-            users = None
-        if users:
-            self.users = users
-
-    def save(self):
-        save_dict(self.users, str(self.path))
-
-    def get_user(self, email: str) -> Optional[User]:
-        if email not in self.users:
-            return None
-        return self.users[email]
-
-    def create_user(self, email: str) -> int:
-        if email in self.users:
-            # for now just return the token
-            return self.users[email].token
-            # raise Exception(f"User already registered: {email}")
-        token = random.randint(0, sys.maxsize)
-        user = User(email=email, token=token)
-        self.users[email] = user
-        self.save()
-        return token
-
-    def __repr__(self) -> str:
-        string = ""
-        for email, user in self.users.items():
-            string += f"{email}: {user}"
-        return string
-
-
-def get_users(request: Request) -> Users:
-    return request.state.users
 
 
 def create_folders(folders: list[str]) -> None:
@@ -120,16 +47,37 @@ def create_folders(folders: list[str]) -> None:
 
 
 def init_db(settings: ServerSettings) -> None:
+    # remove this after the upcoming release
+    migrate_permissions(settings.snapshot_folder)
+
     # might take very long as snapshot folder grows
     logger.info(f"> Collecting Files from {settings.snapshot_folder.absolute()}")
-    files = hash.collect_files(settings.snapshot_folder.absolute())
+    files = collect_files(settings.snapshot_folder.absolute())
     logger.info("> Hashing files")
-    metadata = hash.hash_files(files, settings.snapshot_folder)
+    metadata = hash_files(files, settings.snapshot_folder)
     logger.info(f"> Updating file hashes at {settings.file_db_path.absolute()}")
-    con = db.get_db(settings.file_db_path.absolute())
+    con = get_db(settings.file_db_path.absolute())
     cur = con.cursor()
     for m in metadata:
         db.save_file_metadata(cur, m)
+
+    # remove files that are not in the snapshot folder
+    all_metadata = db.get_all_metadata(cur)
+    for m in all_metadata:
+        abs_path = settings.snapshot_folder / m.path
+        if not abs_path.exists():
+            logger.info(f"{m.path} not found in {settings.snapshot_folder}, deleting from db")
+            db.delete_file_metadata(cur, m.path.as_posix())
+
+    # fill the permission tables
+    for file in settings.snapshot_folder.rglob(PERM_FILE):
+        content = file.read_text()
+        rule_dicts = yaml.safe_load(content)
+        perm_file = PermissionFile.from_rule_dicts(
+            permfile_file_path=file.relative_to(settings.snapshot_folder), rule_dicts=rule_dicts
+        )
+        db.set_rules_for_permfile(con, perm_file)
+        db.link_existing_rules_to_file(con, file.relative_to(settings.snapshot_folder))
 
     cur.close()
     con.commit()
@@ -151,15 +99,12 @@ async def lifespan(app: FastAPI, settings: Optional[ServerSettings] = None):
 
     create_folders(settings.folders)
 
-    users = Users(path=settings.user_file_path)
     logger.info("> Loading Users")
-    logger.info(users)
 
     init_db(settings)
 
     yield {
         "server_settings": settings,
-        "users": users,
     }
 
     logger.info("> Shutting down server")
@@ -322,21 +267,19 @@ async def browse_datasite(
 @app.post("/register")
 async def register(
     request: Request,
-    users: Users = Depends(get_users),
     server_settings: ServerSettings = Depends(get_server_settings),
 ):
     data = await request.json()
     email = data["email"]
-    token = users.create_user(email)
 
     # create datasite snapshot folder
     datasite_folder = Path(server_settings.snapshot_folder) / email
     os.makedirs(datasite_folder, exist_ok=True)
 
-    logger.info(f"> {email} registering: {token}, snapshot folder: {datasite_folder}")
+    logger.info(f"> {email} registering, snapshot folder: {datasite_folder}")
     log_analytics_event("/register", email)
 
-    return JSONResponse({"status": "success", "token": token}, status_code=200)
+    return JSONResponse({"status": "success", "token": "0"}, status_code=200)
 
 
 @app.post("/log_event")

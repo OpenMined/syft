@@ -1,5 +1,6 @@
 import base64
 import enum
+import sqlite3
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any, Optional
@@ -57,7 +58,7 @@ class SignatureResponse(BaseModel):
 
 
 class FileMetadataRequest(BaseModel):
-    path_like: str = Field(description="Path to search for files, uses SQL LIKE syntax")
+    path: RelativePath = Field(description="Path to search for files")
 
 
 class FileRequest(BaseModel):
@@ -90,6 +91,20 @@ class FileMetadata(BaseModel):
     signature: str
     file_size: int = 0
     last_modified: datetime
+
+    @property
+    def datasite(self) -> str:
+        return self.path.parts[0]
+
+    @staticmethod
+    def from_row(row: sqlite3.Row) -> "FileMetadata":
+        return FileMetadata(
+            path=Path(row["path"]),
+            hash=row["hash"],
+            signature=row["signature"],
+            file_size=row["file_size"],
+            last_modified=row["last_modified"],
+        )
 
     @property
     def signature_bytes(self) -> bytes:

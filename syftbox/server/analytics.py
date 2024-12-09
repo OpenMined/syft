@@ -7,8 +7,8 @@ from typing import Any, Optional
 from loguru import logger
 from pydantic import BaseModel
 
+from syftbox.server.db.file_store import FileStore
 from syftbox.server.logger import analytics_logger
-from syftbox.server.sync.file_store import FileStore
 
 
 def to_jsonable_dict(obj: dict) -> dict:
@@ -67,7 +67,7 @@ def log_file_change_event(
     Log a file change event to the analytics logger.
     """
     try:
-        metadata = file_store.get_metadata(relative_path)
+        metadata = file_store.get_metadata(relative_path, email, skip_permission_check=True)
         log_analytics_event(
             endpoint=endpoint,
             email=email,

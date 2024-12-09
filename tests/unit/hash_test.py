@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from syftbox.client.utils.dir_tree import create_dir_tree
-from syftbox.server.sync.hash import collect_files
+from syftbox.lib.hash import collect_files
 
 
 def test_collect_files(tmp_path: Path):

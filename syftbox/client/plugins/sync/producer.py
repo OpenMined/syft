@@ -60,7 +60,6 @@ class SyncProducer:
         except Exception as e:
             logger.error(f"Failed to get out of sync files for {datasite.email}. Reason: {e}")
             return
-
         for change in datasite_changes.permissions + datasite_changes.files:
             self.enqueue(change)
 

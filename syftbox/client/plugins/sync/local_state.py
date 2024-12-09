@@ -9,8 +9,9 @@ from typing_extensions import Self, Type
 
 from syftbox.client.base import SyftClientInterface
 from syftbox.client.plugins.sync.exceptions import SyncEnvironmentError
+from syftbox.client.plugins.sync.sync_action import SyncAction
 from syftbox.client.plugins.sync.types import SyncActionType, SyncStatus
-from syftbox.server.sync.models import FileMetadata
+from syftbox.server.models.sync_models import FileMetadata
 
 LOCAL_STATE_FILENAME = "local_syncstate.json"
 
@@ -33,6 +34,28 @@ class LocalState(BaseModel):
     @classmethod
     def for_client(cls: Type[Self], client: SyftClientInterface) -> Self:
         return cls(path=client.workspace.plugins / LOCAL_STATE_FILENAME)
+
+    def insert_completed_action(self, action: SyncAction) -> None:
+        """Insert action result into local state."""
+        if action.action_type == SyncActionType.NOOP:
+            return
+
+        if action.status == SyncStatus.PROCESSING:
+            raise ValueError("Attempted to insert an action into LocalState that is still being processed.")
+
+        if action.status == SyncStatus.SYNCED:
+            self.insert_synced_file(
+                path=action.path,
+                state=action.result_local_state,
+                action=action.action_type,
+            )
+        else:
+            self.insert_status_info(
+                path=action.path,
+                status=action.status,
+                message=action.message,
+                action=action.action_type,
+            )
 
     def insert_synced_file(self, path: Path, state: FileMetadata, action: "SyncActionType") -> None:
         if not isinstance(path, Path):
