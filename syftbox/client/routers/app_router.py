@@ -14,7 +14,7 @@ from syftbox.client.routers.common import APIContext
 router = APIRouter()
 
 
-def parse_frontmatter(file_path):
+def parse_frontmatter(file_path) -> dict:
     """
     Parses frontmatter YAML from a README.md file and returns it as a Python dictionary.
 
@@ -81,7 +81,7 @@ def get_all_apps(apps_dir: str) -> List[AppDetails]:
 
 
 @router.get("/")
-async def index(ctx: APIContext):
+async def index(ctx: APIContext) -> JSONResponse:
     apps_dir = ctx.workspace.apps
     apps = get_all_apps(apps_dir)
 
@@ -89,7 +89,7 @@ async def index(ctx: APIContext):
 
 
 @router.get("/status/{app_name}")
-async def app_details(ctx: APIContext, app_name: str):
+async def app_details(ctx: APIContext, app_name: str) -> JSONResponse:
     apps_dir = ctx.workspace.apps
     apps = get_all_apps(apps_dir)
     for app in apps:
@@ -104,7 +104,7 @@ class InstallRequest(BaseModel):
 
 
 @router.post("/install")
-async def install_app(request: InstallRequest):
+async def install_app(request: InstallRequest) -> JSONResponse:
     command = ["syftbox", "app", "install", request.source, "--called-by", "api"]
     try:
         # Run the command and capture output
@@ -126,7 +126,7 @@ async def install_app(request: InstallRequest):
 
 
 @router.post("/command/{app_name}")
-async def app_command(ctx: APIContext, app_name: str, request: dict):
+async def app_command(ctx: APIContext, app_name: str, request: dict) -> JSONResponse:
     apps_dir = ctx.workspace.apps
     apps = get_all_apps(apps_dir)
 
@@ -164,7 +164,7 @@ async def app_command(ctx: APIContext, app_name: str, request: dict):
 
 
 @router.get("/logs/{app_name}")
-async def app_logs(ctx: APIContext, app_name: str):
+async def app_logs(ctx: APIContext, app_name: str) -> JSONResponse:
     apps_dir = ctx.workspace.apps
     all_apps = get_all_apps(apps_dir)
     app_details = None

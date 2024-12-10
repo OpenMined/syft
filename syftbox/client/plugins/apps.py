@@ -75,7 +75,7 @@ def get_clean_env():
     return clean_env
 
 
-def find_and_run_script(app_path: Path, extra_args: list, config_path: Path, app_log_dir: Path):
+def find_and_run_script(app_path: Path, extra_args: list, config_path: Path, app_log_dir: Optional[Path] = None):
     script_path = os.path.join(app_path, "run.sh")
 
     clean_env = get_clean_env()
@@ -136,7 +136,7 @@ def create_app_logger(log_file: Path):
     return logger, file_handler
 
 
-def run_with_logging(command: str, app_path: Path, clean_env: dict, log_path: Path):
+def run_with_logging(command: str, app_path: Path, clean_env: dict, log_path: Optional[Path] = None):
     """
     Run a subprocess command and capture output to both a log file and return results.
     """

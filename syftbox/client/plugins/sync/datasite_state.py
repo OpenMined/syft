@@ -173,7 +173,7 @@ def compare_fileinfo(
     remote_info: Optional[FileMetadata],
 ) -> Optional[FileChangeInfo]:
     if local_info is None and remote_info is None:
-        return
+        return None
 
     if local_info is None and remote_info is not None:
         # File only exists on remote
@@ -195,7 +195,7 @@ def compare_fileinfo(
             file_size=local_info.file_size,
         )
 
-    if local_info.hash != remote_info.hash:
+    if local_info and remote_info and local_info.hash != remote_info.hash:
         # File is different on both sides
         if local_info.last_modified > remote_info.last_modified:
             date_last_modified = local_info.last_modified
@@ -213,3 +213,5 @@ def compare_fileinfo(
             date_last_modified=date_last_modified,
             file_size=file_size,
         )
+
+    return None

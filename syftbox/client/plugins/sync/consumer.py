@@ -141,7 +141,7 @@ class SyncDecision(BaseModel):
         return self.operation == SyncDecisionType.NOOP
 
     @property
-    def action_type(self):
+    def action_type(self) -> SyncActionType:  # type: ignore
         if self.operation == SyncDecisionType.NOOP:
             return SyncActionType.NOOP
         if self.operation == SyncDecisionType.CREATE and self.side_to_update == SyncSide.LOCAL:
@@ -162,7 +162,7 @@ class SyncDecision(BaseModel):
         cls,
         local_syncstate: FileMetadata,
         remote_syncstate: FileMetadata,
-    ):
+    ) -> "SyncDecision":
         return cls(
             operation=SyncDecisionType.NOOP,
             side_to_update=SyncSide.LOCAL,
@@ -176,7 +176,7 @@ class SyncDecision(BaseModel):
         local_syncstate: Optional[FileMetadata],
         remote_syncstate: Optional[FileMetadata],
         side_to_update: SyncSide,
-    ):
+    ) -> "SyncDecision":
         """Asssumes at least on of the states is modified"""
 
         delete = (
@@ -276,7 +276,7 @@ class SyncDecision(BaseModel):
         elif self.side_to_update == SyncSide.LOCAL:
             is_valid, reason = self._is_valid_local_decision(abs_path)
         else:
-            is_valid, reason = True, ""
+            is_valid, reason = True, ""  # type: ignore[unreachable]
 
         if not is_valid and show_warnings:
             logger.warning(reason)
@@ -289,7 +289,7 @@ class SyncDecisionTuple(BaseModel):
     local_decision: SyncDecision
 
     @property
-    def result_local_state(self) -> FileMetadata:
+    def result_local_state(self) -> Optional[FileMetadata]:
         if self.local_decision.operation == SyncDecisionType.NOOP:
             return self.local_decision.local_syncstate
         else:
@@ -305,7 +305,7 @@ class SyncDecisionTuple(BaseModel):
         current_local_syncstate: Optional[FileMetadata],
         previous_local_syncstate: Optional[FileMetadata],
         current_remote_syncstate: Optional[FileMetadata],
-    ):
+    ) -> "SyncDecisionTuple":
         def noop() -> SyncDecision:
             return SyncDecision.noop(
                 local_syncstate=current_local_syncstate,
@@ -317,7 +317,7 @@ class SyncDecisionTuple(BaseModel):
         in_sync = current_remote_syncstate == current_local_syncstate
         conflict = local_modified and remote_modified and not in_sync
 
-        path = current_local_syncstate.path if current_local_syncstate else current_remote_syncstate.path
+        path = current_local_syncstate.path if current_local_syncstate else current_remote_syncstate.path  # type: ignore
         logger.debug(
             f"{path} local_modified: {local_modified}, remote_modified: {remote_modified}, in_sync: {in_sync}, conflict: {conflict}"
         )
@@ -384,13 +384,13 @@ class SyncConsumer:
         self.queue = queue
         self.local_state = local_state
 
-    def validate_sync_environment(self):
+    def validate_sync_environment(self) -> None:
         if not Path(self.client.workspace.datasites).is_dir():
             raise SyncEnvironmentError("Your sync folder has been deleted by a different process.")
         if not self.local_state.path.is_file():
             raise SyncEnvironmentError("Your previous sync state has been deleted by a different process.")
 
-    def consume_all(self):
+    def consume_all(self) -> None:
         while not self.queue.empty():
             self.validate_sync_environment()
             item = self.queue.get(timeout=0.1)
@@ -402,7 +402,7 @@ class SyncConsumer:
             except Exception as e:
                 logger.error(f"Failed to sync file {item.data.path}, it will be retried in the next sync. Reason: {e}")
 
-    def download_all_missing(self, datasite_states: list[DatasiteState]):
+    def download_all_missing(self, datasite_states: list[DatasiteState]) -> None:
         try:
             missing_files: list[Path] = []
             for datasite_state in datasite_states:
@@ -414,8 +414,8 @@ class SyncConsumer:
 
             logger.info(f"Downloading {len(missing_files)} files in batch")
             received_files = create_local_batch(self.client, missing_files)
-            for path in received_files:
-                path = Path(path)
+            for _path in received_files:
+                path = Path(_path)
                 state = self.get_current_local_syncstate(path)
                 self.local_state.insert_synced_file(
                     path=path,
@@ -431,7 +431,7 @@ class SyncConsumer:
 
     def get_decisions(self, item: SyncQueueItem) -> SyncDecisionTuple:
         path = item.data.path
-        current_local_syncstate: FileMetadata = self.get_current_local_syncstate(path)
+        current_local_syncstate: Optional[FileMetadata] = self.get_current_local_syncstate(path)
         previous_local_syncstate = self.get_previous_local_syncstate(path)
         # TODO, rename to remote
         current_server_state = self.get_current_server_state(path)

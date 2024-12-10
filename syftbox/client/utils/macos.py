@@ -14,6 +14,7 @@ def search_icon_file(src_path: Path) -> Optional[Path]:
     for file_path in src_path.iterdir():
         if "Icon" in file_path.name and "\r" in file_path.name:
             return file_path
+    return None
 
 
 # if you knew the pain of this function

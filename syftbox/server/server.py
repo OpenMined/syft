@@ -19,7 +19,7 @@ from fastapi.responses import (
 )
 from jinja2 import Template
 from loguru import logger
-from typing_extensions import Any, Optional, Union
+from typing_extensions import Any, AsyncGenerator, Optional, Type, Union
 
 from syftbox import __version__
 from syftbox.lib.lib import (
@@ -40,7 +40,7 @@ from .users.router import router as users_router
 current_dir = Path(__file__).parent
 
 
-def load_dict(cls, filepath: str) -> Optional[dict[str, Any]]:
+def load_dict(cls: Type[Any], filepath: str) -> Optional[dict[str, Any]]:
     try:
         with open(filepath) as f:
             data = f.read()
@@ -72,10 +72,10 @@ class User(Jsonable):
 class Users:
     def __init__(self, path: Path) -> None:
         self.path = path
-        self.users = {}
+        self.users: dict = {}
         self.load()
 
-    def load(self):
+    def load(self) -> None:
         if os.path.exists(str(self.path)):
             users = load_dict(User, str(self.path))
         else:
@@ -83,7 +83,7 @@ class Users:
         if users:
             self.users = users
 
-    def save(self):
+    def save(self) -> None:
         save_dict(self.users, str(self.path))
 
     def get_user(self, email: str) -> Optional[User]:
@@ -137,7 +137,7 @@ def init_db(settings: ServerSettings) -> None:
 
 
 @contextlib.asynccontextmanager
-async def lifespan(app: FastAPI, settings: Optional[ServerSettings] = None):
+async def lifespan(app: FastAPI, settings: Optional[ServerSettings] = None) -> AsyncGenerator:
     # Startup
     if settings is None:
         settings = ServerSettings()
@@ -191,7 +191,7 @@ syftbox client
 
 
 @app.get("/", response_class=PlainTextResponse)
-async def get_ascii_art(request: Request):
+async def get_ascii_art(request: Request) -> PlainTextResponse:
     req_host = request.headers.get("host", "")
     if "syftboxstage" in req_host:
         return ascii_art.replace("syftbox.openmined.org", "syftboxstage.openmined.org")
@@ -199,7 +199,7 @@ async def get_ascii_art(request: Request):
 
 
 @app.get("/wheel/{path:path}", response_class=HTMLResponse)
-async def get_wheel(path: str):
+async def get_wheel(path: str) -> HTMLResponse:
     if path == "":  # Check if path is empty (meaning "/datasites/")
         return RedirectResponse(url="/")
 
@@ -227,7 +227,9 @@ def get_file_list(directory: Union[str, Path] = ".") -> list[dict[str, Any]]:
 
 
 @app.get("/datasites", response_class=HTMLResponse)
-async def list_datasites(request: Request, server_settings: ServerSettings = Depends(get_server_settings)):
+async def list_datasites(
+    request: Request, server_settings: ServerSettings = Depends(get_server_settings)
+) -> HTMLResponse:
     files = get_file_list(server_settings.snapshot_folder)
     template_path = current_dir / "templates" / "datasites.html"
     html = ""
@@ -250,7 +252,7 @@ async def browse_datasite(
     request: Request,
     path: str,
     server_settings: ServerSettings = Depends(get_server_settings),
-):
+) -> HTMLResponse:
     if path == "":  # Check if path is empty (meaning "/datasites/")
         return RedirectResponse(url="/datasites")
 
@@ -324,7 +326,7 @@ async def register(
     request: Request,
     users: Users = Depends(get_users),
     server_settings: ServerSettings = Depends(get_server_settings),
-):
+) -> JSONResponse:
     data = await request.json()
     email = data["email"]
     token = users.create_user(email)
@@ -343,26 +345,26 @@ async def register(
 async def log_event(
     request: Request,
     email: str = Depends(get_current_user),
-):
+) -> JSONResponse:
     data = await request.json()
     log_analytics_event("/log_event", email, **data)
     return JSONResponse({"status": "success"}, status_code=200)
 
 
 @app.get("/install.sh")
-async def install():
+async def install() -> FileResponse:
     install_script = current_dir / "templates" / "install.sh"
     return FileResponse(install_script, media_type="text/plain")
 
 
 @app.get("/icon.png")
-async def icon():
+async def icon() -> FileResponse:
     icon_path = current_dir / "assets" / "icon.png"
     return FileResponse(icon_path, media_type="image/png")
 
 
 @app.get("/info")
-async def info():
+async def info() -> dict:
     return {
         "version": __version__,
     }

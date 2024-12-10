@@ -38,7 +38,7 @@ class ServerSettings(BaseSettings):
     auth_enabled: bool = False
 
     @field_validator("data_folder", mode="after")
-    def data_folder_abs(cls, v):
+    def data_folder_abs(cls, v) -> Path:
         return Path(v).expanduser().resolve()
 
     @model_validator(mode="after")

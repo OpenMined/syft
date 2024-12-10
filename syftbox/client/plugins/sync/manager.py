@@ -41,13 +41,13 @@ class SyncManager:
     def is_alive(self) -> bool:
         return self.thread is not None and self.thread.is_alive()
 
-    def stop(self, blocking: bool = False):
+    def stop(self, blocking: bool = False) -> None:
         self.is_stop_requested = True
-        if blocking:
+        if blocking and self.thread is not None:
             self.thread.join()
 
-    def start(self):
-        def _start(manager: SyncManager):
+    def start(self) -> None:
+        def _start(manager: SyncManager) -> None:
             while not manager.is_stop_requested:
                 try:
                     if manager._should_perform_health_check():
