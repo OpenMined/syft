@@ -17,6 +17,7 @@ from syftbox.client.client2 import METADATA_FILENAME
 from syftbox.lib.client_config import SyftClientConfig
 from syftbox.lib.constants import DEFAULT_DATA_DIR
 from syftbox.lib.exceptions import ClientConfigException
+from syftbox.lib.http import SYFTBOX_HEADERS
 from syftbox.lib.validators import DIR_NOT_EMPTY, is_valid_dir, is_valid_email
 from syftbox.lib.workspace import SyftWorkspace
 
@@ -116,7 +117,7 @@ def setup_config_interactive(
             conf.set_port(port)
 
     # Short-lived client for all pre-authentication requests
-    login_client = httpx.Client(base_url=str(conf.server_url))
+    login_client = httpx.Client(base_url=str(conf.server_url), headers=SYFTBOX_HEADERS)
     if not skip_verify_install:
         verify_installation(conf, login_client)
 

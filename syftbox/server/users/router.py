@@ -1,11 +1,17 @@
 from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr
 
 from syftbox.lib.email import send_token_email
 from syftbox.server.analytics import log_analytics_event
 from syftbox.server.settings import ServerSettings, get_server_settings
-from syftbox.server.users.auth import generate_access_token, generate_email_token, get_user_from_email_token, get_current_user
+from syftbox.server.users.auth import (
+    generate_access_token,
+    generate_email_token,
+    get_current_user,
+    get_user_from_email_token,
+)
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
@@ -13,15 +19,19 @@ router = APIRouter(prefix="/auth", tags=["authentication"])
 class EmailTokenRequest(BaseModel):
     email: EmailStr
 
+
 class EmailTokenResponse(BaseModel):
     email_token: Optional[str] = None
+
 
 class AccessTokenResponse(BaseModel):
     access_token: str
 
 
 @router.post("/request_email_token")
-def get_token(req: EmailTokenRequest, server_settings: ServerSettings = Depends(get_server_settings)) -> EmailTokenResponse:
+def get_token(
+    req: EmailTokenRequest, server_settings: ServerSettings = Depends(get_server_settings)
+) -> EmailTokenResponse:
     """
     Send an email token to the user's email address
 
@@ -62,8 +72,10 @@ def validate_email_token(
     access_token = generate_access_token(server_settings, email)
     return AccessTokenResponse(access_token=access_token)
 
+
 class WhoAmIResponse(BaseModel):
     email: str
+
 
 @router.post("/whoami")
 def whoami(
