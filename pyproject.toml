@@ -24,6 +24,7 @@ dependencies = [
     "pydantic[email]==2.10.3",
     "pyjwt==2.10.1",
     "wcmatch==10.0",
+    "curl-cffi>=0.7.4",
 ]
 
 # Local dependencies for development

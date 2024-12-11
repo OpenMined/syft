@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import httpx
-from typing_extensions import Protocol
+from typing_extensions import Any, Optional, Protocol
 
 from syftbox.lib.client_config import SyftClientConfig
 from syftbox.lib.workspace import SyftWorkspace
@@ -79,3 +80,30 @@ class SyftClientInterface(Protocol):
     def whoami(self) -> str:
         """Get the email address of the current user from the server."""
         ...  # pragma: no cover
+
+
+@dataclass
+class BaseMetric:
+    """Base class for all metrics with common fields."""
+
+    num_runs: int
+
+
+class MetricCollector(Protocol):
+    """
+    Protocol for classes that collect performance metrics.
+    """
+
+    client_config: SyftClientConfig
+
+    def collect_metrics(self, num_runs: int) -> BaseMetric:
+        """Calculate performance metrics."""
+        ...
+
+
+class BenchmarkReporter(Protocol):
+    """Protocol defining the interface for benchmark result reporters."""
+
+    def generate(self, metrics: dict[str, BaseMetric], report_path: Optional[Path] = None) -> Any:
+        """Generate the benchmark report."""
+        ...

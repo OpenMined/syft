@@ -2,9 +2,15 @@ from pathlib import Path
 
 from rich import print as rprint
 from typer import Context, Exit, Option, Typer
-from typing_extensions import Annotated
+from typing_extensions import Annotated, Optional
 
-from syftbox.lib.constants import DEFAULT_CONFIG_PATH, DEFAULT_DATA_DIR, DEFAULT_PORT, DEFAULT_SERVER_URL
+from syftbox.lib.constants import (
+    DEFAULT_BENCHMARK_RUNS,
+    DEFAULT_CONFIG_PATH,
+    DEFAULT_DATA_DIR,
+    DEFAULT_PORT,
+    DEFAULT_SERVER_URL,
+)
 
 app = Typer(
     name="SyftBox Client",
@@ -70,7 +76,13 @@ TOKEN_OPTS = Option(
 # report command opts
 REPORT_PATH_OPTS = Option(
     "-o", "--output-dir",
-    help="Directory to save the log file",
+    help="Directory to save the report file",
+)
+
+# benchmark command opts
+JSON_BENCHMARK_REPORT_OPTS = Option(
+    "--json", "-j",
+    help="Generate the benchmark report in JSON format",
 )
 
 # fmt: on
@@ -137,6 +149,30 @@ def report(
         output_path = Path(output_path, name).resolve()
         output_path_with_extension = zip_logs(output_path, log_dir=config.data_dir / "logs")
         rprint(f"Logs from {config.data_dir} saved at {output_path_with_extension}.")
+    except Exception as e:
+        rprint(f"[red]Error[/red]: {e}")
+        raise Exit(1)
+
+
+@app.command()
+def benchmark(
+    config_path: Annotated[Path, CONFIG_OPTS] = DEFAULT_CONFIG_PATH,
+    json: Annotated[Optional[bool], JSON_BENCHMARK_REPORT_OPTS] = False,
+    output_path: Annotated[Optional[Path], REPORT_PATH_OPTS] = Path(".").resolve(),
+):
+    """Run the SyftBox benchmark"""
+
+    # Lazy import to improve cli startup speed
+    from syftbox.client.benchmark.report import HumanReadableBenchmarkReport, JsonBenchmarkReport
+    from syftbox.client.benchmark.runner import SyftBenchmarkRunner
+    from syftbox.lib.client_config import SyftClientConfig
+
+    try:
+        config = SyftClientConfig.load(config_path)
+        benchmark_reporter = JsonBenchmarkReport() if json else HumanReadableBenchmarkReport()
+        benchmark_runner = SyftBenchmarkRunner(config, benchmark_reporter)
+        print(f"Running benchmark for {config_path} ...")
+        benchmark_runner.run(DEFAULT_BENCHMARK_RUNS, output_path)
     except Exception as e:
         rprint(f"[red]Error[/red]: {e}")
         raise Exit(1)
