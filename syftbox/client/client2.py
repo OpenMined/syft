@@ -21,6 +21,7 @@ from syftbox.client.utils.file_manager import _is_wsl
 from syftbox.lib.client_config import SyftClientConfig
 from syftbox.lib.datasite import create_datasite
 from syftbox.lib.exceptions import SyftBoxException
+from syftbox.lib.http import HEADER_SYFTBOX_USER, SYFTBOX_HEADERS
 from syftbox.lib.ignore import IGNORE_FILENAME
 from syftbox.lib.workspace import SyftWorkspace
 
@@ -173,9 +174,15 @@ class SyftClient:
 
     def __get_server_headers(self):
         # TODO make access token required for initializing the client
-        headers = {"email": self.config.email}
+        headers = {
+            **SYFTBOX_HEADERS,
+            HEADER_SYFTBOX_USER: self.config.email,
+            "email": self.config.email,  # legacy
+        }
         if self.config.access_token is not None:
             headers["Authorization"] = f"Bearer {self.config.access_token}"
+
+        logger.info(f"Server headers: {headers}")
         return headers
 
     # utils
