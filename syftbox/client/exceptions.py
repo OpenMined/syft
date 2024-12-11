@@ -29,3 +29,7 @@ class SyftAuthenticationError(SyftServerError):
 
 class SyftNotFound(SyftServerError):
     pass
+
+
+class SyftPermissionError(SyftServerError):
+    pass

@@ -1,4 +1,3 @@
-from syftbox.client.exceptions import SyftServerError
 from syftbox.lib.exceptions import SyftBoxException
 
 
@@ -11,10 +10,6 @@ class FatalSyncError(SyftBoxException):
 class SyncEnvironmentError(FatalSyncError):
     """the sync environment is corrupted (e.g. sync folder deleted), syncing cannot continue."""
 
-    pass
-
-
-class SyftPermissionError(SyftServerError):
     pass
 
 

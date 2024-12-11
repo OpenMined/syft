@@ -2,11 +2,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 from syftbox.client.api import create_api
-from syftbox.client.base import SyftClientInterface
+from syftbox.client.base import SyftBoxContextInterface
 from syftbox.lib.client_config import SyftClientConfig
 
 
-class MockClient(SyftClientInterface):
+class MockClient(SyftBoxContextInterface):
     def __init__(self):
         self.config = SyftClientConfig(
             path="/tmp/syftbox/config.yaml",

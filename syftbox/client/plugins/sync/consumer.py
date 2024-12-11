@@ -6,43 +6,42 @@ from typing import Optional
 import httpx
 from loguru import logger
 
-from syftbox.client.exceptions import SyftServerError
+from syftbox.client.base import SyftBoxContextInterface
+from syftbox.client.exceptions import SyftPermissionError, SyftServerError
 from syftbox.client.plugins.sync.datasite_state import DatasiteState
 from syftbox.client.plugins.sync.exceptions import (
     FatalSyncError,
-    SyftPermissionError,
     SyncEnvironmentError,
     SyncValidationError,
 )
 from syftbox.client.plugins.sync.local_state import LocalState
 from syftbox.client.plugins.sync.queue import SyncQueue, SyncQueueItem
 from syftbox.client.plugins.sync.sync_action import SyncAction, determine_sync_action
-from syftbox.client.plugins.sync.sync_client import SyncClient
 from syftbox.client.plugins.sync.types import SyncActionType
 from syftbox.lib.hash import hash_file
 from syftbox.lib.ignore import filter_ignored_paths
 from syftbox.server.models.sync_models import FileMetadata
 
 
-def create_local_batch(sync_client: SyncClient, paths_to_download: list[Path]) -> list[str]:
+def create_local_batch(context: SyftBoxContextInterface, paths_to_download: list[Path]) -> list[str]:
     try:
-        content_bytes = sync_client.download_bulk(paths_to_download)
+        content_bytes = context.client.sync.download_bulk(paths_to_download)
     except SyftServerError as e:
         logger.error(e)
         return []
     zip_file = zipfile.ZipFile(BytesIO(content_bytes))
-    zip_file.extractall(sync_client.workspace.datasites)
+    zip_file.extractall(context.workspace.datasites)
     return zip_file.namelist()
 
 
 class SyncConsumer:
-    def __init__(self, client: SyncClient, queue: SyncQueue, local_state: LocalState):
-        self.client = client
+    def __init__(self, context: SyftBoxContextInterface, queue: SyncQueue, local_state: LocalState):
+        self.context = context
         self.queue = queue
         self.local_state = local_state
 
     def validate_sync_environment(self):
-        if not Path(self.client.workspace.datasites).is_dir():
+        if not Path(self.context.workspace.datasites).is_dir():
             raise SyncEnvironmentError("Your sync folder has been deleted by a different process.")
         if not self.local_state.path.is_file():
             raise SyncEnvironmentError("Your previous sync state has been deleted by a different process.")
@@ -67,10 +66,10 @@ class SyncConsumer:
                     path = file.path
                     if not self.local_state.states.get(path):
                         missing_files.append(path)
-            missing_files = filter_ignored_paths(self.client.workspace.datasites, missing_files)
+            missing_files = filter_ignored_paths(self.context.workspace.datasites, missing_files)
 
             logger.info(f"Downloading {len(missing_files)} files in batch")
-            received_files = create_local_batch(self.client, missing_files)
+            received_files = create_local_batch(self.context, missing_files)
             for path in received_files:
                 path = Path(path)
                 state = self.get_current_local_metadata(path)
@@ -109,10 +108,10 @@ class SyncConsumer:
         """
         try:
             logger.info(action.info_message)
-            action.validate(self.client)
-            action.execute(self.client)
+            action.validate(self.context)
+            action.execute(self.context)
         except SyftPermissionError as e:
-            action.process_rejection(self.client, reason=str(e))
+            action.process_rejection(self.context, reason=str(e))
         except SyncValidationError as e:
             # TODO Should we reject validation errors as well?
             action.error(e)
@@ -132,16 +131,16 @@ class SyncConsumer:
         self.local_state.insert_completed_action(action)
 
     def get_current_local_metadata(self, path: Path) -> Optional[FileMetadata]:
-        abs_path = self.client.workspace.datasites / path
+        abs_path = self.context.workspace.datasites / path
         if not abs_path.is_file():
             return None
-        return hash_file(abs_path, root_dir=self.client.workspace.datasites)
+        return hash_file(abs_path, root_dir=self.context.workspace.datasites)
 
     def get_previous_local_metadata(self, path: Path) -> Optional[FileMetadata]:
         return self.local_state.states.get(path, None)
 
     def get_current_remote_metadata(self, path: Path) -> Optional[FileMetadata]:
         try:
-            return self.client.get_metadata(path)
+            return self.context.client.sync.get_metadata(path)
         except SyftServerError:
             return None

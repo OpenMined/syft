@@ -6,8 +6,9 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from syftbox.client.base import Plugins, SyftClientInterface
-from syftbox.client.client2 import SyftClientContext
+from syftbox.client.base import PluginManagerInterface, SyftBoxContextInterface
+from syftbox.client.core import SyftBoxContext
+from syftbox.client.server_client import SyftBoxClient
 from syftbox.lib.client_config import SyftClientConfig
 from syftbox.lib.datasite import create_datasite
 from syftbox.lib.workspace import SyftWorkspace
@@ -23,11 +24,11 @@ def authenticate_testclient(client: TestClient, email: str) -> None:
     client.headers["Authorization"] = f"Bearer {access_token}"
 
 
-class MockPluginManager(Plugins):
+class MockPluginManager(PluginManagerInterface):
     pass
 
 
-def setup_datasite(tmp_path: Path, server_client: TestClient, email: str) -> SyftClientInterface:
+def setup_datasite(tmp_path: Path, server_client: TestClient, email: str) -> SyftBoxContextInterface:
     data_dir = tmp_path / email
     config = SyftClientConfig(
         path=data_dir / "config.json",
@@ -41,10 +42,10 @@ def setup_datasite(tmp_path: Path, server_client: TestClient, email: str) -> Syf
     ws.mkdirs()
     create_datasite(ws.datasites, email)
     authenticate_testclient(server_client, email)
-    return SyftClientContext(
+    return SyftBoxContext(
         config,
         ws,
-        server_client,
+        SyftBoxClient(conn=server_client),
         MockPluginManager(),
     )
 
@@ -66,14 +67,14 @@ def server_app_with_lifespan(tmp_path: Path) -> FastAPI:
 
 
 @pytest.fixture()
-def datasite_1(tmp_path: Path, server_app_with_lifespan: FastAPI) -> SyftClientInterface:
+def datasite_1(tmp_path: Path, server_app_with_lifespan: FastAPI) -> SyftBoxContextInterface:
     email = "user_1@openmined.org"
     with TestClient(server_app_with_lifespan) as client:
         return setup_datasite(tmp_path, client, email)
 
 
 @pytest.fixture()
-def datasite_2(tmp_path: Path, server_app_with_lifespan: FastAPI) -> SyftClientInterface:
+def datasite_2(tmp_path: Path, server_app_with_lifespan: FastAPI) -> SyftBoxContextInterface:
     email = "user_2@openmined.org"
     with TestClient(server_app_with_lifespan) as client:
         return setup_datasite(tmp_path, client, email)

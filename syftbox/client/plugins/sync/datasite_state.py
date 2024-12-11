@@ -4,7 +4,7 @@ from typing import List, Optional
 
 from loguru import logger
 
-from syftbox.client.plugins.sync.sync_client import SyncClient
+from syftbox.client.base import SyftBoxContextInterface
 from syftbox.client.plugins.sync.types import FileChangeInfo, SyncSide
 from syftbox.lib.hash import collect_files, hash_dir
 from syftbox.lib.ignore import filter_ignored_paths, get_syftignore_matches
@@ -42,7 +42,12 @@ class DatasiteChanges:
 
 
 class DatasiteState:
-    def __init__(self, client: SyncClient, email: str, remote_state: Optional[list[FileMetadata]] = None) -> None:
+    def __init__(
+        self,
+        context: SyftBoxContextInterface,
+        email: str,
+        remote_state: Optional[list[FileMetadata]] = None,
+    ) -> None:
         """A class to represent the state of a datasite
 
         Args:
@@ -51,7 +56,7 @@ class DatasiteState:
             remote_state (Optional[list[FileMetadata]], optional): Remote state of the datasite.
                 If not provided, it will be fetched from the server. Defaults to None.
         """
-        self.client = client
+        self.context = context
         self.email: str = email
         self.remote_state: Optional[list[FileMetadata]] = remote_state
 
@@ -68,15 +73,15 @@ class DatasiteState:
 
     @property
     def path(self) -> Path:
-        p = self.client.workspace.datasites / self.email
+        p = self.context.workspace.datasites / self.email
         return p.expanduser().resolve()
 
     def get_current_local_state(self) -> list[FileMetadata]:
-        return hash_dir(self.path, root_dir=self.client.workspace.datasites)
+        return hash_dir(self.path, root_dir=self.context.workspace.datasites)
 
     def get_remote_state(self) -> list[FileMetadata]:
         if self.remote_state is None:
-            self.remote_state = self.client.get_remote_state(Path(self.email))
+            self.remote_state = self.context.client.sync.get_remote_state(Path(self.email))
         return self.remote_state
 
     def is_in_sync(self) -> bool:
@@ -91,9 +96,9 @@ class DatasiteState:
         This is to avoid spamming the logs with .venv and .git folders.
         """
         all_paths = collect_files(self.path)
-        relative_paths = [file.relative_to(self.client.workspace.datasites) for file in all_paths]
+        relative_paths = [file.relative_to(self.context.workspace.datasites) for file in all_paths]
         return get_syftignore_matches(
-            datasites_dir=self.client.workspace.datasites,
+            datasites_dir=self.context.workspace.datasites,
             relative_paths=relative_paths,
             include_symlinks=False,
         )
@@ -124,7 +129,7 @@ class DatasiteState:
         remote_state_dict = {file.path: file for file in remote_state}
         all_files = set(local_state_dict.keys()) | set(remote_state_dict.keys())
         all_files_filtered = filter_ignored_paths(
-            datasites_dir=self.client.workspace.datasites,
+            datasites_dir=self.context.workspace.datasites,
             relative_paths=list(all_files),
             ignore_hidden_files=True,
             ignore_symlinks=True,
@@ -136,7 +141,7 @@ class DatasiteState:
             remote_info = remote_state_dict.get(afile)
 
             try:
-                change_info = compare_fileinfo(self.client.workspace.datasites, afile, local_info, remote_info)
+                change_info = compare_fileinfo(self.context.workspace.datasites, afile, local_info, remote_info)
             except Exception as e:
                 logger.error(
                     f"Failed to compare file {afile.as_posix()}, it will be retried in the next sync. Reason: {e}"

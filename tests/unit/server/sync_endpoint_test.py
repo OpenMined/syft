@@ -11,9 +11,10 @@ from fastapi.testclient import TestClient
 from py_fast_rsync import signature
 
 from syftbox.client.exceptions import SyftServerError
-from syftbox.client.plugins.sync.sync_client import SyncClient
+from syftbox.client.server_client import SyncClient
+from syftbox.lib.constants import PERM_FILE
 from syftbox.server.models.sync_models import ApplyDiffResponse, DiffResponse, FileMetadata
-from tests.unit.server.conftest import PERM_FILE, TEST_DATASITE_NAME, TEST_FILE
+from tests.unit.server.conftest import TEST_DATASITE_NAME, TEST_FILE
 
 
 def test_get_diff_2(client: TestClient):
@@ -111,7 +112,7 @@ def test_apply_diff(sync_client: SyncClient):
     assert response.current_hash == expected_hash
 
     # check file was written correctly
-    snapshot_folder = sync_client.server_client.app_state["server_settings"].snapshot_folder
+    snapshot_folder = sync_client.conn.app_state["server_settings"].snapshot_folder
     snapshot_file_path = snapshot_folder / Path(TEST_DATASITE_NAME) / TEST_FILE
     remote_data = snapshot_file_path.read_bytes()
     assert local_data == remote_data
@@ -148,7 +149,7 @@ def test_get_diff(sync_client: SyncClient):
 def test_delete_file(sync_client: SyncClient):
     sync_client.delete(Path(TEST_DATASITE_NAME) / TEST_FILE)
 
-    snapshot_folder = sync_client.server_client.app_state["server_settings"].snapshot_folder
+    snapshot_folder = sync_client.conn.app_state["server_settings"].snapshot_folder
     path = Path(f"{snapshot_folder}/{TEST_DATASITE_NAME}/{TEST_FILE}")
     assert not path.exists()
 
@@ -157,7 +158,7 @@ def test_delete_file(sync_client: SyncClient):
 
 
 def test_create_file(sync_client: SyncClient):
-    snapshot_folder = sync_client.server_client.app_state["server_settings"].snapshot_folder
+    snapshot_folder = sync_client.conn.app_state["server_settings"].snapshot_folder
     new_fname = "new.txt"
     contents = b"Some content"
     path = Path(f"{snapshot_folder}/{TEST_DATASITE_NAME}/{new_fname}")
@@ -214,7 +215,9 @@ def test_update_permfile_success(sync_client: SyncClient):
 
 
 def test_update_permfile_failure(sync_client: SyncClient):
-    local_data = b'3gwrehtytrterfewdw ["x@x.org"], "read": ["x@x.org"], "write": ["x@x.org"], "filepath": "~/syftperm.yaml",}'
+    local_data = (
+        b'3gwrehtytrterfewdw ["x@x.org"], "read": ["x@x.org"], "write": ["x@x.org"], "filepath": "~/syftperm.yaml",}'
+    )
 
     remote_metadata = sync_client.get_metadata(Path(TEST_DATASITE_NAME) / PERM_FILE)
 

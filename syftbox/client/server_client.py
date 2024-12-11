@@ -4,46 +4,50 @@ from typing import Union
 
 import httpx
 
-from syftbox.client.base import SyftClientInterface
-from syftbox.client.exceptions import SyftServerError
-from syftbox.client.plugins.sync.exceptions import SyftPermissionError
-from syftbox.lib.workspace import SyftWorkspace
+from syftbox.client.base import ClientBase
+
+# TODO move shared models to lib/models
 from syftbox.server.models.sync_models import ApplyDiffResponse, DiffResponse, FileMetadata
 
 
-class SyncClient:
-    """
-    Client for handling file sync operations with the server.
-    """
+class SyftBoxClient(ClientBase):
+    def __init__(self, conn: httpx.Client):
+        super().__init__(conn)
 
-    def __init__(self, client: SyftClientInterface) -> None:
-        self.client = client
+        self.auth = AuthClient(conn)
+        self.sync = SyncClient(conn)
 
-    @property
-    def email(self) -> str:
-        return self.client.email
+    def register(self, email: str) -> str:
+        response = self.conn.post("/register", json={"email": email})
+        self.raise_for_status(response)
+        return response.json().get("token")
 
-    @property
-    def server_client(self) -> httpx.Client:
-        return self.client.server_client
+    def info(self) -> dict:
+        response = self.conn.get("/info")
+        self.raise_for_status(response)
+        return response.json()
 
-    @property
-    def workspace(self) -> SyftWorkspace:
-        return self.client.workspace
+    def log_analytics_event(self, event_name: str, **kwargs) -> None:
+        """Log an event to the server"""
+        event_data = {
+            "event_name": event_name,
+            **kwargs,
+        }
 
-    def whoami(self) -> str:
-        return self.client.whoami()
+        response = self.conn.post("/log_event", json=event_data)
+        self.raise_for_status(response)
 
-    def raise_for_status(self, response: httpx.Response) -> None:
-        """Implements response error handling for all sync operations."""
-        endpoint_path = response.url.path
-        if response.status_code == 403:
-            raise SyftPermissionError(f"[{endpoint_path}] permission denied: {response.text}")
-        elif response.status_code != 200:
-            raise SyftServerError(f"[{endpoint_path}] call failed ({response.status_code}): {response.text}")
 
+class AuthClient(ClientBase):
+    def whoami(self):
+        response = self.conn.post("/auth/whoami")
+        self.raise_for_status(response)
+        return response.json()
+
+
+class SyncClient(ClientBase):
     def get_datasite_states(self) -> dict[str, list[FileMetadata]]:
-        response = self.server_client.post("/sync/datasite_states")
+        response = self.conn.post("/sync/datasite_states")
         self.raise_for_status(response)
         data = response.json()
 
@@ -54,7 +58,7 @@ class SyncClient:
         return result
 
     def get_remote_state(self, relative_path: Path) -> list[FileMetadata]:
-        response = self.server_client.post(
+        response = self.conn.post(
             "/sync/dir_state",
             params={"dir": relative_path.as_posix()},
         )
@@ -63,7 +67,7 @@ class SyncClient:
         return [FileMetadata(**item) for item in data]
 
     def get_metadata(self, path: Path) -> FileMetadata:
-        response = self.server_client.post(
+        response = self.conn.post(
             "/sync/get_metadata",
             json={"path": path.as_posix()},
         )
@@ -83,7 +87,7 @@ class SyncClient:
         if not isinstance(signature, str):
             signature = base64.b85encode(signature).decode("utf-8")
 
-        response = self.server_client.post(
+        response = self.conn.post(
             "/sync/get_diff",
             json={
                 "path": relative_path.as_posix(),
@@ -108,7 +112,7 @@ class SyncClient:
         if not isinstance(diff, str):
             diff = base64.b85encode(diff).decode("utf-8")
 
-        response = self.server_client.post(
+        response = self.conn.post(
             "/sync/apply_diff",
             json={
                 "path": relative_path.as_posix(),
@@ -121,21 +125,21 @@ class SyncClient:
         return ApplyDiffResponse(**response.json())
 
     def delete(self, relative_path: Path) -> None:
-        response = self.server_client.post(
+        response = self.conn.post(
             "/sync/delete",
             json={"path": relative_path.as_posix()},
         )
         self.raise_for_status(response)
 
     def create(self, relative_path: Path, data: bytes) -> None:
-        response = self.server_client.post(
+        response = self.conn.post(
             "/sync/create",
             files={"file": (relative_path.as_posix(), data, "text/plain")},
         )
         self.raise_for_status(response)
 
     def download(self, relative_path: Path) -> bytes:
-        response = self.server_client.post(
+        response = self.conn.post(
             "/sync/download",
             json={"path": relative_path.as_posix()},
         )
@@ -144,7 +148,7 @@ class SyncClient:
 
     def download_bulk(self, relative_paths: list[Path]) -> bytes:
         relative_paths = [path.as_posix() for path in relative_paths]
-        response = self.server_client.post(
+        response = self.conn.post(
             "/sync/download_bulk",
             json={"paths": relative_paths},
         )

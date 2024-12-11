@@ -2,7 +2,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from syftbox.client.base import SyftClientInterface
+from syftbox.client.base import SyftBoxContextInterface
 from syftbox.client.plugins.sync.manager import SyncManager
 from syftbox.client.plugins.sync.sync_action import format_rejected_path
 from syftbox.client.utils.dir_tree import create_dir_tree
@@ -11,7 +11,7 @@ from syftbox.lib.permissions import SyftPermission
 
 
 def test_create_without_permission(
-    server_client: TestClient, datasite_1: SyftClientInterface, datasite_2: SyftClientInterface
+    server_client: TestClient, datasite_1: SyftBoxContextInterface, datasite_2: SyftBoxContextInterface
 ):
     # server_settings: ServerSettings = server_client.app_state["server_settings"]
     sync_service_1 = SyncManager(datasite_1)
@@ -54,7 +54,7 @@ def test_create_without_permission(
 
 
 def test_delete_without_permission(
-    server_client: TestClient, datasite_1: SyftClientInterface, datasite_2: SyftClientInterface
+    server_client: TestClient, datasite_1: SyftBoxContextInterface, datasite_2: SyftBoxContextInterface
 ):
     # server_settings: ServerSettings = server_client.app_state["server_settings"]
     sync_service_1 = SyncManager(datasite_1)
@@ -85,7 +85,7 @@ def test_delete_without_permission(
 
 
 def test_modify_without_permissions(
-    server_client: TestClient, datasite_1: SyftClientInterface, datasite_2: SyftClientInterface
+    server_client: TestClient, datasite_1: SyftBoxContextInterface, datasite_2: SyftBoxContextInterface
 ):
     # server_settings: ServerSettings = server_client.app_state["server_settings"]
     sync_service_1 = SyncManager(datasite_1)

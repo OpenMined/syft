@@ -13,7 +13,7 @@ from croniter import croniter
 from loguru import logger
 from typing_extensions import Any, Optional, Union
 
-from syftbox.client.base import SyftClientInterface
+from syftbox.client.base import SyftBoxContextInterface
 from syftbox.lib.client_config import CONFIG_PATH_ENV
 
 APP_LOG_FILE_NAME_FORMAT = "{app_name}.log"
@@ -231,9 +231,9 @@ def load_config(path: str) -> Optional[SimpleNamespace]:
         return None
 
 
-def bootstrap(client: SyftClientInterface):
+def bootstrap(context: SyftBoxContextInterface):
     # create the directory
-    apps_path = client.workspace.apps
+    apps_path = context.workspace.apps
 
     apps_path.mkdir(exist_ok=True)
 
@@ -356,20 +356,20 @@ def run_app(app_path: Path, config_path: Path):
 
 
 class AppRunner:
-    def __init__(self, client: SyftClientInterface, interval: int = DEFAULT_INTERVAL):
-        self.client = client
+    def __init__(self, context: SyftBoxContextInterface, interval: int = DEFAULT_INTERVAL):
+        self.context = context
         self.__event = threading.Event()
         self.interval = interval
         self.__run_thread: threading.Thread = None
 
     def start(self):
         def run():
-            bootstrap(self.client)
+            bootstrap(self.context)
             while not self.__event.is_set():
                 try:
                     run_apps(
-                        apps_path=self.client.workspace.apps,
-                        client_config=self.client.config.path,
+                        apps_path=self.context.workspace.apps,
+                        client_config=self.context.config.path,
                     )
                     self.__event.wait(self.interval)
                 except Exception as e:
