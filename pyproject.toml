@@ -29,6 +29,7 @@ dependencies = [
     "opentelemetry-instrumentation-sqlite3==0.50b0",
     "opentelemetry-exporter-otlp-proto-grpc==1.29.0",
     "distro==1.9.0",
+    "textual>=1.0.0",
 ]
 
 # Local dependencies for development
@@ -64,6 +65,7 @@ dev-dependencies = [
     "pytest-timeout>=2.3.1",
     "pytest-xdist[psutil]>=3.6.1",
     "pytest>=8.3.3",
+    "textual-dev>=1.7.0",
 ]
 
 [tool.pytest.ini_options]
