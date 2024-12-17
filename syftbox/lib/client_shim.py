@@ -80,7 +80,15 @@ class Client:
         api_name = api_path.name
         return api_name
 
-    def api_data(self, api_request_name: str = CURRENT_API_REQUEST_NAME, datasite: Optional[str] = MY_DATASITE) -> Path:
+    @property
+    def datasets(self) -> Path:
+        return self.workspace.datasites / self.config.email / "datasets"
+
+    def api_data(
+        self,
+        api_request_name: str = CURRENT_API_REQUEST_NAME,
+        datasite: Optional[str] = MY_DATASITE,
+    ) -> Path:
         """
         Gets the filesystem path to an application's API data directory for a specific datasite.
 
