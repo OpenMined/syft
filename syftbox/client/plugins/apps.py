@@ -19,7 +19,7 @@ from syftbox.lib.client_config import CONFIG_PATH_ENV
 APP_LOG_FILE_NAME_FORMAT = "{app_name}.log"
 DEFAULT_INTERVAL = 10
 RUNNING_APPS = {}
-DEFAULT_APPS_PATH = Path(os.path.join(os.path.dirname(__file__), "..", "..", "..", "default_apps")).absolute().resolve()
+DEFAULT_APPS_PATH = Path(__file__).parents[3] / "projects" / "default_apps"
 EVENT = threading.Event()
 
 
