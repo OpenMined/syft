@@ -463,15 +463,15 @@ toml = [
 
 [[package]]
 name = "croniter"
-version = "5.0.1"
+version = "6.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "python-dateutil" },
     { name = "pytz" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a7/8c/0656200bfa5c1e90b26f4bb1cc8aecb4a7722f8386ee044bdc2d4efb589e/croniter-5.0.1.tar.gz", hash = "sha256:7d9b1ef25b10eece48fdf29d8ac52f9b6252abff983ac614ade4f3276294019e", size = 57084 }
+sdist = { url = "https://files.pythonhosted.org/packages/ad/2f/44d1ae153a0e27be56be43465e5cb39b9650c781e001e7864389deb25090/croniter-6.0.0.tar.gz", hash = "sha256:37c504b313956114a983ece2c2b07790b1f1094fe9d81cc94739214748255577", size = 64481 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/3c/68/34c3d74d2af6ea98ff8a0b50d149cff26e88a3f09817121d1186e9185e97/croniter-5.0.1-py2.py3-none-any.whl", hash = "sha256:eb28439742291f6c10b181df1a5ecf421208b1fc62ef44501daec1780a0b09e9", size = 24149 },
+    { url = "https://files.pythonhosted.org/packages/07/4b/290b4c3efd6417a8b0c284896de19b1d5855e6dbdb97d2a35e68fa42de85/croniter-6.0.0-py2.py3-none-any.whl", hash = "sha256:2f878c3856f17896979b2a4379ba1f09c83e374931ea15cc835c5dd2eee9b368", size = 25468 },
 ]
 
 [[package]]
@@ -1011,7 +1011,6 @@ name = "importlib-metadata"
 version = "8.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "zipp", marker = "python_full_version <= '3.11'" },
     { name = "zipp" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/cd/12/33e59336dca5be0c398a7482335911a33aa0e20776128f038019f1a95f1b/importlib_metadata-8.5.0.tar.gz", hash = "sha256:71522656f0abace1d072b9e5481a48f07c138e00f079c38c8f883823f9c26bd7", size = 55304 }
@@ -2341,7 +2340,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "croniter", specifier = "==5.0.1" },
+    { name = "croniter", specifier = "==6.0.0" },
     { name = "curl-cffi", specifier = ">=0.7.4" },
     { name = "distro", specifier = "==1.9.0" },
     { name = "fastapi", specifier = "==0.115.6" },

@@ -19,7 +19,7 @@ dependencies = [
     "pathspec==0.12.1",
     "python-multipart==0.0.19",
     "rich==13.9.4",
-    "croniter==5.0.1",
+    "croniter==6.0.0",
     "typer==0.15.1",
     "pid==3.0.4",
     "pydantic[email]==2.10.3",
