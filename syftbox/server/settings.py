@@ -57,6 +57,9 @@ class ServerSettings(BaseSettings):
     otel_enabled: bool = False
     """Enable/Disable OpenTelemetry tracing"""
 
+    request_size_limit_in_mb: int = 10
+    """Request size limit in MB"""
+
     @field_validator("data_folder", mode="after")
     def data_folder_abs(cls, v: Path) -> Path:
         return Path(v).expanduser().resolve()

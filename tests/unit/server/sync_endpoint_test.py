@@ -253,3 +253,11 @@ def test_whoami(client: TestClient):
     response = client.post("/auth/whoami")
     response.raise_for_status()
     assert response.json() == {"email": TEST_DATASITE_NAME}
+
+
+def test_large_file_failure(client: TestClient):
+    large_data = b"0" * 1024 * 1024 * 11  # 11MB
+    response = client.post("/sync/create", files={"file": ("large.txt", large_data, "text/plain")})
+
+    assert response.status_code == 413
+    assert response.text == "Request Denied. Message size is greater than 10 MB"
