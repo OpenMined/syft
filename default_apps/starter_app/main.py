@@ -1,12 +1,42 @@
 import os
 import shutil
-import subprocess
+import tempfile
+import urllib.request
+import zipfile
 from pathlib import Path
 
 DEFAULT_APPS = [
     "https://github.com/OpenMined/logged_in",
     "https://github.com/OpenMined/inbox",
+    "https://github.com/OpenMined/cpu_tracker_member",
+    "https://github.com/OpenMined/DatasetLoader",
 ]
+
+
+def download_github_repo(url: str, target_dir: str = None) -> Path:
+    """Downloads and extracts a GitHub repository without git."""
+    if not url.startswith(("http://", "https://")):
+        raise ValueError("Invalid GitHub URL")
+
+    repo_name = url.rstrip("/").split("/")[-1]
+    target_dir = Path(target_dir or os.getcwd()) / repo_name
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        try:
+            zip_path = tmp_path / "repo.zip"
+            urllib.request.urlretrieve(f"{url}/archive/main.zip", zip_path)
+
+            with zipfile.ZipFile(zip_path) as zip_ref:
+                extracted = tmp_path / zip_ref.namelist()[0].split("/")[0]
+                zip_ref.extractall(tmp_path)
+                if target_dir.exists():
+                    shutil.rmtree(target_dir)
+                shutil.move(str(extracted), str(target_dir))
+
+            return target_dir
+        except Exception as e:
+            print(f"Failed to download or extract {url}: {e}")
 
 
 def clone_apps():
@@ -23,7 +53,7 @@ def clone_apps():
 
     # Iterate over the list and clone each repository
     for url in apps:
-        subprocess.run(["git", "clone", url])
+        download_github_repo(url)
 
     print("Done")
 

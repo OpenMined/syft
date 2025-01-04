@@ -7,15 +7,15 @@ from typing import Any, Optional
 from loguru import logger
 from pydantic import BaseModel
 
+from syftbox.server.db.file_store import FileStore
 from syftbox.server.logger import analytics_logger
-from syftbox.server.sync.file_store import FileStore
 
 
 def to_jsonable_dict(obj: dict) -> dict:
     """
     Convert log record to a JSON serializable dictionary.
     """
-    result = {}
+    result: dict = {}
     for key, value in obj.items():
         if isinstance(value, dict):
             result[key] = to_jsonable_dict(value)
@@ -59,7 +59,7 @@ def log_analytics_event(
 
 def log_file_change_event(
     endpoint: str,
-    email: Optional[str],
+    email: str,
     relative_path: Path,
     file_store: FileStore,
 ) -> None:
@@ -67,7 +67,7 @@ def log_file_change_event(
     Log a file change event to the analytics logger.
     """
     try:
-        metadata = file_store.get_metadata(relative_path)
+        metadata = file_store.get_metadata(relative_path, email, skip_permission_check=True)
         log_analytics_event(
             endpoint=endpoint,
             email=email,

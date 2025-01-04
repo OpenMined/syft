@@ -5,10 +5,11 @@ import signal
 import subprocess  # nosec
 import tempfile
 import time
+from typing import Iterator
 
 
 @contextlib.contextmanager
-def pyspy() -> None:  # type: ignore
+def pyspy() -> Iterator[subprocess.Popen]:
     """Profile a block of code using py-spy. Intended for development purposes only.
 
     Example:

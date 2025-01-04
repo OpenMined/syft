@@ -2,9 +2,10 @@ import json
 import os
 import shutil
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 from pydantic import AliasChoices, AnyHttpUrl, BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic.main import IncEx
 from pydantic_core import Url
 from typing_extensions import Self
 
@@ -62,23 +63,23 @@ class SyftClientConfig(BaseModel):
     """Path to the config file"""
 
     @field_validator("client_url", mode="before")
-    def port_to_url(cls, val):
+    def port_to_url(cls, val: Union[int, str]) -> Optional[str]:
         if isinstance(val, int):
             return f"http://127.0.0.1:{val}"
         return val
 
     @field_validator("token", mode="before")
-    def token_to_str(cls, v):
+    def token_to_str(cls, v: Union[int, str, None]) -> Optional[str]:
         if not v:
             return None
         elif isinstance(v, int):
             return str(v)
         return v
 
-    def set_server_url(self, server: str):
+    def set_server_url(self, server: str) -> None:
         self.server_url = Url(server)
 
-    def set_port(self, port: int):
+    def set_port(self, port: int) -> None:
         self.client_url = Url(f"http://127.0.0.1:{port}")
 
     @classmethod
@@ -86,7 +87,10 @@ class SyftClientConfig(BaseModel):
         try:
             # args or env or default
             path = conf_path or os.getenv(CONFIG_PATH_ENV, DEFAULT_CONFIG_PATH)
+            if path is None:
+                raise ClientConfigException(f"Config file path not provided or set in env '{CONFIG_PATH_ENV}'")
             path = to_path(path)
+            data = {}
 
             # todo migration stuff we can remove later
             legacy_path = Path(path.parent, LEGACY_CONFIG_NAME)
@@ -97,6 +101,8 @@ class SyftClientConfig(BaseModel):
             elif legacy_path.exists():
                 data = json.loads(legacy_path.read_text())
                 path = legacy_path
+            else:
+                raise FileNotFoundError(f"Config file not found at '{conf_path}'")
             # todo end
 
             return cls(path=path, **data)
@@ -119,10 +125,10 @@ class SyftClientConfig(BaseModel):
 
         return self
 
-    def as_dict(self, exclude=None):
+    def as_dict(self, exclude: Optional[IncEx] = None) -> dict:
         return self.model_dump(exclude=exclude, exclude_none=True, warnings="none")
 
-    def as_json(self, indent=4):
+    def as_json(self, indent: int = 4) -> str:
         return self.model_dump_json(indent=indent, exclude_none=True, warnings="none")
 
     def save(self) -> Self:

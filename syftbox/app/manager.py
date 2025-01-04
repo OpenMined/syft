@@ -29,11 +29,12 @@ def uninstall_app(app_name: str, workspace: SyftWorkspace) -> Optional[Path]:
     # first check for symlink
     if app_dir.exists() and app_dir.is_symlink():
         app_dir.unlink()
+        return app_dir
     elif app_dir.exists() and app_dir.is_dir():
         shutil.rmtree(app_dir)
+        return app_dir
     else:
-        app_dir = None
-    return app_dir
+        return None
 
 
 def update_app(ws: SyftWorkspace) -> None:

@@ -51,14 +51,21 @@ repos:
     hooks:
       - id: prettier
 
-  # todo - re-enable mypy & fixes in a separate PR
-  # - repo: https://github.com/pre-commit/mirrors-mypy
-  #   rev: v1.10.0
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.10.0
+    hooks:
+      - id: mypy
+        name: "mypy"
+        always_run: true
+        files: ^syftbox
+        args: ["--config-file=tox.ini", "--install-types", "--non-interactive"]
+
+  # Very SLOW!
+  # - repo: https://github.com/renovatebot/pre-commit-hooks
+  #   rev: 39.60.0
   #   hooks:
-  #     - id: mypy
-  #       name: "mypy"
-  #       always_run: true
-  #       files: ^syftbox
+  #     - id: renovate-config-validator
+  #       args: [--strict]
 
   # - repo: meta
   #   hooks:

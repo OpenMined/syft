@@ -8,6 +8,7 @@ But we need it to maintain compatibility with apps
 
 from pathlib import Path
 
+from pydantic import EmailStr
 from typing_extensions import Optional, Self
 
 from syftbox.lib.client_config import SyftClientConfig
@@ -31,7 +32,7 @@ class Client:
         self.workspace = SyftWorkspace(self.config.data_dir)
 
     @property
-    def email(self):
+    def email(self) -> EmailStr:
         """Email of the current user"""
         return self.config.email
 
@@ -80,7 +81,9 @@ class Client:
         api_name = api_path.name
         return api_name
 
-    def api_data(self, api_request_name: str = CURRENT_API_REQUEST_NAME, datasite: Optional[str] = MY_DATASITE) -> Path:
+    def api_data(
+        self, api_request_name: Optional[str] = CURRENT_API_REQUEST_NAME, datasite: Optional[str] = MY_DATASITE
+    ) -> Path:
         """
         Gets the filesystem path to an application's API data directory for a specific datasite.
 

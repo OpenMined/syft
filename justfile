@@ -22,6 +22,7 @@ _nc := '\033[0m'
 # Aliases
 
 alias rs := run-server
+alias rsu := run-server-uvicorn
 alias rc := run-client
 alias rj := run-jupyter
 alias b := build
@@ -35,9 +36,28 @@ alias b := build
 
 # Run a local syftbox server on port 5001
 [group('server')]
-run-server port="5001" uvicorn_args="":
-    mkdir -p .server/data
-    SYFTBOX_DATA_FOLDER=.server/data uv run uvicorn syftbox.server.server:app --reload --reload-dir ./syftbox --port {{ port }} {{ uvicorn_args }}
+run-server port="5001" gunicorn_args="":
+    #!/bin/bash
+    set -eou pipefail
+
+    export SYFTBOX_DATA_FOLDER=${SYFTBOX_DATA_FOLDER:-.server/data}
+    uv run syftbox server migrate
+    uv run gunicorn syftbox.server.server:app -k uvicorn.workers.UvicornWorker --bind 127.0.0.1:{{ port }} --reload {{ gunicorn_args }}
+
+migrate:
+    #!/bin/bash
+    set -eou pipefail
+
+    uv run syftbox server migrate
+
+[group('server')]
+run-server-uvicorn port="5001" uvicorn_args="":
+    #!/bin/bash
+    set -eou pipefail
+
+    export SYFTBOX_DATA_FOLDER=${SYFTBOX_DATA_FOLDER:-.server/data}
+    uv run syftbox server migrate
+    uv run uvicorn syftbox.server.server:app --host 127.0.0.1 --port {{ port }} --reload --reload-dir ./syftbox {{ uvicorn_args }}
 
 # ---------------------------------------------------------------------------------------------------------------------
 
@@ -64,7 +84,7 @@ run-client name port="auto" server="http://localhost:5001":
     echo -e "Server     : {{ _cyan }}{{ server }}{{ _nc }}"
     echo -e "Data Dir   : $DATA_DIR"
 
-    uv run syftbox/client/cli.py --config=$DATA_DIR/config.json --data-dir=$DATA_DIR --email=$EMAIL --port=$PORT --server={{ server }} --no-open-dir
+    uv run syftbox client --config=$DATA_DIR/config.json --data-dir=$DATA_DIR --email=$EMAIL --port=$PORT --server={{ server }} --no-open-dir
 
 # ---------------------------------------------------------------------------------------------------------------------
 
@@ -216,3 +236,20 @@ reset:
 run-jupyter jupyter_args="":
     uv run --frozen --with "jupyterlab" \
         jupyter lab {{ jupyter_args }}
+
+auth email server="http://127.0.0.1:5001":
+    # get access token from dev server
+
+    EMAIL={{ email }} && \
+    EMAIL_TOKEN=$( \
+        curl -s -X 'POST' '{{server}}/auth/request_email_token' \
+            -H 'accept: application/json' \
+            -H 'Content-Type: application/json' \
+            -d "{\"email\": \"${EMAIL}\"}" \
+        | jq -r '.email_token' \
+    ) && \
+    curl -s -X 'POST' "{{server}}/auth/validate_email_token?email=${EMAIL}" \
+        -H 'accept: application/json' \
+        -H "Authorization: Bearer ${EMAIL_TOKEN}" \
+        -d '' \
+    | jq -r '.access_token'

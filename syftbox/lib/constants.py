@@ -19,4 +19,12 @@ DEFAULT_LOGS_DIR = Path(DEFAULT_CONFIG_DIR, "logs")
 DEFAULT_DATA_DIR = Path(Path.home(), "SyftBox")
 
 # Permissions file name
-PERM_FILE = "_.syftperm"
+PERM_FILE = "syftperm.yaml"
+
+# Rejected files client-side
+REJECTED_FILE_SUFFIX = ".syftrejected"
+
+SENDGRID_API_URL = "https://api.sendgrid.com/v3/mail/send"
+
+# Default benchmark runs
+DEFAULT_BENCHMARK_RUNS = 5

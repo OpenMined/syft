@@ -4,7 +4,7 @@ from typing import Annotated, Optional
 from rich import print as rprint
 from typer import Exit, Option, Typer
 
-from syftbox.__version__ import __version__
+from syftbox import __version__
 from syftbox.app.cli import app as app_cli
 from syftbox.client.cli import app as client_cli
 from syftbox.server.cli import app as server_cli
@@ -21,14 +21,14 @@ CONFIG_OPTS = Option("-c", "--config", "--config_path", help="Path to the SyftBo
 
 
 @app.command(rich_help_panel="General Options")
-def version():
+def version() -> None:
     """Print SyftBox version"""
 
     print(__version__)
 
 
 @app.command(rich_help_panel="General Options")
-def debug(config_path: Annotated[Optional[Path], CONFIG_OPTS] = None):
+def debug(config_path: Annotated[Optional[Path], CONFIG_OPTS] = None) -> None:
     """Print SyftBox debug data"""
 
     # lazy import to improve CLI startup performance
@@ -46,7 +46,7 @@ app.add_typer(server_cli, name="server")
 app.add_typer(app_cli, name="app")
 
 
-def main():
+def main() -> None:
     app()
 
 

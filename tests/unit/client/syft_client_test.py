@@ -1,6 +1,6 @@
 import pytest
 
-from syftbox.client.client2 import SyftClient, run_migration
+from syftbox.client.core import SyftBoxRunner, run_migration
 from syftbox.client.exceptions import SyftBoxAlreadyRunning
 from syftbox.lib.client_config import SyftClientConfig
 from syftbox.lib.exceptions import SyftBoxException
@@ -15,8 +15,8 @@ def test_client_single_instance(tmp_path):
         server_url="http://localhost:5001",
         client_url="http://localhost:8080",
     )
-    client1 = SyftClient(config)
-    client2 = SyftClient(config)
+    client1 = SyftBoxRunner(config)
+    client2 = SyftBoxRunner(config)
 
     client1.pid.create()
 
@@ -32,7 +32,7 @@ def test_client_single_instance(tmp_path):
 
 
 def test_client_init_datasite(mock_config):
-    client = SyftClient(mock_config)
+    client = SyftBoxRunner(mock_config)
     client.init_datasite()
 
     assert client.datasite.is_dir()
@@ -41,14 +41,14 @@ def test_client_init_datasite(mock_config):
 
 def test_register_user(mock_config, httpx_mock):
     httpx_mock.add_response(json={"token": "dummy-token"})
-    client = SyftClient(mock_config)
+    client = SyftBoxRunner(mock_config)
     client.register_self()
     assert client.config.token == "dummy-token"
 
 
 def test_register_user_error(mock_config, httpx_mock):
     httpx_mock.add_response(status_code=503)
-    client = SyftClient(mock_config)
+    client = SyftBoxRunner(mock_config)
     with pytest.raises(SyftBoxException):
         client.register_self()
 
@@ -64,7 +64,7 @@ def test_client_paths(tmp_path):
         server_url="http://localhost:5001",
         client_url="http://localhost:8080",
     )
-    client = SyftClient(config)
+    client = SyftBoxRunner(config)
 
     # data_dir should be the root of the client workspace
     assert client.workspace.data_dir == tmp_path

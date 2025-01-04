@@ -187,3 +187,5 @@ dev_space/
 
 *.env
 !tests/**/.env
+
+syftbox/assets/icon/*

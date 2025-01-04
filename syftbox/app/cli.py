@@ -1,14 +1,16 @@
 import sys
 from pathlib import Path
+from typing import List
 
+from loguru import logger
 from rich import print as rprint
 from typer import Argument, Exit, Option, Typer
 from typing_extensions import Annotated
 
-from syftbox.__version__ import __version__
+from syftbox import __version__
 from syftbox.app.manager import install_app, list_app, uninstall_app
-from syftbox.client.base import SyftClientInterface
-from syftbox.client.client2 import SyftClient
+from syftbox.client.base import SyftBoxContextInterface
+from syftbox.client.core import SyftBoxRunner
 from syftbox.client.plugins.apps import find_and_run_script
 from syftbox.lib.client_config import SyftClientConfig
 from syftbox.lib.constants import DEFAULT_CONFIG_PATH
@@ -37,7 +39,7 @@ fi
 
 
 @app.command()
-def list(config_path: Annotated[Path, CONFIG_OPTS] = DEFAULT_CONFIG_PATH):
+def list(config_path: Annotated[Path, CONFIG_OPTS] = DEFAULT_CONFIG_PATH) -> None:
     """List all installed Syftbox apps"""
     workspace = get_workspace(config_path)
     result = list_app(workspace)
@@ -57,18 +59,22 @@ def install(
     branch: Annotated[str, BRANCH_OPTS] = "main",
     config_path: Annotated[Path, CONFIG_OPTS] = DEFAULT_CONFIG_PATH,
     called_by: Annotated[str, CALLED_BY_OPTS] = "user",
-):
+) -> None:
     """Install a new Syftbox app"""
-    client = get_client(config_path)
-    result = install_app(client.workspace, repository, branch)
+    context = get_syftbox_context(config_path)
+    result = install_app(context.workspace, repository, branch)
     if result.error:
         rprint(f"[bold red]Error:[/bold red] {result.error}")
         raise Exit(1)
 
     try:
-        client.log_analytics_event("app_install", app_name=result.app_name, called_by=called_by)
-    except Exception:
-        pass
+        context.client.log_analytics_event(
+            event_name="app_install",
+            app_name=result.app_name,
+            called_by=called_by,
+        )
+    except Exception as e:
+        logger.debug(f"Failed to log analytics event: {e}")
 
     rprint(f"Installed app [bold]'{result.app_name}'[/bold]\nLocation: '{result.app_path}'")
 
@@ -77,7 +83,7 @@ def install(
 def uninstall(
     app_name: Annotated[str, UNINSTALL_ARGS],
     config_path: Annotated[Path, CONFIG_OPTS] = DEFAULT_CONFIG_PATH,
-):
+) -> None:
     """Uninstall a Syftbox app"""
     workspace = get_workspace(config_path)
     result = uninstall_app(app_name, workspace)
@@ -92,14 +98,14 @@ def uninstall(
 def run(
     app_name: str,
     config_path: Annotated[Path, CONFIG_OPTS] = DEFAULT_CONFIG_PATH,
-):
+) -> None:
     """Run a Syftbox app"""
     workspace = get_workspace(config_path)
 
-    extra_args = []
+    extra_args: List[str] = []
     try:
         rprint(f"Running [bold]'{app_name}'[/bold]\nLocation: '{workspace.apps}'\n")
-        result = find_and_run_script(str(workspace.apps / app_name), extra_args, str(config_path))
+        result = find_and_run_script(workspace.apps / app_name, extra_args, config_path)
         rprint("[bold yellow]stdout:[/bold yellow]")
         print(result.stdout)
         rprint("[bold yellow]stderr:[/bold yellow]")
@@ -110,7 +116,7 @@ def run(
 
 
 @app.command(rich_help_panel="General Options")
-def env(with_syftbox: bool = False):
+def env(with_syftbox: bool = False) -> None:
     """Setup virtual env for app. With option to install syftbox matching client version"""
 
     script = APP_ENV_SCRIPT
@@ -128,10 +134,11 @@ def env(with_syftbox: bool = False):
 #     pass
 
 
-def get_client(config_path: Path) -> SyftClientInterface:
+def get_syftbox_context(config_path: Path) -> SyftBoxContextInterface:
     try:
         conf = SyftClientConfig.load(config_path)
-        return SyftClient(conf).as_context()
+        context = SyftBoxRunner(conf).context
+        return context
     except ClientConfigException:
         msg = (
             f"[bold red]Error:[/bold red] Couldn't load config at: [yellow]'{config_path}'[/yellow]\n"

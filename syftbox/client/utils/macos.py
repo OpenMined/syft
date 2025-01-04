@@ -3,6 +3,8 @@ from pathlib import Path
 
 from typing_extensions import Optional
 
+from syftbox.lib.types import PathLike
+
 ASSETS_FOLDER = Path(__file__).parents[2] / "assets"
 ICONS_PKG = ASSETS_FOLDER / "icon.zip"
 
@@ -14,6 +16,7 @@ def search_icon_file(src_path: Path) -> Optional[Path]:
     for file_path in src_path.iterdir():
         if "Icon" in file_path.name and "\r" in file_path.name:
             return file_path
+    return None
 
 
 # if you knew the pain of this function
@@ -38,11 +41,13 @@ def find_icon_file(src_path: Path) -> Path:
         icon_file = search_icon_file(src_path)
         if icon_file:
             return icon_file
+
+        raise FileNotFoundError(f"Icon file not found for {src_path}")
     except subprocess.CalledProcessError:
         raise RuntimeError("Failed to unzip icon.zip using macOS CLI tool.")
 
 
-def copy_icon_file(icon_folder: str, dest_folder: str) -> None:
+def copy_icon_file(icon_folder: PathLike, dest_folder: PathLike) -> None:
     dest_path = Path(dest_folder)
     icon_path = Path(icon_folder)
     src_icon_path = find_icon_file(icon_path)

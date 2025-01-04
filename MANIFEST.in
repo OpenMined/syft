@@ -1,2 +1,0 @@
-recursive-include syftbox *.html *.js *.css *.zip *.sh *.png
-recursive-include default_apps *.py *.sh *.html *.js *.css *.zip *.png *.txt *.csv

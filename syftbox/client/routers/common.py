@@ -1,14 +1,14 @@
 from fastapi import Depends, Request
 from typing_extensions import Annotated
 
-from syftbox.client.base import SyftClientInterface
+from syftbox.client.base import SyftBoxContextInterface
 
 __all__ = ["APIContext"]
 
 
 # Create a dependency for typed access to the client
-async def get_context(request: Request) -> SyftClientInterface:
-    return request.app.state.client
+async def get_context(request: Request) -> SyftBoxContextInterface:
+    return request.app.state.context
 
 
-APIContext = Annotated[SyftClientInterface, Depends(get_context)]
+APIContext = Annotated[SyftBoxContextInterface, Depends(get_context)]

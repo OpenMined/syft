@@ -1,16 +1,18 @@
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from queue import PriorityQueue
 from typing import Dict, Optional
 
-from syftbox.client.plugins.sync.sync import FileChangeInfo
+from syftbox.client.plugins.sync.types import FileChangeInfo
 
 
 @dataclass(order=True)
 class SyncQueueItem:
     priority: int
     data: FileChangeInfo
+    enqueued_at: datetime = field(default_factory=lambda: datetime.now(tz=timezone.utc))
 
 
 class SyncQueue:

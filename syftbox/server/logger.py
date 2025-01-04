@@ -11,24 +11,24 @@ custom_format = "<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level}<
 ANALYTICS_EVENT = "analytics_event"
 
 
-def _default_logger_filter(record: dict):
+def _default_logger_filter(record: dict) -> bool:
     return record["extra"].get("event_type") != ANALYTICS_EVENT
 
 
-def _analytics_logger_filter(record: dict):
+def _analytics_logger_filter(record: dict) -> bool:
     return record["extra"].get("event_type") == ANALYTICS_EVENT
 
 
 analytics_logger = logger.bind(event_type=ANALYTICS_EVENT)
 
 
-def analytics_formatter(record: dict):
+def analytics_formatter(record: dict) -> str:
     serialized = json.dumps(record["extra"])
     record["extra"]["serialized"] = serialized
     return "{extra[serialized]}\n"
 
 
-def setup_logger(logs_folder: Path, level: Union[str, int] = "DEBUG"):
+def setup_logger(logs_folder: Path, level: Union[str, int] = "DEBUG") -> None:
     logs_folder.mkdir(parents=True, exist_ok=True)
 
     logger.remove()

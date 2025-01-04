@@ -1,5 +1,5 @@
 from syftbox import lib
-from syftbox.client import client2 as client
+from syftbox.client import core as client
 from syftbox.server import server
 
 

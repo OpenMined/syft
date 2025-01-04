@@ -1,12 +1,14 @@
-import base64
 from datetime import datetime, timezone
-import json
-from typing_extensions import Annotated
-from fastapi import Depends, HTTPException, Header, Security
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-import httpx
+from typing import Any
+
 import jwt
+from fastapi import Depends, HTTPException, Security
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from opentelemetry import trace
+from typing_extensions import Annotated
+
 from syftbox.server.settings import ServerSettings, get_server_settings
+from syftbox.server.telemetry import OTEL_ATTR_CLIENT_USER
 
 bearer_scheme = HTTPBearer()
 
@@ -27,12 +29,13 @@ def _validate_jwt(server_settings: ServerSettings, token: str) -> dict:
             detail="Token has expired",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    except Exception as e:
+    except Exception:
         raise HTTPException(
             status_code=401,
             detail="Invalid token",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
 
 def _generate_jwt(server_settings: ServerSettings, data: dict) -> str:
     return jwt.encode(
@@ -43,24 +46,26 @@ def _generate_jwt(server_settings: ServerSettings, data: dict) -> str:
 
 
 def generate_access_token(server_settings: ServerSettings, email: str) -> str:
-    data = {
+    iat: datetime = datetime.now(tz=timezone.utc)
+    data: dict[str, Any] = {
         "email": email,
         "type": ACCESS_TOKEN,
-        "iat": datetime.now(tz=timezone.utc),
+        "iat": iat,
     }
     if server_settings.jwt_access_token_exp:
-        data["exp"] = data["iat"] + server_settings.jwt_access_token_exp
+        data["exp"] = iat + server_settings.jwt_access_token_exp
     return _generate_jwt(server_settings, data)
 
 
 def generate_email_token(server_settings: ServerSettings, email: str) -> str:
-    data = {
+    iat: datetime = datetime.now(tz=timezone.utc)
+    data: dict[str, Any] = {
         "email": email,
         "type": EMAIL_TOKEN,
-        "iat": datetime.now(tz=timezone.utc),
+        "iat": iat,
     }
     if server_settings.jwt_email_token_exp:
-        data["exp"] = data["iat"] + server_settings.jwt_email_token_exp
+        data["exp"] = iat + server_settings.jwt_email_token_exp
     return _generate_jwt(server_settings, data)
 
 
@@ -91,6 +96,7 @@ def get_user_from_email_token(
     server_settings: Annotated[ServerSettings, Depends(get_server_settings)],
 ) -> str:
     payload = validate_email_token(server_settings, credentials.credentials)
+    trace.get_current_span().set_attribute(OTEL_ATTR_CLIENT_USER, payload["email"])
     return payload["email"]
 
 
@@ -99,4 +105,5 @@ def get_current_user(
     server_settings: Annotated[ServerSettings, Depends(get_server_settings)],
 ) -> str:
     payload = validate_access_token(server_settings, credentials.credentials)
+    trace.get_current_span().set_attribute(OTEL_ATTR_CLIENT_USER, payload["email"])
     return payload["email"]

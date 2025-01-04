@@ -1,8 +1,8 @@
 from typing import Union
 
-from pydantic import BaseModel, EmailStr, Field, NameEmail
+from pydantic import BaseModel, EmailStr, NameEmail
 
-from .constants import FROM_EMAIl
+FROM_EMAIL = "SyftBox <notifications@syftbox.openmined.org>"
 
 
 class SendEmailRequest(BaseModel):
@@ -10,17 +10,10 @@ class SendEmailRequest(BaseModel):
     subject: str
     html: str
 
-    def json_for_request(self):
+    def json_for_request(self) -> dict:
         return {
-            "from": FROM_EMAIl,
-            "to": [self.to],
+            "personalizations": [{"to": [{"email": self.to}]}],
+            "from": {"email": FROM_EMAIL},
             "subject": self.subject,
-            "html": self.html,
+            "content": [{"type": "text/html", "value": self.html}],
         }
-
-
-class BatchSendEmailRequest(BaseModel):
-    emails: list[SendEmailRequest] = Field(max_length=100)
-
-    def json_for_request(self):
-        return [email.json_for_request() for email in self.emails]

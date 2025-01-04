@@ -2,9 +2,15 @@ from pathlib import Path
 
 from rich import print as rprint
 from typer import Context, Exit, Option, Typer
-from typing_extensions import Annotated
+from typing_extensions import Annotated, Optional
 
-from syftbox.lib.constants import DEFAULT_CONFIG_PATH, DEFAULT_DATA_DIR, DEFAULT_PORT, DEFAULT_SERVER_URL
+from syftbox.lib.constants import (
+    DEFAULT_BENCHMARK_RUNS,
+    DEFAULT_CONFIG_PATH,
+    DEFAULT_DATA_DIR,
+    DEFAULT_PORT,
+    DEFAULT_SERVER_URL,
+)
 
 app = Typer(
     name="SyftBox Client",
@@ -70,7 +76,13 @@ TOKEN_OPTS = Option(
 # report command opts
 REPORT_PATH_OPTS = Option(
     "-o", "--output-dir",
-    help="Directory to save the log file",
+    help="Directory to save the report file",
+)
+
+# benchmark command opts
+JSON_BENCHMARK_REPORT_OPTS = Option(
+    "--json", "-j",
+    help="Path where benchmark report will be stored in JSON format",
 )
 
 # fmt: on
@@ -80,13 +92,13 @@ REPORT_PATH_OPTS = Option(
 def client(
     ctx: Context,
     data_dir: Annotated[Path, DATA_DIR_OPTS] = DEFAULT_DATA_DIR,
-    email: Annotated[str, EMAIL_OPTS] = None,
+    email: Annotated[str, EMAIL_OPTS] = "",
     server: Annotated[str, SERVER_OPTS] = DEFAULT_SERVER_URL,
     config_path: Annotated[Path, CONFIG_OPTS] = DEFAULT_CONFIG_PATH,
     port: Annotated[int, PORT_OPTS] = DEFAULT_PORT,
     open_dir: Annotated[bool, OPEN_OPTS] = True,
     verbose: Annotated[bool, VERBOSE_OPTS] = False,
-):
+) -> None:
     """Run the SyftBox client"""
 
     if ctx.invoked_subcommand is not None:
@@ -95,7 +107,7 @@ def client(
 
     # lazy import to imporve cli startup speed
     from syftbox.client.cli_setup import get_migration_decision, setup_config_interactive
-    from syftbox.client.client2 import run_client
+    from syftbox.client.core import run_syftbox
     from syftbox.client.utils.net import get_free_port, is_port_in_use
 
     if port == 0:
@@ -111,8 +123,11 @@ def client(
     migrate_datasite = get_migration_decision(client_config.data_dir)
 
     log_level = "DEBUG" if verbose else "INFO"
-    code = run_client(
-        client_config=client_config, open_dir=open_dir, log_level=log_level, migrate_datasite=migrate_datasite
+    code = run_syftbox(
+        client_config=client_config,
+        open_dir=open_dir,
+        log_level=log_level,
+        migrate_datasite=migrate_datasite,
     )
     raise Exit(code)
 
@@ -121,7 +136,7 @@ def client(
 def report(
     output_path: Annotated[Path, REPORT_PATH_OPTS] = Path(".").resolve(),
     config_path: Annotated[Path, CONFIG_OPTS] = DEFAULT_CONFIG_PATH,
-):
+) -> None:
     """Generate a report of the SyftBox client"""
     from datetime import datetime
 
@@ -139,7 +154,31 @@ def report(
         raise Exit(1)
 
 
-def main():
+@app.command()
+def benchmark(
+    config_path: Annotated[Path, CONFIG_OPTS] = DEFAULT_CONFIG_PATH,
+    json: Annotated[Optional[Path], JSON_BENCHMARK_REPORT_OPTS] = None,
+    num_runs: int = DEFAULT_BENCHMARK_RUNS,
+) -> None:
+    """Run the SyftBox benchmark"""
+
+    # Lazy import to improve cli startup speed
+    from syftbox.client.benchmark.report import ConsoleReport, JSONReport
+    from syftbox.client.benchmark.runner import SyftBenchmarkRunner
+    from syftbox.lib.client_config import SyftClientConfig
+
+    try:
+        print("Running benchmarks")
+        config = SyftClientConfig.load(config_path)
+        benchmark_reporter = JSONReport(json) if json else ConsoleReport()
+        benchmark_runner = SyftBenchmarkRunner(config, benchmark_reporter)
+        benchmark_runner.run(num_runs)
+    except Exception as e:
+        rprint(f"[red]Error[/red]: {e}")
+        raise e
+
+
+def main() -> None:
     app()
 
 

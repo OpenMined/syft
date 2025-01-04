@@ -1,12 +1,13 @@
+from typing import Optional
+
 import httpx
 from jinja2 import Template
 from loguru import logger
 
+from syftbox.lib.constants import SENDGRID_API_URL
 from syftbox.server.settings import ServerSettings
 
-SENDER_EMAIL = "noreply@openmined.org"
-SENDGRID_SERVER = "https://api.sendgrid.com/v3/mail/send"
-SMTP_PORT = 465
+SENDER_EMAIL = "SyftBox <auth@syftbox.openmined.org>"
 
 token_email_template = """
 <!doctype html>
@@ -129,7 +130,7 @@ reset_password_token_email_template = """
 """
 
 
-def send_token_email(server_settings, user_email: str, token: str):
+def send_token_email(server_settings: ServerSettings, user_email: str, token: str) -> None:
     template = Template(token_email_template)
     body = template.render(email=user_email, token=token)
     send_email(
@@ -147,7 +148,7 @@ def send_email(
     subject: str,
     body: str,
     mimetype: str = "text/html",
-):
+) -> Optional[dict]:
     payload = {
         "personalizations": [{"to": [{"email": receiver_email}]}],
         "from": {"email": SENDER_EMAIL},
@@ -155,15 +156,19 @@ def send_email(
         "content": [{"type": mimetype, "value": body}],
     }
 
+    if server_settings.sendgrid_secret is None:
+        raise ValueError("Sendgrid secret is not configured")
+
     headers = {
         "Authorization": f"Bearer {server_settings.sendgrid_secret.get_secret_value()}",
         "Content-Type": "application/json",
     }
 
     try:
-        response = httpx.post(SENDGRID_SERVER, json=payload, headers=headers, timeout=10.0)
+        response = httpx.post(SENDGRID_API_URL, json=payload, headers=headers, timeout=10.0)
         response.raise_for_status()
         logger.info(f"Email sent to {receiver_email}")
         return {"success": True, "status_code": response.status_code}
     except httpx.HTTPError as e:
         logger.error(str(e))
+        return None

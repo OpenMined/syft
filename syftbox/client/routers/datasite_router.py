@@ -16,7 +16,7 @@ class DatasiteRequest(BaseModel):
 
 
 @router.get("/")
-async def list_datasites(ctx: APIContext):
+async def list_datasites(ctx: APIContext) -> dict:
     """List all available datasites"""
 
     try:

@@ -8,7 +8,7 @@ def test_debug_report(mock_config):
     assert "syftbox" in result
     assert "syftbox_env" in result
     assert "resources" in result["system"]
-    assert "operating_system" in result["system"]
+    assert "os" in result["system"]
     assert "python" in result["system"]
     assert "command" in result["syftbox"]
     assert "client_config_path" in result["syftbox"]
@@ -24,7 +24,7 @@ def test_debug_report_readable(mock_config):
     assert "syftbox" in result
     assert "syftbox_env" in result
     assert "resources" in result
-    assert "operating_system" in result
+    assert "os" in result
     assert "python" in result
     assert "command" in result
     assert "client_config_path" in result

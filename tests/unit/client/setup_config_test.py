@@ -12,7 +12,13 @@ def test_setup_new_config(tmp_path):
     port = 8080
 
     result = setup_config_interactive(
-        config_path=config_path, email=email, data_dir=data_dir, server=server, port=port, skip_auth=True
+        config_path=config_path,
+        email=email,
+        data_dir=data_dir,
+        server=server,
+        port=port,
+        skip_auth=True,
+        skip_verify_install=True,
     )
 
     assert isinstance(result, SyftClientConfig)
@@ -41,6 +47,7 @@ def test_setup_new_config_with_prompt(tmp_path, monkeypatch):
         server=server,
         port=port,
         skip_auth=True,
+        skip_verify_install=True,
     )
 
     assert isinstance(result, SyftClientConfig)
@@ -61,6 +68,7 @@ def test_setup_existing_config(tmp_path, mock_config):
         config_path=mock_config.path,
         port=new_port,
         skip_auth=True,
+        skip_verify_install=True,
     )
 
     assert isinstance(result, SyftClientConfig)

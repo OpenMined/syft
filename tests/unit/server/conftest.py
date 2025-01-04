@@ -3,17 +3,26 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
+from syftbox.client.server_client import SyncClient
+from syftbox.lib.constants import PERM_FILE
+from syftbox.server.migrations import run_migrations
 from syftbox.server.server import app
 from syftbox.server.settings import ServerSettings
 
 TEST_DATASITE_NAME = "test_datasite@openmined.org"
 TEST_FILE = "test_file.txt"
-PERMFILE_FILE = "_.syftperm"
-PERMFILE_DICT = {
-    "admin": [TEST_DATASITE_NAME],
-    "read": [TEST_DATASITE_NAME],
-    "write": [TEST_DATASITE_NAME],
-}
+PERMFILE_DICT = [
+    {
+        "path": "*",
+        "user": "*",
+        "permissions": ["admin", "read", "write"],
+    },
+    {
+        "path": "**/*",
+        "user": "*",
+        "permissions": ["admin", "read", "write"],
+    },
+]
 
 
 def get_access_token(client: TestClient, email: str) -> str:
@@ -34,9 +43,11 @@ def client(monkeypatch, tmp_path):
     """Every client gets their own snapshot folder at `tmp_path`"""
     snapshot_folder = tmp_path / "snapshot"
     settings = ServerSettings.from_data_folder(snapshot_folder)
+
     monkeypatch.setenv("SYFTBOX_DATA_FOLDER", str(settings.data_folder))
     monkeypatch.setenv("SYFTBOX_SNAPSHOT_FOLDER", str(settings.snapshot_folder))
     monkeypatch.setenv("SYFTBOX_USER_FILE_PATH", str(settings.user_file_path))
+    monkeypatch.setenv("SYFTBOX_OTEL_ENABLED", str(False))
 
     datasite_name = TEST_DATASITE_NAME
     datasite = settings.snapshot_folder / datasite_name
@@ -52,10 +63,11 @@ def client(monkeypatch, tmp_path):
     datafile.touch()
     datafile.write_bytes(b"Hello, World!")
 
-    permfile = datasite / PERMFILE_FILE
+    permfile = datasite / PERM_FILE
     permfile.touch()
     permfile.write_text(json.dumps(PERMFILE_DICT))
 
+    run_migrations(settings)
     with TestClient(app) as client:
         access_token = get_access_token(client, TEST_DATASITE_NAME)
         client.headers["Authorization"] = f"Bearer {access_token}"
@@ -63,12 +75,20 @@ def client(monkeypatch, tmp_path):
 
 
 @pytest.fixture(scope="function")
+def sync_client(client: TestClient):
+    return SyncClient(conn=client)
+
+
+@pytest.fixture(scope="function")
 def client_without_perms(monkeypatch, tmp_path):
     """Every client gets their own snapshot folder at `tmp_path`"""
     settings = ServerSettings.from_data_folder(tmp_path)
+    settings.otel_enabled = False
+
     monkeypatch.setenv("SYFTBOX_DATA_FOLDER", str(settings.data_folder))
     monkeypatch.setenv("SYFTBOX_SNAPSHOT_FOLDER", str(settings.snapshot_folder))
     monkeypatch.setenv("SYFTBOX_USER_FILE_PATH", str(settings.user_file_path))
+    monkeypatch.setenv("SYFTBOX_OTEL_ENABLED", str(False))
 
     datasite_name = TEST_DATASITE_NAME
     datasite = settings.snapshot_folder / datasite_name
@@ -78,10 +98,11 @@ def client_without_perms(monkeypatch, tmp_path):
     datafile.touch()
     datafile.write_bytes(b"Hello, World!")
 
-    permfile = datasite / PERMFILE_FILE
+    permfile = datasite / PERM_FILE
     permfile.touch()
     permfile.write_text("")
 
+    run_migrations(settings)
     with TestClient(app) as client:
         access_token = get_access_token(client, TEST_DATASITE_NAME)
         client.headers["Authorization"] = f"Bearer {access_token}"

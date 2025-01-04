@@ -4,6 +4,7 @@ from typing import Optional
 import pathspec
 from loguru import logger
 
+from syftbox.lib.constants import REJECTED_FILE_SUFFIX
 from syftbox.lib.types import PathLike, to_path
 
 IGNORE_FILENAME = "_.syftignore"
@@ -76,13 +77,17 @@ def is_within_symlinked_path(path: Path, datasites_dir: PathLike) -> bool:
     return False
 
 
+def is_symlinked_file(abs_path: Path, datasites_dir: PathLike) -> bool:
+    """True if this file is a symlink, or is inside a symlinked directory (recursive)"""
+    return abs_path.is_symlink() or is_within_symlinked_path(abs_path, datasites_dir)
+
+
 def filter_symlinks(datasites_dir: Path, relative_paths: list[Path]) -> list[Path]:
     result = []
     for path in relative_paths:
         abs_path = datasites_dir / path
 
-        is_symlinked = abs_path.is_symlink() or is_within_symlinked_path(abs_path, datasites_dir)
-        if not is_symlinked:
+        if not is_symlinked_file(abs_path, datasites_dir):
             result.append(path)
     return result
 
@@ -95,11 +100,24 @@ def filter_hidden_files(relative_paths: list[Path]) -> list[Path]:
     return result
 
 
+def _is_rejected_file(path: Path) -> bool:
+    return REJECTED_FILE_SUFFIX in path.name
+
+
+def filter_rejected_files(relative_paths: list[Path]) -> list[Path]:
+    result = []
+    for path in relative_paths:
+        if not _is_rejected_file(path):
+            result.append(path)
+    return result
+
+
 def filter_ignored_paths(
     datasites_dir: Path,
     relative_paths: list[Path],
     ignore_hidden_files: bool = True,
     ignore_symlinks: bool = True,
+    ignore_rejected_files: bool = True,
 ) -> list[Path]:
     """
     Filter out paths that are ignored. Ignore rules:
@@ -123,6 +141,9 @@ def filter_ignored_paths(
     if ignore_symlinks:
         relative_paths = filter_symlinks(datasites_dir, relative_paths)
 
+    if ignore_rejected_files:
+        relative_paths = filter_rejected_files(relative_paths)
+
     ignore_rules = get_ignore_rules(datasites_dir)
     if ignore_rules is None:
         return relative_paths
@@ -130,6 +151,33 @@ def filter_ignored_paths(
     filtered_paths = []
     for path in relative_paths:
         if not ignore_rules.match_file(path):
+            filtered_paths.append(path)
+
+    return filtered_paths
+
+
+def get_syftignore_matches(
+    datasites_dir: Path,
+    relative_paths: list[Path],
+    include_symlinks: bool = False,
+) -> list[Path]:
+    """
+    Get the paths that match the ignore rules in the _.syftignore file.
+    If include_symlinks is False, symlinks are ignored.
+    """
+
+    ignore_rules = get_ignore_rules(datasites_dir)
+    if ignore_rules is None:
+        return []
+
+    filtered_paths = []
+    for path in relative_paths:
+        abs_path = datasites_dir / path
+        if not include_symlinks and is_symlinked_file(abs_path, datasites_dir):
+            continue
+        elif ignore_rules.match_file(path):
+            filtered_paths.append(path)
+        elif _is_rejected_file(path):
             filtered_paths.append(path)
 
     return filtered_paths

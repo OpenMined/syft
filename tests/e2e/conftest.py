@@ -56,6 +56,11 @@ class Client:
         return self.data_dir / "apis"
 
     @property
+    def private_dir(self):
+        """data_dir/private"""
+        return self.data_dir / "private"
+
+    @property
     def my_datasite(self):
         """data_dir/datasites/{email}"""
         return self.datasite_dir / self.email
@@ -115,14 +120,16 @@ class E2EContext:
         logs_dir.mkdir(parents=True, exist_ok=True)
 
         env = os.environ.copy()
+        env["SYFTBOX_ENV"] = "DEV"
         env["SYFTBOX_DATA_FOLDER"] = str(server_dir)
+        env["SYFTBOX_OTEL_ENABLED"] = "0"
         env.update(server.env)
 
         process = await asyncio.create_subprocess_exec(
-            "syftbox",
-            "server",
-            "--port",
-            f"{server.port}",
+            "gunicorn",
+            "syftbox.server.server:app",
+            "-k=uvicorn.workers.UvicornWorker",
+            f"--bind=127.0.0.1:{server.port}",
             stdout=open(logs_dir / "server.log", "w"),
             stderr=asyncio.subprocess.STDOUT,
             env=env,
@@ -219,7 +226,7 @@ def get_random_port():
         return s.getsockname()[1]
 
 
-@pytest_asyncio.fixture
+@pytest_asyncio.fixture(loop_scope="function")
 async def e2e_context(request):
     try:
         ctx = E2EContext(**request.param)

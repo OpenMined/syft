@@ -14,11 +14,64 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  build-test:
+    strategy:
+      max-parallel: 99
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python-version: ["3.9", "3.12"]
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "0.4.25"
+
+      - name: Install Just
+        uses: extractions/setup-just@v2
+        with:
+          just-version: "1.36.0"
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Pre-test checks
+        run: |
+          uv --version
+          jq --version
+          just --version
+          curl --version
+
+      - name: Run Build & Install
+        run: |
+          just install
+
+      - name: Check installed tools
+        run: |
+          uv tool list
+
+      - name: Run SyftBox Debug
+        run: |
+          syftbox version
+          syftbox debug
+          syftbox client --help
+          syftbox server --help
+
   e2e-test:
     strategy:
       max-parallel: 99
       matrix:
-        e2e-test: ["ring", "basic_aggregator", "model_aggregator"]
+        e2e-test: [
+            "basic_aggregator",
+            "model_aggregator",
+            "aggregator_with_local_training",
+            # "fl_model_training",
+          ]
         python-version: ["3.9", "3.12"]
         os: [ubuntu-latest, macos-latest]
         # runner: [syftbox-sh-linux-x64, scaleway-macOS-arm64]
@@ -27,10 +80,18 @@ jobs:
     # runs-on: ${{ matrix.runner }}
     runs-on: ${{ matrix.os }}
     steps:
+      - name: Free Disk Space
+        run: |
+          sudo rm -rf /Users/runner/Library/Android/sdk || true
+          sudo rm -rf /usr/local/lib/android || true
+          sudo rm -rf /usr/share/dotnet || true
+          sudo rm -rf /opt/ghc || true
+          sudo rm -rf /usr/local/.ghcup || true
+
       - uses: actions/checkout@v4
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v3
+        uses: astral-sh/setup-uv@v4
         with:
           version: "0.4.25"
 
@@ -40,7 +101,7 @@ jobs:
           just-version: "1.36.0"
 
       - name: "Setup jq"
-        uses: dcarbone/install-jq-action@v2
+        uses: dcarbone/install-jq-action@v3
         with:
           version: "1.7"
 

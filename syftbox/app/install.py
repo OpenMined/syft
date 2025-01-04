@@ -11,6 +11,8 @@ from types import SimpleNamespace
 
 from typing_extensions import Any, Optional
 
+from syftbox.lib.types import PathLike
+
 
 def is_git_installed() -> bool:
     """
@@ -94,12 +96,12 @@ def sanitize_git_path(path: str) -> str:
         raise ValueError("Invalid Git repository path format. (eg: OpenMined/logged_in)")
 
 
-def delete_folder_if_exists(folder_path: str) -> None:
+def delete_folder_if_exists(folder_path: PathLike) -> None:
     """
     Deletes a folder if it exists at the specified path.
 
     Args:
-        folder_path (str): The path to the folder to be deleted.
+        folder_path (PathLike): The path to the folder to be deleted.
 
     Returns:
         None: This function does not return any value.
@@ -156,7 +158,7 @@ def is_repo_accessible(repo_url: str) -> bool:
         return False
 
 
-def clone_repository(sanitized_git_path: str, branch: str) -> str:
+def clone_repository(sanitized_git_path: str, branch: str) -> PathLike:
     """
     Clones a Git repository from GitHub to a temporary directory.
 
@@ -273,7 +275,7 @@ def dict_to_namespace(data: Any) -> Any:
         return data
 
 
-def load_config(path: str) -> SimpleNamespace:
+def load_config(path: PathLike) -> SimpleNamespace:
     """
     Loads a JSON configuration file and converts it to a SimpleNamespace object.
 
@@ -328,7 +330,7 @@ def load_config(path: str) -> SimpleNamespace:
     return dict_to_namespace(data)
 
 
-def create_symbolic_link(apps_dir: Path, sanitized_path: str):
+def create_symbolic_link(apps_dir: PathLike, sanitized_path: PathLike) -> str:
     """
     Creates a symbolic link from the application directory in the Syftbox directory to the user's sync folder.
 
@@ -357,7 +359,7 @@ def create_symbolic_link(apps_dir: Path, sanitized_path: str):
     """
     # TODO: Create a Symlink function
     # - Handles if path doesn't exists.
-    target_symlink_path = f"{apps_dir}/{sanitized_path.split('/')[-1]}"
+    target_symlink_path = f"{apps_dir}/{str(sanitized_path).split('/')[-1]}"
 
     # Create the symlink
     if os.path.exists(target_symlink_path) and os.path.islink(target_symlink_path):
@@ -370,7 +372,7 @@ def create_symbolic_link(apps_dir: Path, sanitized_path: str):
     return target_symlink_path
 
 
-def move_repository_to_syftbox(apps_dir: Path, tmp_clone_path: str, sanitized_path: str) -> str:
+def move_repository_to_syftbox(apps_dir: Path, tmp_clone_path: PathLike, sanitized_path: PathLike) -> str:
     """
     Moves a cloned Git repository to the Syftbox directory.
 
@@ -395,13 +397,13 @@ def move_repository_to_syftbox(apps_dir: Path, tmp_clone_path: str, sanitized_pa
         ```
         This will move the cloned repository to the Syftbox `apps` directory and return the final destination path.
     """
-    output_path = f"{apps_dir}/{sanitized_path.split('/')[-1]}"
+    output_path = f"{apps_dir}/{str(sanitized_path).split('/')[-1]}"
     delete_folder_if_exists(output_path)
     shutil.move(tmp_clone_path, output_path)
     return output_path
 
 
-def run_pre_install(app_config: SimpleNamespace, app_path: str):
+def run_pre_install(app_config: SimpleNamespace, app_path: str) -> None:
     """
     Runs pre-installation commands specified in the application configuration.
 
@@ -443,7 +445,7 @@ def run_pre_install(app_config: SimpleNamespace, app_path: str):
         raise RuntimeError(e.stderr)
 
 
-def run_post_install(app_config: SimpleNamespace, app_path: str):
+def run_post_install(app_config: SimpleNamespace, app_path: str) -> None:
     """
     Runs post-installation commands specified in the application configuration.
 
@@ -484,7 +486,7 @@ def run_post_install(app_config: SimpleNamespace, app_path: str):
         raise RuntimeError(e.stderr)
 
 
-def check_os_compatibility(app_config) -> None:
+def check_os_compatibility(app_config: SimpleNamespace) -> None:
     """
     Checks whether the current operating system is compatible with the application based on the configuration.
 
@@ -569,7 +571,7 @@ def get_current_commit(app_path: str) -> str:
         return "local"
 
 
-def update_app_config_file(app_path: str, sanitized_git_path: str, app_config) -> None:
+def update_app_config_file(app_path: str, sanitized_git_path: str, app_config: SimpleNamespace) -> None:
     """
     Updates the `app.json` configuration file with the current commit and version information of an application.
 
@@ -632,7 +634,7 @@ def update_app_config_file(app_path: str, sanitized_git_path: str, app_config) -
         json.dump(app_json_config, json_file, indent=4)
 
 
-def check_app_config(tmp_clone_path) -> Optional[SimpleNamespace]:
+def check_app_config(tmp_clone_path: PathLike) -> Optional[SimpleNamespace]:
     app_config_path = Path(tmp_clone_path) / "config.json"
     if os.path.exists(app_config_path):
         app_config = load_config(app_config_path)
@@ -716,7 +718,7 @@ def install(apps_dir: Path, repository: str, branch: str) -> InstallResult:
             tmp_clone_path = os.path.abspath(repository)
 
         # make optional
-        app_config = None
+        app_config: Optional[SimpleNamespace] = None
         try:
             check_app_config(tmp_clone_path)
         except Exception:

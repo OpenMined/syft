@@ -1,14 +1,10 @@
 import contextlib
-import json
 import os
 import platform
-import random
-import sys
-from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Header, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import (
     FileResponse,
@@ -19,149 +15,89 @@ from fastapi.responses import (
 )
 from jinja2 import Template
 from loguru import logger
-from typing_extensions import Any, Optional, Union
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.instrumentation.sqlite3 import SQLite3Instrumentor
+from opentelemetry.trace import Span
+from typing_extensions import Any, AsyncGenerator, Optional, Union
 
-from syftbox.__version__ import __version__
+from syftbox import __version__
+from syftbox.lib.http import (
+    HEADER_GEO_COUNTRY,
+    HEADER_OS_ARCH,
+    HEADER_OS_NAME,
+    HEADER_OS_VERSION,
+    HEADER_SYFTBOX_PYTHON,
+    HEADER_SYFTBOX_USER,
+    HEADER_SYFTBOX_VERSION,
+)
 from syftbox.lib.lib import (
-    Jsonable,
     get_datasites,
 )
 from syftbox.server.analytics import log_analytics_event
 from syftbox.server.logger import setup_logger
-from syftbox.server.middleware import LoguruMiddleware
+from syftbox.server.middleware import LoguruMiddleware, RequestSizeLimitMiddleware
 from syftbox.server.settings import ServerSettings, get_server_settings
+from syftbox.server.telemetry import (
+    OTEL_ATTR_CLIENT_OS_ARCH,
+    OTEL_ATTR_CLIENT_OS_NAME,
+    OTEL_ATTR_CLIENT_OS_VER,
+    OTEL_ATTR_CLIENT_PYTHON,
+    OTEL_ATTR_CLIENT_USER,
+    OTEL_ATTR_CLIENT_USER_LOC,
+    OTEL_ATTR_CLIENT_VERSION,
+    setup_otel_exporter,
+)
+from syftbox.server.users.auth import get_current_user
 
+from .api.v1.sync_router import router as sync_router
 from .emails.router import router as emails_router
-from .sync import db, hash
-from .sync.router import router as sync_router
 from .users.router import router as users_router
 
 current_dir = Path(__file__).parent
 
 
-def load_dict(cls, filepath: str) -> Optional[dict[str, Any]]:
-    try:
-        with open(filepath) as f:
-            data = f.read()
-            d = json.loads(data)
-            dicts = {}
-            for key, value in d.items():
-                dicts[key] = cls(**value)
-            return dicts
-    except Exception as e:
-        logger.info(f"Unable to load dict file: {filepath}. {e}")
-    return None
-
-
-def save_dict(obj: Any, filepath: str) -> None:
-    dicts = {}
-    for key, value in obj.items():
-        dicts[key] = value.to_dict()
-
-    with open(filepath, "w") as f:
-        f.write(json.dumps(dicts))
-
-
-@dataclass
-class User(Jsonable):
-    email: str
-    token: int  # TODO
-
-
-class Users:
-    def __init__(self, path: Path) -> None:
-        self.path = path
-        self.users = {}
-        self.load()
-
-    def load(self):
-        if os.path.exists(str(self.path)):
-            users = load_dict(User, str(self.path))
-        else:
-            users = None
-        if users:
-            self.users = users
-
-    def save(self):
-        save_dict(self.users, str(self.path))
-
-    def get_user(self, email: str) -> Optional[User]:
-        if email not in self.users:
-            return None
-        return self.users[email]
-
-    def create_user(self, email: str) -> int:
-        if email in self.users:
-            # for now just return the token
-            return self.users[email].token
-            # raise Exception(f"User already registered: {email}")
-        token = random.randint(0, sys.maxsize)
-        user = User(email=email, token=token)
-        self.users[email] = user
-        self.save()
-        return token
-
-    def __repr__(self) -> str:
-        string = ""
-        for email, user in self.users.items():
-            string += f"{email}: {user}"
-        return string
-
-
-def get_users(request: Request) -> Users:
-    return request.state.users
-
-
-def create_folders(folders: list[str]) -> None:
+def create_folders(folders: list[Path]) -> None:
     for folder in folders:
         if not os.path.exists(folder):
             os.makedirs(folder, exist_ok=True)
 
 
-def init_db(settings: ServerSettings) -> None:
-    # might take very long as snapshot folder grows
-    logger.info(f"> Collecting Files from {settings.snapshot_folder.absolute()}")
-    files = hash.collect_files(settings.snapshot_folder.absolute())
-    logger.info("> Hashing files")
-    metadata = hash.hash_files(files, settings.snapshot_folder)
-    logger.info(f"> Updating file hashes at {settings.file_db_path.absolute()}")
-    con = db.get_db(settings.file_db_path.absolute())
-    cur = con.cursor()
-    for m in metadata:
-        db.save_file_metadata(cur, m)
+def server_request_hook(span: Span, scope: dict[str, Any]) -> None:
+    if not span.is_recording():
+        return
 
-    cur.close()
-    con.commit()
-    con.close()
+    # headers k/v pairs are bytes
+    headers: dict[bytes, bytes] = dict(scope.get("headers", {}))
+    span.set_attribute(OTEL_ATTR_CLIENT_VERSION, headers.get(HEADER_SYFTBOX_VERSION, ""))
+    span.set_attribute(OTEL_ATTR_CLIENT_PYTHON, headers.get(HEADER_SYFTBOX_PYTHON, ""))
+    span.set_attribute(OTEL_ATTR_CLIENT_USER, headers.get(HEADER_SYFTBOX_USER, ""))
+    span.set_attribute(OTEL_ATTR_CLIENT_OS_NAME, headers.get(HEADER_OS_NAME, ""))
+    span.set_attribute(OTEL_ATTR_CLIENT_OS_VER, headers.get(HEADER_OS_VERSION, ""))
+    span.set_attribute(OTEL_ATTR_CLIENT_OS_ARCH, headers.get(HEADER_OS_ARCH, ""))
+    span.set_attribute(OTEL_ATTR_CLIENT_USER_LOC, headers.get(HEADER_GEO_COUNTRY, ""))
 
 
 @contextlib.asynccontextmanager
-async def lifespan(app: FastAPI, settings: Optional[ServerSettings] = None):
+async def lifespan(app: FastAPI, settings: Optional[ServerSettings] = None) -> AsyncGenerator:
     # Startup
-    if settings is None:
-        settings = ServerSettings()
+    settings = settings or ServerSettings()
 
     setup_logger(logs_folder=settings.logs_folder)
 
-    logger.info(f"> Starting SyftBox Server {__version__}. Python {platform.python_version()}")
+    logger.info(f"Starting SyftBox Server {__version__}. Python {platform.python_version()}")
     logger.info(settings)
 
-    logger.info("> Creating Folders")
-
-    create_folders(settings.folders)
-
-    users = Users(path=settings.user_file_path)
-    logger.info("> Loading Users")
-    logger.info(users)
-
-    init_db(settings)
+    if settings.otel_enabled:
+        logger.info("OTel Exporter is ENABLED")
+        setup_otel_exporter(settings.env.value)
+    else:
+        logger.info("OTel Exporter is DISABLED")
 
     yield {
         "server_settings": settings,
-        "users": users,
     }
 
-    logger.info("> Shutting down server")
+    logger.info("Shutting down server")
 
 
 app = FastAPI(lifespan=lifespan)
@@ -170,6 +106,10 @@ app.include_router(sync_router)
 app.include_router(users_router)
 app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=5)
 app.add_middleware(LoguruMiddleware)
+app.add_middleware(RequestSizeLimitMiddleware)
+
+FastAPIInstrumentor.instrument_app(app, server_request_hook=server_request_hook)
+SQLite3Instrumentor().instrument()
 
 # Define the ASCII art
 ascii_art = rf"""
@@ -182,7 +122,7 @@ ascii_art = rf"""
 
 
 # Install Syftbox (MacOS and Linux)
-curl -LsSf https://syftbox.openmined.org/install.sh | sh
+curl -LsSf [[SERVER_URL]]/install.sh | sh
 
 # Run the client
 syftbox client
@@ -190,23 +130,8 @@ syftbox client
 
 
 @app.get("/", response_class=PlainTextResponse)
-async def get_ascii_art(request: Request):
-    req_host = request.headers.get("host", "")
-    if "syftboxstage" in req_host:
-        return ascii_art.replace("syftbox.openmined.org", "syftboxstage.openmined.org")
-    return ascii_art
-
-
-@app.get("/wheel/{path:path}", response_class=HTMLResponse)
-async def get_wheel(path: str):
-    if path == "":  # Check if path is empty (meaning "/datasites/")
-        return RedirectResponse(url="/")
-
-    filename = path.split("/")[0]
-    if filename.endswith(".whl"):
-        wheel_path = os.path.expanduser("~/syftbox-0.1.0-py3-none-any.whl")
-        return FileResponse(wheel_path, media_type="application/octet-stream")
-    return filename
+async def get_ascii_art(request: Request) -> str:
+    return ascii_art.replace("[[SERVER_URL]]", str(request.url).rstrip("/"))
 
 
 def get_file_list(directory: Union[str, Path] = ".") -> list[dict[str, Any]]:
@@ -226,7 +151,9 @@ def get_file_list(directory: Union[str, Path] = ".") -> list[dict[str, Any]]:
 
 
 @app.get("/datasites", response_class=HTMLResponse)
-async def list_datasites(request: Request, server_settings: ServerSettings = Depends(get_server_settings)):
+async def list_datasites(
+    request: Request, server_settings: ServerSettings = Depends(get_server_settings)
+) -> HTMLResponse:
     files = get_file_list(server_settings.snapshot_folder)
     template_path = current_dir / "templates" / "datasites.html"
     html = ""
@@ -249,7 +176,7 @@ async def browse_datasite(
     request: Request,
     path: str,
     server_settings: ServerSettings = Depends(get_server_settings),
-):
+) -> HTMLResponse:
     if path == "":  # Check if path is empty (meaning "/datasites/")
         return RedirectResponse(url="/datasites")
 
@@ -321,44 +248,45 @@ async def browse_datasite(
 @app.post("/register")
 async def register(
     request: Request,
-    users: Users = Depends(get_users),
     server_settings: ServerSettings = Depends(get_server_settings),
-):
+) -> JSONResponse:
     data = await request.json()
     email = data["email"]
-    token = users.create_user(email)
 
     # create datasite snapshot folder
     datasite_folder = Path(server_settings.snapshot_folder) / email
     os.makedirs(datasite_folder, exist_ok=True)
 
-    logger.info(f"> {email} registering: {token}, snapshot folder: {datasite_folder}")
+    logger.info(f"> {email} registering, snapshot folder: {datasite_folder}")
     log_analytics_event("/register", email)
 
-    return JSONResponse({"status": "success", "token": token}, status_code=200)
+    return JSONResponse({"status": "success", "token": "0"}, status_code=200)
 
 
 @app.post("/log_event")
-async def log_event(request: Request, email: Optional[str] = Header(default=None)):
+async def log_event(
+    request: Request,
+    email: str = Depends(get_current_user),
+) -> JSONResponse:
     data = await request.json()
     log_analytics_event("/log_event", email, **data)
     return JSONResponse({"status": "success"}, status_code=200)
 
 
 @app.get("/install.sh")
-async def install():
+async def install() -> FileResponse:
     install_script = current_dir / "templates" / "install.sh"
     return FileResponse(install_script, media_type="text/plain")
 
 
 @app.get("/icon.png")
-async def icon():
+async def icon() -> FileResponse:
     icon_path = current_dir / "assets" / "icon.png"
     return FileResponse(icon_path, media_type="image/png")
 
 
 @app.get("/info")
-async def info():
+async def info() -> dict:
     return {
         "version": __version__,
     }

@@ -34,7 +34,7 @@ class SyftWorkspace:
         self.apps = self.data_dir / "apis"
         """Path to the directory containing apps."""
 
-    def mkdirs(self):
+    def mkdirs(self) -> None:
         self.datasites.mkdir(parents=True, exist_ok=True)
         self.plugins.mkdir(parents=True, exist_ok=True)
         self.apps.mkdir(parents=True, exist_ok=True)

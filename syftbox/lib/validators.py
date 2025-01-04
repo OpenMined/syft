@@ -9,7 +9,7 @@ from syftbox.lib.types import PathLike, to_path
 DIR_NOT_EMPTY = "Directory is not empty"
 
 
-def is_valid_dir(path: PathLike, check_empty=True, check_writable=True) -> Tuple[bool, str]:
+def is_valid_dir(path: PathLike, check_empty: bool = True, check_writable: bool = True) -> Tuple[bool, str]:
     try:
         if not path:
             return False, "Empty path"
