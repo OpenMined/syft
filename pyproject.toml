@@ -17,7 +17,7 @@ dependencies = [
     "loguru==0.7.3",
     "py-fast-rsync==0.1.0",
     "pathspec==0.12.1",
-    "python-multipart==0.0.19",
+    "python-multipart==0.0.20",
     "rich==13.9.4",
     "croniter==5.0.1",
     "typer==0.15.1",
