@@ -49,6 +49,7 @@ def setup_logger(logs_folder: Path, level: Union[str, int] = "DEBUG") -> None:
         retention=2,  # Keep only the last 1 log files
         compression="zip",  # Usually, 10x reduction in file size
         filter=_default_logger_filter,
+        format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {message}",  # matches the log format printed in the console
     )
 
     # Dedicated logger for analytics events
