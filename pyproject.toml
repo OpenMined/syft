@@ -22,7 +22,7 @@ dependencies = [
     "croniter==5.0.1",
     "typer==0.15.1",
     "pid==3.0.4",
-    "pydantic[email]==2.10.3",
+    "pydantic[email]==2.10.5",
     "pyjwt==2.10.1",
     "wcmatch==10.0",
     "curl-cffi>=0.7.4",
