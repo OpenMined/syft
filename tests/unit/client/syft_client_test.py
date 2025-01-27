@@ -1,9 +1,11 @@
 import pytest
 
+from syftbox import __version__
 from syftbox.client.core import SyftBoxRunner, run_migration
 from syftbox.client.exceptions import SyftBoxAlreadyRunning
 from syftbox.lib.client_config import SyftClientConfig
 from syftbox.lib.exceptions import SyftBoxException
+from syftbox.lib.http import HEADER_SYFTBOX_VERSION
 
 
 def test_client_single_instance(tmp_path):
@@ -40,7 +42,7 @@ def test_client_init_datasite(mock_config):
 
 
 def test_register_user(mock_config, httpx_mock):
-    httpx_mock.add_response(json={"token": "dummy-token"})
+    httpx_mock.add_response(json={"token": "dummy-token"}, headers={HEADER_SYFTBOX_VERSION: __version__})
     client = SyftBoxRunner(mock_config)
     client.register_self()
     assert client.config.token == "dummy-token"
