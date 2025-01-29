@@ -12,11 +12,6 @@ on:
           - minor
           - major
 
-      breaking_changes:
-        description: Use this if minor release and not compatible with previous versions
-        type: boolean
-        default: false
-
       run_tests:
         description: Run pre-release tests
         type: boolean
@@ -87,7 +82,7 @@ jobs:
 
       - name: Bump the Version
         run: |
-          just bump-version ${{ inputs.bump_type }} ${{ breaking_changes }}
+          just bump-version ${{ inputs.bump_type }}
 
       - name: Build syftbox
         run: |

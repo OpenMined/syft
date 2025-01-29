@@ -129,7 +129,7 @@ install:
 
 # Bump version, commit and tag
 [group('build')]
-bump-version level="patch" breaking_changes="false":
+bump-version level="patch":
     #!/bin/bash
     # We need to uv.lock before we can commit the whole thing in the repo.
     # DO not bump the version on the uv.lock file, else other packages with same version might get updated
@@ -148,18 +148,12 @@ bump-version level="patch" breaking_changes="false":
     # first bump version
     uv run bump2version {{ level }}
 
-    # upgrade version compatibility matrix
-    cd scripts
-    BREAKING_CHANGES=""
-    if [[ '{{ breaking_changes }}' == true ]]; then BREAKING_CHANGES="--breaking_changes"; fi
-    uv run upgrade_version_matrix.py {{ level }} $BREAKING_CHANGES
-    cd ..
     # update uv.lock file to reflect new package version
     uv lock
 
     # commit the changes
-    # git commit -am "Bump version $CURRENT_VERSION -> $NEW_VERSION"
-    # git tag -a $NEW_VERSION -m "Release $NEW_VERSION"
+    git commit -am "Bump version $CURRENT_VERSION -> $NEW_VERSION"
+    git tag -a $NEW_VERSION -m "Release $NEW_VERSION"
 
 # ---------------------------------------------------------------------------------------------------------------------
 

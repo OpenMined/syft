@@ -51,7 +51,7 @@ with open("../syftbox/server2client_version.json", "w") as json_file:
     json_file.write(
         ",\n".join(
             [
-                f"""  "{key}": ["{version_range[0]}", "{version_range[1]}"]"""
+                f"""\t"{key}": ["{version_range[0]}", "{version_range[1]}"]"""
                 for key, version_range in version_matrix.items()
             ]
         )
