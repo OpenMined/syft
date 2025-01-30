@@ -312,6 +312,7 @@ def print_table(connection: sqlite3.Connection, table: str) -> None:
 def get_filemetadata_with_read_access(
     connection: sqlite3.Connection, user: str, path: Optional[RelativePath] = None
 ) -> list[FileMetadata]:
-    rows = get_read_permissions_for_user(connection, user, str(path))
+    string_path = str(path) if path else None
+    rows = get_read_permissions_for_user(connection, user, string_path)
     res = [FileMetadata.from_row(row) for row in rows if row["read_permission"]]
     return res

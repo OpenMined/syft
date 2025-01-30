@@ -191,6 +191,10 @@ class FileStore:
             conn.commit()
             cursor.close()
 
-    def list_for_user(self, path: RelativePath, email: str) -> list[FileMetadata]:
+    def list_for_user(
+        self,
+        email: str,
+        path: RelativePath = None,
+    ) -> list[FileMetadata]:
         with get_db(self.db_path) as conn:
             return db.get_filemetadata_with_read_access(conn, email, path)

@@ -28,7 +28,7 @@ def pyspy() -> Iterator[subprocess.Popen]:
         "py-spy",
         "record",
         "-r",
-        "100",
+        "1000",
         "-o",
         fname,
         "--pid",
@@ -46,3 +46,24 @@ def pyspy() -> Iterator[subprocess.Popen]:
         os.chmod(fname, 0o444)
     except Exception as e:
         print(f"Error: {e}")
+
+
+# ... existing code ...
+
+
+class FakeThread:
+    def __init__(self, target, args=(), daemon=True):
+        self.target = target
+        self.args = args
+        self.daemon = daemon
+        self.is_alive_flag = False
+
+    def start(self):
+        self.is_alive_flag = True
+        self.target(*self.args)
+
+    def is_alive(self):
+        return self.is_alive_flag
+
+    def join(self):
+        pass

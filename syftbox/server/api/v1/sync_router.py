@@ -1,4 +1,5 @@
 import base64
+from collections import defaultdict
 import hashlib
 import sqlite3
 import traceback
@@ -76,14 +77,21 @@ def get_datasite_states(
 ) -> dict[str, list[FileMetadata]]:
     all_datasites = get_all_datasites(conn)
     datasite_states: dict[str, list[FileMetadata]] = {}
-    for datasite in all_datasites:
-        try:
-            datasite_state = dir_state(RelativePath(datasite), file_store, server_settings, email)
-        except Exception as e:
-            logger.error(f"Failed to get dir state for {datasite}: {e} {traceback.format_exc()}")
-            continue
-        datasite_states[datasite] = datasite_state
+    # for datasite in all_datasites:
+    #     try:
+    file_metadata = file_store.list_for_user(None, email)
+    # except Exception as e:
+    #     logger.error(f"Failed to get dir state for {datasite}: {e} {traceback.format_exc()}")
+    #     continue
+    # datasite_states[datasite] = datasite_state
 
+    # dict of datasite -> list of files
+    datasite_states = defaultdict(list)
+    for metadata in file_metadata:
+        user_email = metadata.path.root
+        datasite_states[user_email].append(metadata)
+
+    datasite_states = dict(datasite_states)
     return datasite_states
 
 

@@ -189,3 +189,4 @@ dev_space/
 !tests/**/.env
 
 syftbox/assets/icon/*
+server_data/

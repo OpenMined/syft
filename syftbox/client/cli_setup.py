@@ -119,7 +119,9 @@ def setup_config_interactive(
             conf.set_port(port)
 
     # Short-lived client for all pre-authentication requests
-    login_client = httpx.Client(base_url=str(conf.server_url), headers=SYFTBOX_HEADERS)
+    login_client = httpx.Client(
+        base_url=str(conf.server_url), headers=SYFTBOX_HEADERS, transport=httpx.HTTPTransport(retries=5)
+    )
     if not skip_verify_install:
         verify_installation(conf, login_client)
 
@@ -168,7 +170,6 @@ def verify_installation(conf: SyftClientConfig, client: httpx.Client) -> None:
             response = client.get("/info")
         except httpx.ConnectError:
             # try one more time, server may be starting (dev mode)
-            time.sleep(2)
             response = client.get("/info")
         response.raise_for_status()
 
