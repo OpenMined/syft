@@ -69,7 +69,7 @@ async def list_datasites(
     request: Request, server_settings: ServerSettings = Depends(get_server_settings)
 ) -> HTMLResponse:
     files = get_file_list(server_settings.snapshot_folder)
-    template_path = current_dir / "templates" / "datasites.html"
+    template_path = current_dir.parent.parent / "templates" / "datasites.html"
     html = ""
     with open(template_path) as f:
         html = f.read()
@@ -137,7 +137,7 @@ async def browse_datasite(
 
         if os.path.isdir(slug_path):
             files = get_file_list(slug_path)
-            template_path = current_dir / "templates" / "folder.html"
+            template_path = current_dir.parent.parent / "templates" / "folder.html"
             html = ""
             with open(template_path) as f:
                 html = f.read()
@@ -189,13 +189,13 @@ async def log_event(
 
 @main_router.get("/install.sh")
 async def install() -> FileResponse:
-    install_script = current_dir / "templates" / "install.sh"
+    install_script = current_dir.parent.parent / "templates" / "install.sh"
     return FileResponse(install_script, media_type="text/plain")
 
 
 @main_router.get("/icon.png")
 async def icon() -> FileResponse:
-    icon_path = current_dir / "assets" / "icon.png"
+    icon_path = current_dir.parent.parent / "assets" / "icon.png"
     return FileResponse(icon_path, media_type="image/png")
 
 
