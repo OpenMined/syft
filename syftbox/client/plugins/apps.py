@@ -330,7 +330,7 @@ def run_custom_app_config(app_config: SimpleNamespace, app_path: Path, client_co
                 app_log_dir,
             )
             logger.info(f"App '{app_name}' ran successfully. \nDetailed logs at: {log_file.resolve()}")
-        except subprocess.CalledProcessError as e:
+        except subprocess.CalledProcessError:
             logger.error(f"Error calling subprocess for api '{app_name}'")
             logger.error(f"Check {app_name}'s api logs at: {log_file.resolve()}")
         except Exception as _:
