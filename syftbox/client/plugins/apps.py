@@ -69,6 +69,7 @@ def get_clean_env() -> dict:
         "DISPLAY",  # X11 specific (Linux)
         "DBUS_SESSION_BUS_ADDRESS",  # X11 specific (Linux)
         "SYSTEMROOT",  # Windows specific
+        "USERPROFILE",
     }
 
     # Copy essential and SYFTBOX_* variables
@@ -257,7 +258,7 @@ def run_apps(apps_path: Path, client_config: Path) -> None:
             app_config = load_config(app_path / "config.json")
             if app_config is None:
                 run_app(app_path, client_config)
-            elif RUNNING_APPS.get(app, None) is None:
+            elif RUNNING_APPS.get(os.path.basename(app), None) is None:
                 logger.info("⏱  Scheduling a  new app run.")
                 thread = threading.Thread(
                     target=run_custom_app_config,
@@ -286,10 +287,14 @@ def output_published(app_output: Union[str, Path], published_output: Union[str, 
 
 def run_custom_app_config(app_config: SimpleNamespace, app_path: Path, client_config: Path) -> None:
     app_name = os.path.basename(app_path)
-    clean_env = {
-        "PATH": path_without_virtualenvs(),
-        CONFIG_PATH_ENV: str(client_config),
-    }
+    clean_env = get_clean_env()
+    clean_env.update(
+        {
+            "PATH": path_without_virtualenvs(),
+            CONFIG_PATH_ENV: str(client_config),
+        }
+    )
+
     # Update environment with any custom variables in app_config
     app_envs = getattr(app_config.app, "env", {})
     if not isinstance(app_envs, dict):
@@ -315,17 +320,17 @@ def run_custom_app_config(app_config: SimpleNamespace, app_path: Path, client_co
         current_time = datetime.now()
         logger.info(f"👟 Running {app_name} at scheduled time {current_time.strftime('%Y-%m-%d %H:%M:%S')}")
         logger.info(f"Running command: {app_config.app.run.command}")
+        app_log_dir = app_path / "logs"
+        log_file = app_log_dir / APP_LOG_FILE_NAME_FORMAT.format(app_name=app_name)
         try:
-            app_log_dir = app_path / "logs"
             run_with_logging(
                 app_config.app.run.command,
                 app_path,
                 clean_env,
                 app_log_dir,
             )
-            log_file = app_log_dir / APP_LOG_FILE_NAME_FORMAT.format(app_name=app_name)
             logger.info(f"App '{app_name}' ran successfully. \nDetailed logs at: {log_file.resolve()}")
-        except subprocess.CalledProcessError as _:
+        except subprocess.CalledProcessError:
             logger.error(f"Error calling subprocess for api '{app_name}'")
             logger.error(f"Check {app_name}'s api logs at: {log_file.resolve()}")
         except Exception as _:
