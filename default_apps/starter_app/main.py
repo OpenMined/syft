@@ -6,10 +6,11 @@ import zipfile
 from pathlib import Path
 
 DEFAULT_APPS = [
-    "https://github.com/OpenMined/logged_in",
-    "https://github.com/OpenMined/inbox",
-    "https://github.com/OpenMined/cpu_tracker_member",
-    "https://github.com/OpenMined/DatasetLoader",
+    # TODO :Uncomment the following lines only after the run.sh scripts for these apps have been updated to be compatible with the new app runner.                              
+    # "https://github.com/OpenMined/logged_in",
+    # "https://github.com/OpenMined/inbox",
+    # "https://github.com/OpenMined/cpu_tracker_member",
+    # "https://github.com/OpenMined/DatasetLoader",
 ]
 
 
