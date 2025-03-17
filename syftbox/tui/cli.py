@@ -1,7 +1,9 @@
+import time
 from pathlib import Path
 from typing import Annotated
 from venv import logger
 
+import rich
 from rich import print as rprint
 from typer import Exit, Option, Typer
 
@@ -12,7 +14,7 @@ from syftbox.lib.exceptions import ClientConfigException
 
 app = Typer(
     name="SyftBox Terminal UI",
-    help="Launch the SyftBox Terminal UI",
+    help="[EXPERIMENTAL] Launch the SyftBox Terminal UI",
     pretty_exceptions_enable=False,
     context_settings={"help_option_names": ["-h", "--help"]},
 )
@@ -23,9 +25,16 @@ CONFIG_OPTS = Option("-c", "--config", "--config_path", help="Path to the SyftBo
 @app.callback(invoke_without_command=True)
 def run_tui(
     config_path: Annotated[Path, CONFIG_OPTS] = DEFAULT_CONFIG_PATH,
+    show_startup_message: bool = True,
 ) -> None:
     # Late import to avoid long startup times
     from syftbox.tui.app import SyftBoxTUI
+
+    if show_startup_message:
+        rich.print(
+            "[bold yellow]Warning:[/bold yellow] The SyftBox TUI is an alpha feature, and may not work as expected."
+        )
+        time.sleep(5)
 
     syftbox_context = get_syftbox_context(config_path)
     tui = SyftBoxTUI(syftbox_context)
