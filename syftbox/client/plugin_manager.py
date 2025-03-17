@@ -4,7 +4,7 @@ from typing_extensions import Optional
 
 from syftbox.client.base import PluginManagerInterface, SyftBoxContextInterface
 from syftbox.client.exceptions import SyftPluginException
-from syftbox.client.plugins.apps import AppRunner
+from syftbox.client.plugins.app_scheduler import AppScheduler
 from syftbox.client.plugins.sync.manager import SyncManager
 
 
@@ -13,7 +13,7 @@ class PluginManager(PluginManagerInterface):
         self,
         context: SyftBoxContextInterface,
         sync_manager: Optional[SyncManager] = None,
-        app_runner: Optional[AppRunner] = None,
+        app_runner: Optional[AppScheduler] = None,
         **kwargs: dict,
     ) -> None:
         self.__context = context
@@ -31,11 +31,11 @@ class PluginManager(PluginManagerInterface):
         return self.__sync_manager
 
     @property
-    def app_runner(self) -> AppRunner:
+    def app_runner(self) -> AppScheduler:
         """the app runner. lazily initialized"""
         if self.__app_runner is None:
             try:
-                self.__app_runner = AppRunner(self.__context)
+                self.__app_runner = AppScheduler(self.__context)
             except Exception as e:
                 raise SyftPluginException(f"Failed to initialize app runner - {e}") from e
         return self.__app_runner
