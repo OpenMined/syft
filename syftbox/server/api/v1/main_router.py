@@ -112,6 +112,8 @@ async def browse_datasite(
                 return FileResponse(slug_path)
             elif slug_path.endswith(".css"):
                 return FileResponse(slug_path, media_type="text/css")
+            elif slug_path.endswith(".svg"):
+                return FileResponse(slug_path, media_type="image/svg+xml")
             elif slug_path.endswith(".md"):
                 with open(slug_path, "r") as file:
                     content = file.read()
