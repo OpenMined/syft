@@ -110,6 +110,8 @@ async def browse_datasite(
         if os.path.exists(slug_path) and os.path.isfile(slug_path):
             if slug_path.endswith(".html") or slug_path.endswith(".htm"):
                 return FileResponse(slug_path)
+            elif slug_path.endswith(".css"):
+                return FileResponse(slug_path, media_type="text/css")
             elif slug_path.endswith(".md"):
                 with open(slug_path, "r") as file:
                     content = file.read()
