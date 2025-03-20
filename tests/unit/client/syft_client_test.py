@@ -75,7 +75,7 @@ def test_client_paths(tmp_path):
 def test_migration(mock_config):
     # setup old datasites
     datasites = ["test@openmined.org", "test2@openmined.org"]
-    old_dirs = ["apps", ".syft"] + datasites
+    old_dirs = ["apis", ".syft"] + datasites
     for dir in old_dirs:
         (mock_config.data_dir / dir).mkdir(parents=True)
     (mock_config.data_dir / ".syft" / "local_syncstate.json").touch()
@@ -83,7 +83,7 @@ def test_migration(mock_config):
     run_migration(mock_config)
 
     # check new workspace
-    assert (mock_config.data_dir / "apis").is_dir()
+    assert (mock_config.data_dir / "apps").is_dir()
     assert (mock_config.data_dir / "plugins").is_dir()
     assert (mock_config.data_dir / "datasites").is_dir()
 

@@ -60,7 +60,7 @@ class StatusDashboard(Widget):
 
         apps_count = self.count_apps()
         apps_color = "green" if apps_count > 0 else "red"
-        yield Label(f"Installed APIs: [{apps_color}]{apps_count}[/{apps_color}]", id="api_count")
+        yield Label(f"Installed Apps: [{apps_color}]{apps_count}[/{apps_color}]", id="api_count")
 
         self.set_interval(1, self.update_values)
 
@@ -73,7 +73,7 @@ class StatusDashboard(Widget):
 
         apps_count = self.count_apps()
         apps_color = "green" if apps_count > 0 else "red"
-        api_count_widget.content = f"Installed APIs: [{apps_color}]{apps_count}[/{apps_color}]"
+        api_count_widget.content = f"Installed Apps: [{apps_color}]{apps_count}[/{apps_color}]"
 
         sync_status_widget.refresh()
         api_count_widget.refresh()

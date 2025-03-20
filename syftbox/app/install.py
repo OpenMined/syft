@@ -351,7 +351,7 @@ def create_symbolic_link(apps_dir: PathLike, sanitized_path: PathLike) -> str:
         Suppose you want to create a symbolic link for an application located at `/home/user/.syftbox/apps/PySyft`:
         ```python
         create_symbolic_link(
-            apps_dir=SyftWorkspace.apps, # ex "/home/user/SyftBox/apis",
+            apps_dir=SyftWorkspace.apps, # ex "/home/user/SyftBox/apps",
             sanitized_path="OpenMined/PySyft"
         )
         ```

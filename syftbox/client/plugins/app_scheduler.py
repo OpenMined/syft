@@ -77,7 +77,7 @@ class AppScheduler:
             2 - Iterate over the apps folder and compare with the running_apps. If there's an app folder that ins't
             in the running_apps list. It needs to be scheduled.
 
-            3 - Iterate over the list of running apps and check if they have their respective paths in apis directory,
+            3 - Iterate over the list of running apps and check if they have their respective paths in apps directory,
             if not, that means that app was uninstalled/removed. So we might terminate its process.
         """
         # Step 1 - Reset crashed apps to be rescheduled
@@ -113,7 +113,7 @@ class AppScheduler:
 
     def start(self) -> None:
         def run() -> None:
-            # Create the apps/apis directory in case it doesn't exist
+            # Create the apps directory in case it doesn't exist
             bootstrap(self.context)
 
             while not self.__event.is_set():
