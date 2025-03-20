@@ -8,7 +8,7 @@ class SyftWorkspace:
 
     ```txt
         data_dir/
-        ├── apis/                       <-- installed apis
+        ├── apps/                       <-- installed apps
         ├── plugins/                    <-- plugins data
         └── datasites/                  <-- synced datasites
             ├── user1@openmined.org/
@@ -30,7 +30,7 @@ class SyftWorkspace:
         """Path to the directory containing plugins."""
         self.plugins = self.data_dir / "plugins"
 
-        # apps/apis dir
+        # apps/ dir
         self.apps = self.data_dir / "apps"
         """Path to the directory containing apps."""
 

@@ -236,7 +236,7 @@ class SyftBoxContext(SyftBoxContextInterface):
         return f"SyftBoxContext<{self.config.email}, {self.config.data_dir.as_posix()}>"
 
 
-def run_api_to_apps_migration(new_ws: SyftWorkspace) -> None:
+def run_apis_to_apps_migration(new_ws: SyftWorkspace) -> None:
     old_sync_folder = new_ws.data_dir
     old_apps_dir = old_sync_folder / "apis"
     new_apps_dir = new_ws.apps
@@ -255,11 +255,8 @@ def run_migration(config: SyftClientConfig, migrate_datasite: bool = True) -> No
     # then run workspace migration
     new_ws = SyftWorkspace(config.data_dir)
 
-    # migrate workspace/apps to workspace/apis
-    # run_apps_to_api_migration(new_ws)
-    run_api_to_apps_migration(new_ws)
-
     # migrate workspace/apis to workspace/apps
+    run_apis_to_apps_migration(new_ws)
 
     # check for old dir structure and migrate to new
     # data_dir == sync_folder
