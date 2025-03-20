@@ -12,9 +12,9 @@ class SyftWorkspace:
         ├── plugins/                    <-- plugins data
         └── datasites/                  <-- synced datasites
             ├── user1@openmined.org/
-            │   └── api_data/
+            │   └── app_data/
             └── user2@openmined.org/
-                └── api_data/
+                └── app_data/
     ```
     """
 
@@ -31,7 +31,7 @@ class SyftWorkspace:
         self.plugins = self.data_dir / "plugins"
 
         # apps/apis dir
-        self.apps = self.data_dir / "apis"
+        self.apps = self.data_dir / "apps"
         """Path to the directory containing apps."""
 
     def mkdirs(self) -> None:
