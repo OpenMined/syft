@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from syftbox.client.cli_setup import prompt_data_dir, prompt_email
+from syftbox.client.setup_interactive import prompt_data_dir, prompt_email
 from syftbox.lib.constants import DEFAULT_DATA_DIR
 from syftbox.lib.validators import is_valid_dir, is_valid_email
 
