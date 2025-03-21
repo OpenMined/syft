@@ -4,6 +4,7 @@ from rich import print as rprint
 from typer import Context, Exit, Option, Typer
 from typing_extensions import Annotated, Optional
 
+from syftbox.lib.client_config import SyftClientConfig
 from syftbox.lib.constants import (
     DEFAULT_BENCHMARK_RUNS,
     DEFAULT_CONFIG_PATH,
@@ -65,6 +66,10 @@ VERBOSE_OPTS = Option(
     is_flag=True,
     help="Enable verbose mode",
 )
+IGNORE_CONFIG_OPTS = Option(
+    is_flag=True,
+    help="Ignore any existing config file, and use environment variables",
+)
 
 
 
@@ -106,8 +111,8 @@ def client(
         return
 
     # lazy import to imporve cli startup speed
-    from syftbox.client.cli_setup import get_migration_decision, setup_config_interactive
     from syftbox.client.core import run_syftbox
+    from syftbox.client.setup_interactive import get_migration_decision, setup_config_interactive
     from syftbox.client.utils.net import get_free_port, is_port_in_use
 
     if port == 0:
@@ -119,7 +124,6 @@ def client(
         raise Exit(1)
 
     client_config = setup_config_interactive(config_path, email, data_dir, server, port)
-
     migrate_datasite = get_migration_decision(client_config.data_dir)
 
     log_level = "DEBUG" if verbose else "INFO"
@@ -130,6 +134,56 @@ def client(
         migrate_datasite=migrate_datasite,
     )
     raise Exit(code)
+
+
+@app.command(name="noninteractive")
+def client_noninteractive(
+    verbose: Annotated[bool, VERBOSE_OPTS] = False,
+    ignore_existing_config: Annotated[bool, IGNORE_CONFIG_OPTS] = True,
+) -> None:
+    """
+    Run SyftBox client in non-interactive mode using environment variables.
+
+    This mode is designed for automation, containers, and services where
+    configuration is provided through environment variables rather than
+    interactive or a config file.
+
+    \b
+    Required variables:
+    - SYFTBOX_CLIENT_CONFIG_PATH: Config file location (default: SYFTBOX_DATA_DIR/config.json)
+    \b
+    Required when not using an existing config file:
+    - SYFTBOX_EMAIL: Email for authentication
+    - SYFTBOX_ACCESS_TOKEN: Authentication token
+    \b
+    Optional variables:
+    - SYFTBOX_DATA_DIR: Data storage directory (default: ~/SyftBox)
+    - SYFTBOX_SERVER_URL: SyftBox server URL
+    - SYFTBOX_PORT: Port for local service (default: 8000)
+    - SYFTBOX_CLIENT_TIMEOUT: Timeout for client connection to the server (default: 5)
+    """
+
+    # lazy import to imporve cli startup speed
+    from syftbox.client.core import run_syftbox
+
+    client_config = SyftClientConfig.from_env(ignore_existing_config=ignore_existing_config)
+    rprint("[yellow]Running SyftBox client with config:[/yellow]")
+    rprint(client_config)
+
+    if client_config.access_token is None:
+        raise ValueError(
+            "Cannot launch SyftBox in non-interactive mode without authentication. "
+            "Please provide an access token via the SYFTBOX_ACCESS_TOKEN environment variable."
+        )
+
+    log_level = "DEBUG" if verbose else "INFO"
+    exit_code = run_syftbox(
+        client_config=client_config,
+        open_dir=False,
+        log_level=log_level,
+        migrate_datasite=True,
+    )
+    raise Exit(exit_code)
 
 
 @app.command()

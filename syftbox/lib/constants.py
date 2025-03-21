@@ -28,3 +28,5 @@ SENDGRID_API_URL = "https://api.sendgrid.com/v3/mail/send"
 
 # Default benchmark runs
 DEFAULT_BENCHMARK_RUNS = 5
+
+DEFAULT_CLIENT_TIMEOUT = 5
