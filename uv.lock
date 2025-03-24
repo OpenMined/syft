@@ -2817,7 +2817,7 @@ requires-dist = [
     { name = "rich", specifier = "==13.9.4" },
     { name = "textual", specifier = ">=1.0.0" },
     { name = "tqdm", specifier = ">=4.67.1" },
-    { name = "typer", specifier = "==0.15.2" },
+    { name = "typer", specifier = ">=0.12.5" },
     { name = "typing-extensions", specifier = "==4.12.2" },
     { name = "uvicorn", specifier = "==0.34.0" },
     { name = "wcmatch", specifier = "==10.0" },
