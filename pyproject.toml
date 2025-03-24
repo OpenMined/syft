@@ -26,9 +26,6 @@ dependencies = [
     "pyjwt==2.10.1",
     "wcmatch==10.0",
     "curl-cffi>=0.7.4",
-    "opentelemetry-instrumentation-fastapi==0.50b0",
-    "opentelemetry-instrumentation-sqlite3==0.50b0",
-    "opentelemetry-exporter-otlp-proto-grpc==1.29.0",
     "distro==1.9.0",
     "textual>=1.0.0",
     "msgpack>=1.1.0",
@@ -44,6 +41,11 @@ dependencies = [
 # Published optional dependencies, or "extras". Will be referenced in the built wheel
 # add using `uv add --optional <group> <pip package>`
 [project.optional-dependencies]
+telemetry = [
+    "opentelemetry-instrumentation-fastapi==0.50b0",
+    "opentelemetry-instrumentation-sqlite3==0.50b0",
+    "opentelemetry-exporter-otlp-proto-grpc==1.29.0",
+]
 
 [project.scripts]
 syftbox = "syftbox.main:main"

@@ -2751,9 +2751,6 @@ dependencies = [
     { name = "jinja2" },
     { name = "loguru" },
     { name = "msgpack" },
-    { name = "opentelemetry-exporter-otlp-proto-grpc" },
-    { name = "opentelemetry-instrumentation-fastapi" },
-    { name = "opentelemetry-instrumentation-sqlite3" },
     { name = "pathspec" },
     { name = "pid" },
     { name = "psutil" },
@@ -2771,6 +2768,13 @@ dependencies = [
     { name = "typing-extensions" },
     { name = "uvicorn" },
     { name = "wcmatch" },
+]
+
+[package.optional-dependencies]
+telemetry = [
+    { name = "opentelemetry-exporter-otlp-proto-grpc" },
+    { name = "opentelemetry-instrumentation-fastapi" },
+    { name = "opentelemetry-instrumentation-sqlite3" },
 ]
 
 [package.dev-dependencies]
@@ -2801,9 +2805,9 @@ requires-dist = [
     { name = "jinja2", specifier = "==3.1.6" },
     { name = "loguru", specifier = "==0.7.3" },
     { name = "msgpack", specifier = ">=1.1.0" },
-    { name = "opentelemetry-exporter-otlp-proto-grpc", specifier = "==1.29.0" },
-    { name = "opentelemetry-instrumentation-fastapi", specifier = "==0.50b0" },
-    { name = "opentelemetry-instrumentation-sqlite3", specifier = "==0.50b0" },
+    { name = "opentelemetry-exporter-otlp-proto-grpc", marker = "extra == 'telemetry'", specifier = "==1.29.0" },
+    { name = "opentelemetry-instrumentation-fastapi", marker = "extra == 'telemetry'", specifier = "==0.50b0" },
+    { name = "opentelemetry-instrumentation-sqlite3", marker = "extra == 'telemetry'", specifier = "==0.50b0" },
     { name = "pathspec", specifier = "==0.12.1" },
     { name = "pid", specifier = "==3.0.4" },
     { name = "psutil", specifier = "==6.1.1" },
@@ -2822,6 +2826,7 @@ requires-dist = [
     { name = "uvicorn", specifier = "==0.34.0" },
     { name = "wcmatch", specifier = "==10.0" },
 ]
+provides-extras = ["telemetry"]
 
 [package.metadata.requires-dev]
 dev = [
