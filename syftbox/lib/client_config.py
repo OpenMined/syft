@@ -141,7 +141,7 @@ class SyftClientConfig(BaseModel):
             config_args["access_token"] = os.environ[ACCESS_TOKEN_ENV]
 
         if PORT_ENV in os.environ:
-            config_args["port"] = os.environ[PORT_ENV]
+            config_args["port"] = int(os.environ[PORT_ENV])
         else:
             config_args["port"] = get_free_port()
 
