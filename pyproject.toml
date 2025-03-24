@@ -32,6 +32,9 @@ dependencies = [
     "tqdm>=4.67.1",
     "aiofiles>=24.1.0",
     "requests>=2.32.3",
+    "opentelemetry-instrumentation-fastapi==0.50b0",
+    "opentelemetry-instrumentation-sqlite3==0.50b0",
+    "opentelemetry-exporter-otlp-proto-grpc==1.29.0",
 ]
 
 # Local dependencies for development
@@ -41,11 +44,6 @@ dependencies = [
 # Published optional dependencies, or "extras". Will be referenced in the built wheel
 # add using `uv add --optional <group> <pip package>`
 [project.optional-dependencies]
-telemetry = [
-    "opentelemetry-instrumentation-fastapi==0.50b0",
-    "opentelemetry-instrumentation-sqlite3==0.50b0",
-    "opentelemetry-exporter-otlp-proto-grpc==1.29.0",
-]
 
 [project.scripts]
 syftbox = "syftbox.main:main"
