@@ -32,9 +32,6 @@ dependencies = [
     "tqdm>=4.67.1",
     "aiofiles>=24.1.0",
     "requests>=2.32.3",
-    "opentelemetry-instrumentation-fastapi==0.50b0",
-    "opentelemetry-instrumentation-sqlite3==0.50b0",
-    "opentelemetry-exporter-otlp-proto-grpc==1.29.0",
 ]
 
 # Local dependencies for development
@@ -72,6 +69,9 @@ dev-dependencies = [
     "pytest-xdist[psutil]>=3.6.1",
     "pytest>=8.3.3",
     "textual-dev>=1.7.0",
+    "opentelemetry-instrumentation-fastapi==0.50b0",
+    "opentelemetry-instrumentation-sqlite3==0.50b0",
+    "opentelemetry-exporter-otlp-proto-grpc==1.29.0",
 ]
 
 [tool.pytest.ini_options]
