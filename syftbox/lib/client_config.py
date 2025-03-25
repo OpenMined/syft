@@ -9,14 +9,26 @@ from pydantic.main import IncEx
 from pydantic_core import Url
 from typing_extensions import Self
 
-from syftbox.lib.constants import DEFAULT_CONFIG_PATH, DEFAULT_DATA_DIR, DEFAULT_SERVER_URL
+from syftbox.client.utils.net import get_free_port
+from syftbox.lib.constants import (
+    DEFAULT_CLIENT_TIMEOUT,
+    DEFAULT_CONFIG_PATH,
+    DEFAULT_DATA_DIR,
+    DEFAULT_SERVER_URL,
+)
 from syftbox.lib.exceptions import ClientConfigException
 from syftbox.lib.types import PathLike, to_path
 
 __all__ = ["SyftClientConfig"]
 
-# env or default
+# Environment variables
 CONFIG_PATH_ENV = "SYFTBOX_CLIENT_CONFIG_PATH"
+EMAIL_ENV = "SYFTBOX_EMAIL"
+SERVER_URL_ENV = "SYFTBOX_SERVER_URL"
+DATA_DIR_ENV = "SYFTBOX_DATA_DIR"
+PORT_ENV = "SYFTBOX_PORT"
+ACCESS_TOKEN_ENV = "SYFTBOX_ACCESS_TOKEN"
+CLIENT_TIMEOUT_ENV = "SYFTBOX_CLIENT_TIMEOUT"
 
 # Old configuration file path for the client
 LEGACY_CONFIG_NAME = "client_config.json"
@@ -62,7 +74,9 @@ class SyftClientConfig(BaseModel):
     path: Path = Field(exclude=True, description="Path to the config file")
     """Path to the config file"""
 
-    client_timeout: float = Field(default=5, description="Timeout used by the client connection to the SyftBox server")
+    client_timeout: float = Field(
+        default=DEFAULT_CLIENT_TIMEOUT, description="Timeout used by the client connection to the SyftBox server"
+    )
     """Timeout used by the client connection to the SyftBox server"""
 
     @field_validator("client_url", mode="before")
@@ -84,6 +98,57 @@ class SyftClientConfig(BaseModel):
 
     def set_port(self, port: int) -> None:
         self.client_url = Url(f"http://127.0.0.1:{port}")
+
+    @classmethod
+    def from_env(cls, ignore_existing_config: bool = True) -> Self:
+        """
+        Get the client configuration from environment variables.
+
+        Required environment variables:
+        - SYFTBOX_CLIENT_CONFIG_PATH: Path to store the configuration file
+        - SYFTBOX_EMAIL: User's email address
+        - SYFTBOX_ACCESS_TOKEN: User's access token
+
+        Optional environment variables:
+        - SYFTBOX_DATA_DIR: Directory to store synced data
+        - SYFTBOX_SERVER_URL: URL of the remote SyftBox server
+        - SYFTBOX_PORT: Port for the local client (defaults to 8000)
+
+        Raises ValueError if required configuration is missing.
+        """
+        try:
+            config_path = Path(os.environ[CONFIG_PATH_ENV])
+        except KeyError:
+            raise ValueError(f"Environment variable {CONFIG_PATH_ENV} is required")
+        except ValueError:
+            raise ValueError(f"Invalid path provided in {CONFIG_PATH_ENV}")
+
+        if not ignore_existing_config and config_path.exists():
+            existing_config = SyftClientConfig.load(config_path)
+            config_args = existing_config.model_dump(exclude={"path"})
+        else:
+            config_args = {}
+
+        if DATA_DIR_ENV in os.environ:
+            config_args["data_dir"] = os.environ[DATA_DIR_ENV]
+        if SERVER_URL_ENV in os.environ:
+            config_args["server_url"] = os.environ[SERVER_URL_ENV]
+        if CLIENT_TIMEOUT_ENV in os.environ:
+            config_args["client_timeout"] = float(os.environ[CLIENT_TIMEOUT_ENV])
+        if EMAIL_ENV in os.environ:
+            config_args["email"] = os.environ[EMAIL_ENV]
+        if ACCESS_TOKEN_ENV in os.environ:
+            config_args["access_token"] = os.environ[ACCESS_TOKEN_ENV]
+
+        if PORT_ENV in os.environ:
+            config_args["port"] = int(os.environ[PORT_ENV])
+        else:
+            config_args["port"] = get_free_port()
+
+        return cls(
+            path=config_path,
+            **config_args,
+        )
 
     @classmethod
     def load(cls, conf_path: Optional[PathLike] = None) -> Self:
