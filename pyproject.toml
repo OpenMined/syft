@@ -35,6 +35,8 @@ dependencies = [
     "tqdm>=4.67.1",
     "aiofiles>=24.1.0",
     "requests>=2.32.3",
+    "nats-py>=2.10.0",
+    "ormsgpack>=1.9.0",
 ]
 
 # Local dependencies for development
@@ -72,6 +74,7 @@ dev-dependencies = [
     "pytest-xdist[psutil]>=3.6.1",
     "pytest>=8.3.3",
     "textual-dev>=1.7.0",
+    "jupyter>=1.1.1",
 ]
 
 [tool.pytest.ini_options]
