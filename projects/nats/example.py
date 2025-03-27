@@ -282,6 +282,8 @@ async def run_benchmark():
 
         # Measure request-response latency
         latencies = []
+        start_total = time.time()
+
         for i in range(iterations):
             start_time = time.time()
             req_id = await client.send_request(payload)
@@ -291,16 +293,26 @@ async def run_benchmark():
             if response:
                 latency = (end_time - start_time) * 1000  # ms
                 latencies.append(latency)
+            else:
+                print(f"Warning: No response received for iteration {i}")
 
             if i % 10 == 0:
                 print(f"Completed {i}/{iterations} iterations")
 
+        end_total = time.time()
+        total_time = end_total - start_total
+
+        if not latencies:
+            print(f"Error: No successful responses for message size {size}")
+            continue
+
         # Calculate statistics
         avg_latency = statistics.mean(latencies)
-        p95_latency = sorted(latencies)[int(iterations * 0.95)]
-        p99_latency = sorted(latencies)[int(iterations * 0.99)]
+        p95_latency = sorted(latencies)[int(min(iterations - 1, iterations * 0.95))]
+        p99_latency = sorted(latencies)[int(min(iterations - 1, iterations * 0.99))]
 
-        throughput = iterations / sum(latencies) * 1000  # requests per second
+        # Calculate throughput based on total time, not sum of latencies
+        throughput = iterations / total_time
 
         results[size] = {
             "avg_latency_ms": avg_latency,
@@ -322,8 +334,5 @@ async def run_benchmark():
     await server.close()
 
 
-# if __name__ == "__main__":
-# asyncio.run(run_benchmark())
-
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(run_benchmark())
