@@ -1,5 +1,6 @@
 import asyncio
 import json
+import signal
 import statistics
 import time
 import uuid
@@ -135,7 +136,11 @@ class NatsRPCClient(NatsClient):
             "request_id": request_id,
         }
 
-        logger.debug(f"Sending request with request_id {request_id}")
+        logger.debug(f"""Sending:
+            subject: {subject}
+            headers: {headers}
+            payload: {payload}
+        """)
         await self.publish(subject, payload, headers=headers)
         return request_id
 
@@ -201,7 +206,11 @@ class NatsRPCServer(NatsClient):
         headers = {
             "request_id": request_id,
         }
-        logger.debug(f"Sending response to {requester} with request_id {request_id}")
+        logger.debug(f"""Sending:
+            subject: {subject}
+            headers: {headers}
+            payload: {payload}
+        """)
         await self.publish(subject, payload, headers=headers)
 
     async def start(self):
@@ -210,6 +219,21 @@ class NatsRPCServer(NatsClient):
         subj = make_request_subject("*", self.responder, self.app_name)
         logger.debug(f"Subscribing to {subj}")
         await self.subscribe_with_callback(subj, self._event_handler)
+
+    async def run_forever(self):
+        stop_event = asyncio.Event()
+
+        def signal_handler():
+            logger.info("Shutdown signal received, stopping server...")
+            stop_event.set()
+
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            asyncio.get_event_loop().add_signal_handler(sig, signal_handler)
+
+        await stop_event.wait()
+        logger.info("Shutting down server...")
+        await self.close()
+        logger.info("Server shutdown complete")
 
 
 # Simple ping handler
@@ -254,6 +278,14 @@ async def main():
 # Echo handler for the server
 def echo_handler(msg):
     return msg.data
+
+
+async def run_server():
+    # Initialize server
+    server = NatsRPCServer(responder="benchmark@example.com", app_name="benchmark", event_handler=echo_handler)
+    await server.start()
+    logger.info("Server started")
+    await server.run_forever()
 
 
 async def run_benchmark():

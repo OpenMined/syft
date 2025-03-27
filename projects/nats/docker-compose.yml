@@ -6,10 +6,13 @@ services:
     ports:
       - "4222:4222" # Client connections
       - "6222:6222" # HTTP management
-      - "8222:8222" # routing port for clustering
+      - "8222:8222" # monitoring interface
     command:
       - "-js" # enable JetStream (persistent messaging)
       - "-sd"
       - "/data" # JetStream storage directory
+      - "-m" # enable HTTP monitoring interface
+      - "8222" # specify monitoring port
     volumes:
       - ./nats_data:/data # mount JetStream storage directory
+    user: "${UID}:${GID}" # Run as current user to avoid permission issues
