@@ -28,10 +28,10 @@ def test_client_load(mock_config, tmp_path):
     assert isinstance(client.config, SyftClientConfig)
 
 
-def test_api_request_name(client, monkeypatch):
+def test_app_request_name(client, monkeypatch):
     test_dir = Path("/fake/api/request/path")
     monkeypatch.setattr(Path, "cwd", lambda: test_dir)
-    assert client.api_request_name == "path"
+    assert client.app_request_name == "path"
 
 
 @pytest.mark.parametrize(
@@ -42,13 +42,13 @@ def test_api_request_name(client, monkeypatch):
         ("custom_api", "other@example.com", "custom_api"),
     ],
 )
-def test_api_data(client, monkeypatch, api_name, datasite, expected):
+def test_app_data(client, monkeypatch, api_name, datasite, expected):
     monkeypatch.setattr(Path, "cwd", lambda: Path("/fake/current_api"))
 
-    result = client.api_data(api_name, datasite)
+    result = client.app_data(api_name, datasite)
 
     datasite_email = datasite or client.config.email
-    expected_path = client.workspace.datasites / datasite_email / "api_data" / (expected)
+    expected_path = client.workspace.datasites / datasite_email / "app_data" / (expected)
     assert result == expected_path
 
 
