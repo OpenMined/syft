@@ -79,9 +79,8 @@ async def copy_private_data(e2e_client: E2EContext, client: Client):
 async def check_fl_client_installed(e2e_client: E2EContext, client: Client):
     """Check if FL client is installed and running"""
     logger.info(f"Checking if FL client is installed for {client.email}")
-    fl_client_dir = client.api_data_dir("fl_client")
+    fl_client_dir = client.app_data_dir("fl_client")
 
-    # App is installed in api_data_dir
     await e2e_client.wait_for_path(fl_client_dir, timeout=30)
 
     # Check if request, running and done folders are created
@@ -96,13 +95,13 @@ async def approve_data_request(e2e_client: E2EContext, client: Client):
     """Approve data request for FL client"""
 
     logger.info(f"Approving data request for {client.email}")
-    request_dir = client.api_data_dir("fl_client") / "request"
+    request_dir = client.app_data_dir("fl_client") / "request"
     project_dir = request_dir / PROJECT_NAME
 
     await e2e_client.wait_for_path(project_dir, timeout=30, interval=1)
     assert project_dir.exists()
 
-    running_dir = client.api_data_dir("fl_client") / "running"
+    running_dir = client.app_data_dir("fl_client") / "running"
 
     # Approve request
     # Approve action is moving project dir to running dir
@@ -122,7 +121,7 @@ async def approve_data_request(e2e_client: E2EContext, client: Client):
 
 async def check_for_training_complete(e2e_client: E2EContext, client: Client):
     logger.info(f"Checking for training completion for {client.email}")
-    done_dir = client.api_data_dir("fl_client") / "done"
+    done_dir = client.app_data_dir("fl_client") / "done"
     assert done_dir.exists()
 
     await e2e_client.wait_for_path(done_dir / PROJECT_NAME, timeout=300, interval=1)
@@ -144,7 +143,7 @@ def validate_participant_data(participants: dict, key: str, expected_value: str)
 
 
 async def validate_project_folder_empty(e2e_context: E2EContext, client: Client, timeout: int = 30):
-    project_folder_dir = client.api_data_dir("fl_client") / "running" / PROJECT_NAME
+    project_folder_dir = client.app_data_dir("fl_client") / "running" / PROJECT_NAME
     start_time = asyncio.get_event_loop().time()
     while project_folder_dir.exists():
         await asyncio.sleep(1)
@@ -168,13 +167,13 @@ async def test_e2e_fl_model_aggregator(e2e_context: E2EContext):
     logger.info("Copying launch config")
 
     # sample launch config
-    sample_dir = agg_client.api_dir / "fl_aggregator" / "samples"
+    sample_dir = agg_client.apps_dir / "fl_aggregator" / "samples"
 
     sample_launch_config = sample_dir / "launch_config"
 
     # global_model_weight.pt  model_arch.py
 
-    launch_dir = agg_client.api_data_dir("fl_aggregator") / "launch"
+    launch_dir = agg_client.app_data_dir("fl_aggregator") / "launch"
     launch_dir.mkdir(parents=True, exist_ok=True)
 
     # copy model_arch.py and global_model_weight.pt

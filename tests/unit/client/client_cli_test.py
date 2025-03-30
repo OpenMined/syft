@@ -23,8 +23,8 @@ def test_run_syftbox_success(monkeypatch, mock_config):
         return False
 
     monkeypatch.setattr("syftbox.client.core.run_syftbox", mock_run_syftbox)
-    monkeypatch.setattr("syftbox.client.cli_setup.setup_config_interactive", setup_config_interactive)
-    monkeypatch.setattr("syftbox.client.cli_setup.get_migration_decision", get_migration_decision)
+    monkeypatch.setattr("syftbox.client.setup_interactive.setup_config_interactive", setup_config_interactive)
+    monkeypatch.setattr("syftbox.client.setup_interactive.get_migration_decision", get_migration_decision)
     monkeypatch.setattr("syftbox.client.utils.net.is_port_in_use", mock_port_in_use)
 
     result = runner.invoke(client_cli)
@@ -42,9 +42,9 @@ def test_client_error(monkeypatch, mock_config):
         return False
 
     monkeypatch.setattr("syftbox.client.core.run_syftbox", mock_run_syftbox)
-    monkeypatch.setattr("syftbox.client.cli_setup.setup_config_interactive", setup_config_interactive)
+    monkeypatch.setattr("syftbox.client.setup_interactive.setup_config_interactive", setup_config_interactive)
     monkeypatch.setattr("syftbox.client.utils.net.is_port_in_use", mock_port_in_use)
-    monkeypatch.setattr("syftbox.client.cli_setup.get_migration_decision", get_migration_decision)
+    monkeypatch.setattr("syftbox.client.setup_interactive.get_migration_decision", get_migration_decision)
 
     result = runner.invoke(client_cli)
     assert result.exit_code == -1

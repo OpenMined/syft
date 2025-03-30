@@ -15,7 +15,7 @@ class SyftBoxTUI(App):
     CSS_PATH = Path(__file__).parent.parent / "assets" / "tui.tcss"
     BINDINGS = [
         ("h", "switch_tab('Home')", "Home"),
-        ("a", "switch_tab('APIs')", "APIs"),
+        ("a", "switch_tab('Apps')", "Apps"),
         ("d", "switch_tab('Datasites')", "Datasites"),
         ("s", "switch_tab('Sync')", "Sync"),
         ("q", "quit", "Quit"),
@@ -39,7 +39,7 @@ class SyftBoxTUI(App):
         with TabbedContent():
             with TabPane("Home", id="Home"):
                 yield HomeWidget(self.syftbox_context)
-            with TabPane("APIs", id="APIs"):
+            with TabPane("Apps", id="Apps"):
                 yield APIWidget(self.syftbox_context)
             with TabPane("Datasites", id="Datasites"):
                 yield DatasiteSelector(

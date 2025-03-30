@@ -112,7 +112,7 @@ async def test_e2e_aggregator_with_local_training(e2e_context: E2EContext):
     await e2e_context.wait_for_api(AGGREGATOR_API_NAME, agg_client)
 
     logger.info("Aggregator copies `participants.json` into the `launch` directory")
-    launch_dir = agg_client.api_data_dir(AGGREGATOR_API_NAME) / "launch"
+    launch_dir = agg_client.app_data_dir(AGGREGATOR_API_NAME) / "launch"
     launch_dir.mkdir(parents=True, exist_ok=True)
     participants_file = launch_dir / "participants.json"
     participants_file.write_text(json.dumps(AGGREGATOR_CONFIG))
@@ -140,7 +140,7 @@ async def test_e2e_aggregator_with_local_training(e2e_context: E2EContext):
     )
 
     logger.info("Waiting for aggregator to aggregate the models and generate results")
-    done_dir = agg_client.api_data_dir(AGGREGATOR_API_NAME) / "done"
+    done_dir = agg_client.app_data_dir(AGGREGATOR_API_NAME) / "done"
     results_file = done_dir / "results.json"
     await e2e_context.wait_for_path(results_file, timeout=90, interval=1)
 
@@ -152,5 +152,5 @@ async def test_e2e_aggregator_with_local_training(e2e_context: E2EContext):
 
     logger.info("Check that the launch and running dir are empty")
     assert len(list(launch_dir.iterdir())) == 0
-    agg_running_dir = agg_client.api_data_dir(AGGREGATOR_API_NAME) / "running"
+    agg_running_dir = agg_client.app_data_dir(AGGREGATOR_API_NAME) / "running"
     assert len(list(agg_running_dir.iterdir())) == 0

@@ -20,7 +20,7 @@ class PluginManagerInterface(Protocol):
     """All initialized plugins."""
 
     if TYPE_CHECKING:
-        from syftbox.client.plugins.apps import AppRunner
+        from syftbox.client.plugins.app_scheduler import AppScheduler
         from syftbox.client.plugins.sync.manager import SyncManager
 
     @property
@@ -29,8 +29,8 @@ class PluginManagerInterface(Protocol):
         ...
 
     @property
-    def app_runner(self) -> AppRunner:
-        """AppRunner instance for managing application execution."""
+    def app_runner(self) -> AppScheduler:
+        """AppScheduler instance for managing application execution."""
         ...
 
 

@@ -37,7 +37,7 @@ jobs:
       - name: Install Just
         uses: extractions/setup-just@v3
         with:
-          just-version: "1.36.0"
+          just-version: "1.40.0"
 
       - name: Set up SSH
         run: |
