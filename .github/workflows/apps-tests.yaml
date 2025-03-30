@@ -61,6 +61,12 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Setup timeout
+        if: runner.os == 'macOS'
+        run: |
+          brew install coreutils
+          sudo ln -s /usr/local/bin/gtimeout /usr/local/bin/timeout
+
       - name: Provisioning dummy datasite
         run: |
           CONFIG_PATH="$(pwd)/config.json"
