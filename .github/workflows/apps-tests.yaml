@@ -72,6 +72,7 @@ jobs:
         run: |
           set +e
 
+          export SYFTBOX_CLIENT_CONFIG_PATH="$(pwd)/config.json"
           timeout 10s sh ./run.sh
 
           exit_code=$?
