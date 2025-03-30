@@ -1,6 +1,6 @@
 from secrets import token_hex
 
-from syftbox.client.cli_setup import setup_config_interactive
+from syftbox.client.setup_interactive import setup_config_interactive
 from syftbox.lib.client_config import SyftClientConfig
 
 
