@@ -70,7 +70,7 @@ jobs:
 
       - name: Run the test
         run: |
-          set +x
+          set +e
 
           timeout 10s sh ./run.sh
 
