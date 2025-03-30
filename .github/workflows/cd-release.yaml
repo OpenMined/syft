@@ -72,12 +72,12 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
-          version: "0.4.25"
+          version: "0.6.10"
 
       - name: Install Just
         uses: extractions/setup-just@v2
         with:
-          just-version: "1.36.0"
+          just-version: "1.40.0"
 
       - name: Install dependencies
         run: |
