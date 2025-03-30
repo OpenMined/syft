@@ -51,9 +51,9 @@ class Client:
         return self.data_dir / "datasites"
 
     @property
-    def api_dir(self):
+    def apps_dir(self):
         """data_dir/apis"""
-        return self.data_dir / "apis"
+        return self.data_dir / "apps"
 
     @property
     def private_dir(self):
@@ -72,11 +72,11 @@ class Client:
 
     def api_path(self, api_name: str):
         """data_dir/apis/{api_name}"""
-        return self.api_dir / api_name
+        return self.apps_dir / api_name
 
-    def api_data_dir(self, app_name: str):
-        """data_dir/datasites/{email}/api_data/{app_name}"""
-        return self.my_datasite / "api_data" / app_name
+    def app_data_dir(self, app_name: str):
+        """data_dir/datasites/{email}/app_data/{app_name}"""
+        return self.my_datasite / "app_data" / app_name
 
 
 class E2EContext:
@@ -186,7 +186,7 @@ class E2EContext:
 
     async def wait_for_api(self, app_name: str, client: Client, timeout: int = 30):
         logger.debug(f"Waiting for API '{app_name}' to be ready (timeout={timeout}s)")
-        run_path = client.api_dir / app_name / "run.sh"
+        run_path = client.apps_dir / app_name / "run.sh"
         await self.wait_for_path(run_path, timeout=timeout)
         logger.success(f"API '{app_name}' is ready on client '{client.name}'")
 

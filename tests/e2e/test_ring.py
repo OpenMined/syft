@@ -54,12 +54,12 @@ async def test_e2e_ring(e2e_context: E2EContext):
     # kickstart ring
     logger.info("Initiating ring by copying data.json")
     init_user = e2e_context.clients[0]
-    running_dir = init_user.api_data_dir("ring") / "running"
+    running_dir = init_user.app_data_dir("ring") / "running"
     running_dir.mkdir(parents=True, exist_ok=True)
     running_dir.joinpath("data.json").write_text(json.dumps(INIT_DATA))
 
     logger.info("Waiting for ring results to be available")
-    output = init_user.api_data_dir("ring") / "done" / "data.json"
+    output = init_user.app_data_dir("ring") / "done" / "data.json"
     await e2e_context.wait_for_path(output, timeout=120, interval=1)
 
     # check the output
