@@ -1,6 +1,5 @@
 from pathlib import Path
 
-import syftbox
 from syftbox.client.plugins.apps import run_apps
 
 
@@ -14,20 +13,19 @@ class AppFixture:
         # Create a Python script that uses api_request_name
         test_script = app_dir / "main.py"
         test_script.write_text("""
-from syftbox.lib import Client
+from syft_core import Client
 
 client = Client.load()
 print(f"API_NAME:{client.api_request_name}")
 """)
 
         # Create runner script
-        SYFTBOX_SOURCE_PATH = Path(syftbox.__file__).parent.parent
         run_script = app_dir / "run.sh"
-        run_script.write_text(f"""#!/bin/bash
+        run_script.write_text("""#!/bin/bash
 set -e
 
 uv venv && . .venv/bin/activate
-uv pip install --upgrade --editable {SYFTBOX_SOURCE_PATH}
+uv pip install --upgrade syft_core
 python3 main.py | tee app.log
 deactivate
 """)
