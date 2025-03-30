@@ -11,10 +11,16 @@ jobs:
       max-parallel: 99
       matrix:
         apps:
+          - DatasetLoader@main
+          - cpu_tracker_member@main
+          - logged_in@main
           - ring@main
-          # - tutorial-apps@basic_aggregator
-          # - tutorial-apps@pretrained_model_aggregator
-          # - tutorial-apps@pretrained_model_local
+          - inbox@main
+          - basic_aggregator@main
+          - fl_client@main
+          - fl_aggregator@main
+          - pretrained_model_aggregator@main
+          - pretrained_model_local@main
         python-version: ["3.9"]
         os: [ubuntu-latest, macos-latest]
         # runner: [syftbox-sh-linux-x64, scaleway-macOS-arm64]
@@ -52,19 +58,12 @@ jobs:
           CONFIG_PATH="$(pwd)/config.json"
           SYNC_FOLDER="$(pwd)/sync/"
           echo '{
-              "config_path": "'"$CONFIG_PATH"'",
-              "sync_folder": "'"$SYNC_FOLDER"'",
-              "port": 8011,
+              "data_dir": "'"$SYNC_FOLDER"'",
+              "server_url": "http://localhost:5001",
+              "client_url": "http://localhost:8080",
               "email": "alice@openmined.org",
               "token": null,
-              "server_url": "http://localhost:5001",
-              "email_token": null,
-              "autorun_plugins": [
-                  "init",
-                  "create_datasite",
-                  "sync",
-                  "apps"
-              ]
+              "email_token": null
           }' > $CONFIG_PATH
           cat $CONFIG_PATH
 
