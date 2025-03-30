@@ -75,7 +75,7 @@ jobs:
           version: "0.6.10"
 
       - name: Install Just
-        uses: extractions/setup-just@v2
+        uses: extractions/setup-just@v3
         with:
           just-version: "1.40.0"
 
