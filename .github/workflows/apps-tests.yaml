@@ -11,47 +11,61 @@ jobs:
       max-parallel: 99
       matrix:
         apps:
-          - DatasetLoader@main
-          - cpu_tracker_member@main
-          - logged_in@main
-          - ring@main
-          - inbox@main
-          - basic_aggregator@main
-          - fl_client@main
-          - fl_aggregator@main
-          - pretrained_model_aggregator@main
-          - pretrained_model_local@main
-        python-version: ["3.9"]
+          - repo: "OpenMined/DatasetLoader@main"
+            timeout: "10s"
+          - repo: "OpenMined/cpu_tracker_member@main"
+            timeout: "10s"
+          - repo: "OpenMined/logged_in@main"
+            timeout: "10s"
+          - repo: "OpenMined/inbox@main"
+            timeout: "10s"
+          - repo: "OpenMined/ring@main"
+            timeout: "30s"
+          - repo: "OpenMined/basic_aggregator@main"
+            timeout: "60s"
+          - repo: "OpenMined/fl_client@main"
+            timeout: "90s"
+          - repo: "OpenMined/fl_aggregator@main"
+            timeout: "90s"
+          - repo: "OpenMined/pretrained_model_aggregator@main"
+            timeout: "90s"
+          - repo: "OpenMined/pretrained_model_local@main"
+            timeout: "90s"
+        python-version: ["3.9", "3.12"]
         os: [ubuntu-latest, macos-latest]
-        # runner: [syftbox-sh-linux-x64, scaleway-macOS-arm64]
       fail-fast: false
 
-    # runs-on: ${{ matrix.runner }}
     runs-on: ${{ matrix.os }}
     steps:
       - name: Parse app repository info
         id: apprepo
         run: |
-          REPO=$(echo ${{ matrix.apps }} | cut -d'@' -f1)
-          REF=$(echo ${{ matrix.apps }} | cut -d'@' -f2)
+          REPO=$(echo ${{ matrix.apps.repo }} | cut -d'@' -f1)
+          REF=$(echo ${{ matrix.apps.repo }} | cut -d'@' -f2)
           echo "REPO=$REPO" >> $GITHUB_OUTPUT
           echo "REF=$REF" >> $GITHUB_OUTPUT
 
-      - name: Checkout
+      - name: Checkout ${{ matrix.apps.repo }}
         uses: actions/checkout@v4
         with:
-          repository: OpenMined/${{ steps.apprepo.outputs.REPO }}
+          repository: ${{ steps.apprepo.outputs.REPO }}
           ref: ${{ steps.apprepo.outputs.REF }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
-          version: "0.4.25"
+          version: "0.6.10"
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+
+      - name: Setup timeout
+        if: runner.os == 'macOS'
+        run: |
+          brew install coreutils
+          sudo ln -s /usr/local/bin/gtimeout /usr/local/bin/timeout
 
       - name: Provisioning dummy datasite
         run: |
@@ -68,16 +82,21 @@ jobs:
           }' > $CONFIG_PATH
           cat $CONFIG_PATH
 
-      - name: Run the test
+      - name: Running app ${{ matrix.apps.repo }}
         run: |
-          chmod +x ./run.sh
+          set +e
+
           export SYFTBOX_CLIENT_CONFIG_PATH="$(pwd)/config.json"
-          timeout 10s sh ./run.sh
+          timeout ${{ matrix.apps.timeout }} sh ./run.sh
+
           exit_code=$?
+          echo "Exit code: $exit_code"
+
+          set -e
+
           if [ $exit_code -eq 124 ]; then
-            echo "run.sh is running long as expected; marking step as success."
-            exit 0
+              echo "run.sh is running long as expected; marking step as success."
+              exit 0
           else
-            echo "run.sh exited with code $exit_code."
-            exit $exit_code
+              exit $exit_code
           fi
