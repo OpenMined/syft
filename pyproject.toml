@@ -18,7 +18,7 @@ dependencies = [
     "py-fast-rsync==0.1.0",
     "pathspec==0.12.1",
     "python-multipart==0.0.20",
-    "rich==13.9.4",
+    "rich==14.0.0",
     "croniter==6.0.0",
     "typer==0.15.2",
     "pid==3.0.4",
