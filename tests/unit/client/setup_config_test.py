@@ -1,6 +1,6 @@
 from secrets import token_hex
 
-from syftbox.client.cli_setup import setup_config_interactive
+from syftbox.client.setup_interactive import setup_config_interactive
 from syftbox.lib.client_config import SyftClientConfig
 
 
@@ -37,8 +37,8 @@ def test_setup_new_config_with_prompt(tmp_path, monkeypatch):
     server = "http://test.com/"
     port = 8080
 
-    monkeypatch.setattr("syftbox.client.cli_setup.prompt_email", lambda: email)
-    monkeypatch.setattr("syftbox.client.cli_setup.prompt_data_dir", lambda: data_dir)
+    monkeypatch.setattr("syftbox.client.setup_interactive.prompt_email", lambda: email)
+    monkeypatch.setattr("syftbox.client.setup_interactive.prompt_data_dir", lambda: data_dir)
 
     result = setup_config_interactive(
         config_path=config_path,
