@@ -67,6 +67,7 @@ jobs:
       max-parallel: 99
       matrix:
         e2e-test: [
+            "ring",
             "basic_aggregator",
             "model_aggregator",
             "aggregator_with_local_training",
