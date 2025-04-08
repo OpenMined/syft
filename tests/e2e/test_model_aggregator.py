@@ -80,7 +80,7 @@ async def test_e2e_model_aggregator(e2e_context: E2EContext):
 
     # copy launch config
     logger.info("Copying launch config")
-    launch_dir = agg_client.api_data_dir("pretrained_model_aggregator") / "launch"
+    launch_dir = agg_client.app_data_dir("pretrained_model_aggregator") / "launch"
     launch_dir.mkdir(parents=True, exist_ok=True)
     participants_file = launch_dir / "participants.json"
     participants_file.write_text(json.dumps(AGGREGATOR_CONFIG))
@@ -91,7 +91,7 @@ async def test_e2e_model_aggregator(e2e_context: E2EContext):
 
     # wait for results
     logger.info("Waiting for aggregator to generate results")
-    done_dir = agg_client.api_data_dir("pretrained_model_aggregator") / "done"
+    done_dir = agg_client.app_data_dir("pretrained_model_aggregator") / "done"
     results_file = done_dir / "results.json"
     await e2e_context.wait_for_path(results_file, timeout=120, interval=1)
 

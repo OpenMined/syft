@@ -42,7 +42,7 @@ async def test_e2e_basic_aggregator(e2e_context: E2EContext):
 
     # wait for the aggregator to finish
     logger.info("Waiting for aggregator to generate results")
-    result_path = e2e_context.clients[0].api_data_dir("basic_aggregation") / "results.json"
+    result_path = e2e_context.clients[0].app_data_dir("basic_aggregation") / "results.json"
     await e2e_context.wait_for_path(result_path, timeout=60, interval=1)
 
     # check the result

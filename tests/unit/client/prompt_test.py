@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from syftbox.client.cli_setup import prompt_data_dir, prompt_email
+from syftbox.client.setup_interactive import prompt_data_dir, prompt_email
 from syftbox.lib.constants import DEFAULT_DATA_DIR
 from syftbox.lib.validators import is_valid_dir, is_valid_email
 
@@ -76,7 +76,7 @@ def test_email_validation(email, expected):
 )
 def test_prompt_data_dir(user_input, expected, monkeypatch):
     monkeypatch.setattr("builtins.input", lambda *a, **k: user_input)
-    monkeypatch.setattr("syftbox.client.cli_setup.is_valid_dir", lambda x: (True, ""))
+    monkeypatch.setattr("syftbox.client.setup_interactive.is_valid_dir", lambda x: (True, ""))
 
     dir = prompt_data_dir()
     assert dir.absolute() == expected.absolute()
@@ -87,7 +87,7 @@ def test_prompt_email(monkeypatch):
     valid_email = "test@example.com"
 
     monkeypatch.setattr("builtins.input", lambda *a, **k: valid_email)
-    monkeypatch.setattr("syftbox.client.cli_setup.is_valid_dir", lambda x: (True, ""))
+    monkeypatch.setattr("syftbox.client.setup_interactive.is_valid_dir", lambda x: (True, ""))
 
     email = prompt_email()
     assert email == valid_email
