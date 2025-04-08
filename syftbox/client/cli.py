@@ -1,9 +1,15 @@
+import signal
+import sys
 from pathlib import Path
+from typing import Any
 
+from click.core import ParameterSource
+from loguru import logger
 from rich import print as rprint
 from typer import Context, Exit, Option, Typer
 from typing_extensions import Annotated, Optional
 
+from syftbox.lib.client_config import SyftClientConfig
 from syftbox.lib.constants import (
     DEFAULT_BENCHMARK_RUNS,
     DEFAULT_CONFIG_PATH,
@@ -65,7 +71,10 @@ VERBOSE_OPTS = Option(
     is_flag=True,
     help="Enable verbose mode",
 )
-
+SERVICE_OPTS = Option(
+    is_flag=True,
+    help="Launch syftbox client with container-friendly defaults. Only read environment variables, ignoring existing config file or other inputs",
+)
 
 
 TOKEN_OPTS = Option(
@@ -98,6 +107,7 @@ def client(
     port: Annotated[int, PORT_OPTS] = DEFAULT_PORT,
     open_dir: Annotated[bool, OPEN_OPTS] = True,
     verbose: Annotated[bool, VERBOSE_OPTS] = False,
+    service: Annotated[bool, SERVICE_OPTS] = False,
 ) -> None:
     """Run the SyftBox client"""
 
@@ -105,9 +115,14 @@ def client(
         # If a subcommand is being invoked, just return
         return
 
+    # If the service flag is set, run syftbox in service mode
+    if service:
+        setup_service_mode(ctx, verbose=verbose)
+        return
+
     # lazy import to imporve cli startup speed
-    from syftbox.client.cli_setup import get_migration_decision, setup_config_interactive
     from syftbox.client.core import run_syftbox
+    from syftbox.client.setup_interactive import get_migration_decision, setup_config_interactive
     from syftbox.client.utils.net import get_free_port, is_port_in_use
 
     if port == 0:
@@ -119,7 +134,6 @@ def client(
         raise Exit(1)
 
     client_config = setup_config_interactive(config_path, email, data_dir, server, port)
-
     migrate_datasite = get_migration_decision(client_config.data_dir)
 
     log_level = "DEBUG" if verbose else "INFO"
@@ -130,6 +144,64 @@ def client(
         migrate_datasite=migrate_datasite,
     )
     raise Exit(code)
+
+
+def _setup_signal_handlers() -> None:
+    """Set up signal handlers for graceful shutdown in container environments"""
+
+    def handle_sigterm(sig: int, frame: Any) -> None:
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, handle_sigterm)
+    signal.signal(signal.SIGINT, handle_sigterm)
+
+
+def setup_service_mode(ctx: Context, verbose: Annotated[bool, VERBOSE_OPTS] = False) -> None:
+    """
+    Run SyftBox client in non-interactive mode using environment variables.
+
+    This mode is designed for automation, containers, and services where
+    configuration is provided through environment variables rather than
+    interactive or a config file.
+
+    Required environment variables:
+    - SYFTBOX_CLIENT_CONFIG_PATH: Config file location (default: SYFTBOX_DATA_DIR/config.json)
+    - SYFTBOX_EMAIL: Email for authentication
+    - SYFTBOX_ACCESS_TOKEN: Authentication token
+
+    Optional environment variables:
+    - SYFTBOX_DATA_DIR: Data storage directory (default: ~/SyftBox)
+    - SYFTBOX_SERVER_URL: SyftBox server URL
+    - SYFTBOX_PORT: Port for local service (default: 8000)
+    - SYFTBOX_CLIENT_TIMEOUT: Timeout for client connection to the server (default: 5)
+    """
+    for name, source in ctx._parameter_source.items():
+        if name not in ("verbose", "service") and source == ParameterSource.COMMANDLINE:
+            rprint("[red]Error:[/red] Cannot use command line arguments when --service flag is set.")
+            raise Exit(1)
+
+    from syftbox.client.core import run_syftbox
+
+    _setup_signal_handlers()
+
+    client_config = SyftClientConfig.from_env(ignore_existing_config=True)
+    config_dict = client_config.model_dump(mode="json", exclude=["access_token"])
+    logger.info("Running SyftBox client with config:\n" + "\n".join(f"{k}: {v}" for k, v in config_dict.items()))
+
+    if client_config.access_token is None:
+        raise ValueError(
+            "Cannot launch SyftBox in non-interactive mode without authentication. "
+            "Please provide an access token via the SYFTBOX_ACCESS_TOKEN environment variable."
+        )
+
+    log_level = "DEBUG" if verbose else "INFO"
+    exit_code = run_syftbox(
+        client_config=client_config,
+        open_dir=False,
+        log_level=log_level,
+        migrate_datasite=True,
+    )
+    raise Exit(exit_code)
 
 
 @app.command()

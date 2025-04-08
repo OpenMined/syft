@@ -27,6 +27,6 @@ async def test_e2e_launch(e2e_context: E2EContext):
 
     for client in e2e_context.clients:
         assert client.datasite_dir.exists()
-        assert client.api_dir.exists()
+        assert client.apps_dir.exists()
         assert client.public_dir.exists()
-        assert client.api_data_dir("").exists()
+        assert client.app_data_dir("").exists()

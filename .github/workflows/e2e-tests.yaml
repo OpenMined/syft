@@ -28,12 +28,12 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
-          version: "0.4.25"
+          version: "0.6.10"
 
       - name: Install Just
-        uses: extractions/setup-just@v2
+        uses: extractions/setup-just@v3
         with:
-          just-version: "1.36.0"
+          just-version: "1.40.0"
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
@@ -70,8 +70,7 @@ jobs:
             "basic_aggregator",
             "model_aggregator",
             "aggregator_with_local_training",
-            # "fl_model_training",
-          ]
+          ] # "fl_model_training",
         python-version: ["3.9", "3.12"]
         os: [ubuntu-latest, macos-latest]
         # runner: [syftbox-sh-linux-x64, scaleway-macOS-arm64]
@@ -93,12 +92,12 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
-          version: "0.4.25"
+          version: "0.6.10"
 
       - name: Install Just
-        uses: extractions/setup-just@v2
+        uses: extractions/setup-just@v3
         with:
-          just-version: "1.36.0"
+          just-version: "1.40.0"
 
       - name: "Setup jq"
         uses: dcarbone/install-jq-action@v3
