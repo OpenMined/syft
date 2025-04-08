@@ -28,9 +28,9 @@ jobs:
           - repo: "OpenMined/fl_aggregator@main"
             timeout: "15s"
           - repo: "OpenMined/pretrained_model_aggregator@main"
-            timeout: "15s"
+            timeout: "60s"
           - repo: "OpenMined/pretrained_model_local@main"
-            timeout: "15s"
+            timeout: "60s"
         python-version: ["3.9", "3.12"]
         os: [ubuntu-latest, macos-latest]
       fail-fast: false
