@@ -4,11 +4,13 @@ from pathlib import Path
 from typing import Any
 
 from click.core import ParameterSource
+import httpx
 from loguru import logger
 from rich import print as rprint
 from typer import Context, Exit, Option, Typer
 from typing_extensions import Annotated, Optional
 
+from syftbox.client.auth import authenticate_user
 from syftbox.lib.client_config import SyftClientConfig
 from syftbox.lib.constants import (
     DEFAULT_BENCHMARK_RUNS,
@@ -17,6 +19,7 @@ from syftbox.lib.constants import (
     DEFAULT_PORT,
     DEFAULT_SERVER_URL,
 )
+from syftbox.lib.http import HEADER_SYFTBOX_USER, SYFTBOX_HEADERS
 
 app = Typer(
     name="SyftBox Client",
@@ -122,7 +125,10 @@ def client(
 
     # lazy import to imporve cli startup speed
     from syftbox.client.core import run_syftbox
-    from syftbox.client.setup_interactive import get_migration_decision, setup_config_interactive
+    from syftbox.client.setup_interactive import (
+        get_migration_decision,
+        setup_config_interactive,
+    )
     from syftbox.client.utils.net import get_free_port, is_port_in_use
 
     if port == 0:
@@ -130,7 +136,9 @@ def client(
     elif is_port_in_use(port):
         # new_port = get_free_port()
         # port = new_port
-        rprint(f"[bold red]Error:[/bold red] Client cannot start because port {port} is already in use!")
+        rprint(
+            f"[bold red]Error:[/bold red] Client cannot start because port {port} is already in use!"
+        )
         raise Exit(1)
 
     client_config = setup_config_interactive(config_path, email, data_dir, server, port)
@@ -156,7 +164,9 @@ def _setup_signal_handlers() -> None:
     signal.signal(signal.SIGINT, handle_sigterm)
 
 
-def setup_service_mode(ctx: Context, verbose: Annotated[bool, VERBOSE_OPTS] = False) -> None:
+def setup_service_mode(
+    ctx: Context, verbose: Annotated[bool, VERBOSE_OPTS] = False
+) -> None:
     """
     Run SyftBox client in non-interactive mode using environment variables.
 
@@ -177,7 +187,9 @@ def setup_service_mode(ctx: Context, verbose: Annotated[bool, VERBOSE_OPTS] = Fa
     """
     for name, source in ctx._parameter_source.items():
         if name not in ("verbose", "service") and source == ParameterSource.COMMANDLINE:
-            rprint("[red]Error:[/red] Cannot use command line arguments when --service flag is set.")
+            rprint(
+                "[red]Error:[/red] Cannot use command line arguments when --service flag is set."
+            )
             raise Exit(1)
 
     from syftbox.client.core import run_syftbox
@@ -186,13 +198,25 @@ def setup_service_mode(ctx: Context, verbose: Annotated[bool, VERBOSE_OPTS] = Fa
 
     client_config = SyftClientConfig.from_env(ignore_existing_config=True)
     config_dict = client_config.model_dump(mode="json", exclude=["access_token"])
-    logger.info("Running SyftBox client with config:\n" + "\n".join(f"{k}: {v}" for k, v in config_dict.items()))
+    logger.info(
+        "Running SyftBox client with config:\n"
+        + "\n".join(f"{k}: {v}" for k, v in config_dict.items())
+    )
 
     if client_config.access_token is None:
-        raise ValueError(
-            "Cannot launch SyftBox in non-interactive mode without authentication. "
-            "Please provide an access token via the SYFTBOX_ACCESS_TOKEN environment variable."
+        login_client = httpx.Client(
+            base_url=str(client_config.server_url),
+            headers={
+                **SYFTBOX_HEADERS,
+                HEADER_SYFTBOX_USER: client_config.email,
+            },
+            transport=httpx.HTTPTransport(retries=10),
         )
+        client_config.access_token = authenticate_user(client_config, login_client)
+        # raise ValueError(
+        #     "Cannot launch SyftBox in non-interactive mode without authentication. "
+        #     "Please provide an access token via the SYFTBOX_ACCESS_TOKEN environment variable."
+        # )
 
     log_level = "DEBUG" if verbose else "INFO"
     exit_code = run_syftbox(
@@ -219,7 +243,9 @@ def report(
         config = SyftClientConfig.load(config_path)
         name = f"syftbox_logs_{datetime.now().strftime('%Y_%m_%d_%H%M')}"
         output_path = Path(output_path, name).resolve()
-        output_path_with_extension = zip_logs(output_path, log_dir=config.data_dir / "logs")
+        output_path_with_extension = zip_logs(
+            output_path, log_dir=config.data_dir / "logs"
+        )
         rprint(f"Logs from {config.data_dir} saved at {output_path_with_extension}.")
     except Exception as e:
         rprint(f"[red]Error[/red]: {e}")
