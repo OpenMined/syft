@@ -2751,7 +2751,7 @@ wheels = [
 
 [[package]]
 name = "syftbox"
-version = "0.3.5"
+version = "0.4.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiofiles" },
@@ -2839,7 +2839,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "bump2version", specifier = ">=1.0.1" },
-    { name = "faker", specifier = ">=30.3.5" },
+    { name = "faker", specifier = ">=30.4.0" },
     { name = "ipykernel", specifier = ">=6.29.5" },
     { name = "locust", specifier = ">=2.32.0" },
     { name = "pre-commit", specifier = ">=4.0.1" },

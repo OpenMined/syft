@@ -1,6 +1,6 @@
 [project]
 name = "syftbox"
-version = "0.3.5"
+version = "0.4.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -61,7 +61,7 @@ exclude = ["syftbox/assets/icon/*"]
 # this will be completely ignored in the built wheel
 dev-dependencies = [
     "bump2version>=1.0.1",
-    "faker>=30.3.5",
+    "faker>=30.4.0",
     "ipykernel>=6.29.5",
     "locust>=2.32.0",
     "pre-commit>=4.0.1",
