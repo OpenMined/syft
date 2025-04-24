@@ -1,0 +1,49 @@
+# Example values for SyftBox client pointing to an external server
+image:
+  repository: syftboxregistry.azurecr.io/samples/syftbox
+  tag: latest
+  pullPolicy: Always
+  
+deploymentType: "deployment"  # or "statefulset"
+
+# Configure the client to connect to the SyftBox server
+client:
+  server:
+    # Option 1: Specify the full URL
+    url: "http://syftbox-server.syftbox-system.svc.cluster.local:8000"
+    
+    # Option 2: Or specify host and port separately (only used if url is not set)
+    # host: "syftbox-server.syftbox-system.svc.cluster.local"
+    # port: 8000
+  
+  # Set client identity
+  email: "client2@openmined.org"
+  
+  # Client configuration
+  config:
+    client_id: "prod-client-2"
+    log_level: "info"
+    enable_metrics: true
+
+  configPath: "/config/syftbox/config.json"
+
+
+# Configure storage
+persistence:
+  enabled: true
+  accessMode: ReadWriteOnce
+  size: 5Gi
+  # storageClass: "standard"  # Use specific storage class if needed
+
+# Configure resources according to workload
+resources:
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+  requests:
+    cpu: 1000m
+    memory: 1Gi
+
+# Ensure service account is created
+serviceAccount:
+  create: false

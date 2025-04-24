@@ -1,0 +1,338 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema",
+    "type": "object",
+    "properties": {
+      "image": {
+        "description": "SyftBox server image configuration",
+        "type": "object",
+        "properties": {
+          "repository": {
+            "description": "Docker image repository",
+            "type": "string",
+            "default": "syftboxregistry.azurecr.io/samples/syftbox"
+          },
+          "tag": {
+            "description": "Docker image tag",
+            "type": "string",
+            "default": "latest"
+          },
+          "pullPolicy": {
+            "description": "Docker image pull policy",
+            "type": "string",
+            "enum": ["Always", "IfNotPresent", "Never"],
+            "default": "IfNotPresent"
+          },
+          "imagePullSecrets": {
+            "description": "Docker registry secrets",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                }
+              }
+            },
+            "default": []
+          }
+        }
+      },
+      "deploymentType": {
+        "description": "Type of deployment to use",
+        "type": "string",
+        "enum": ["deployment", "statefulset"],
+        "default": "statefulset"
+      },
+      "server": {
+        "description": "SyftBox server configuration",
+        "type": "object",
+        "properties": {
+          "port": {
+            "description": "Server port",
+            "type": "integer",
+            "default": 8000
+          },
+          "configPath": {
+            "description": "Path to config file inside container",
+            "type": "string",
+            "default": "/config/syftbox/config.json"
+          },
+          "config": {
+            "description": "Server configuration values",
+            "type": "object",
+            "properties": {
+              "server_id": {
+                "description": "Server identifier",
+                "type": "string",
+                "default": "syftbox-server"
+              },
+              "log_level": {
+                "description": "Logging level",
+                "type": "string",
+                "enum": ["debug", "info", "warning", "error"],
+                "default": "info"
+              },
+              "enable_metrics": {
+                "description": "Enable metrics collection",
+                "type": "boolean",
+                "default": false
+              }
+            }
+          },
+          "extraEnv": {
+            "description": "Additional environment variables",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "value": {
+                  "type": "string"
+                }
+              }
+            },
+            "default": []
+          }
+        }
+      },
+      "service": {
+        "description": "Kubernetes service configuration",
+        "type": "object",
+        "properties": {
+          "type": {
+            "description": "Service type",
+            "type": "string",
+            "enum": ["ClusterIP", "NodePort", "LoadBalancer"],
+            "default": "ClusterIP"
+          },
+          "port": {
+            "description": "Service port",
+            "type": "integer",
+            "default": 8000
+          },
+          "nodePort": {
+            "description": "NodePort value (when service.type is NodePort)",
+            "type": "string",
+            "default": ""
+          },
+          "annotations": {
+            "description": "Service annotations",
+            "type": "object",
+            "default": {}
+          }
+        }
+      },
+      "persistence": {
+        "description": "Persistence configuration",
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "description": "Enable persistent storage",
+            "type": "boolean",
+            "default": true
+          },
+          "existingClaim": {
+            "description": "Use existing PVC (only for deployment type)",
+            "type": "string",
+            "default": ""
+          },
+          "storageClass": {
+            "description": "Storage class name",
+            "type": "string",
+            "default": ""
+          },
+          "accessMode": {
+            "description": "Access mode for the volume",
+            "type": "string",
+            "enum": ["ReadWriteOnce", "ReadOnlyMany", "ReadWriteMany"],
+            "default": "ReadWriteOnce"
+          },
+          "size": {
+            "description": "Storage size",
+            "type": "string",
+            "default": "5Gi"
+          },
+          "annotations": {
+            "description": "PVC annotations",
+            "type": "object",
+            "default": {}
+          }
+        }
+      },
+      "ingress": {
+        "description": "Ingress configuration",
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "description": "Enable ingress",
+            "type": "boolean",
+            "default": false
+          },
+          "className": {
+            "description": "Ingress class name",
+            "type": "string",
+            "default": ""
+          },
+          "annotations": {
+            "description": "Ingress annotations",
+            "type": "object",
+            "default": {}
+          },
+          "hosts": {
+            "description": "Ingress hosts configuration",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "host": {
+                  "description": "Hostname",
+                  "type": "string"
+                },
+                "paths": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "path": {
+                        "type": "string",
+                        "default": "/"
+                      },
+                      "pathType": {
+                        "type": "string",
+                        "enum": ["Prefix", "Exact", "ImplementationSpecific"],
+                        "default": "Prefix"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "default": []
+          },
+          "tls": {
+            "description": "TLS configuration",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "secretName": {
+                  "type": "string"
+                },
+                "hosts": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "default": []
+          }
+        }
+      },
+      "resources": {
+        "description": "Resource limits and requests",
+        "type": "object",
+        "properties": {
+          "limits": {
+            "type": "object",
+            "properties": {
+              "cpu": {
+                "type": "string",
+                "default": "2000m"
+              },
+              "memory": {
+                "type": "string",
+                "default": "2Gi"
+              }
+            }
+          },
+          "requests": {
+            "type": "object",
+            "properties": {
+              "cpu": {
+                "type": "string",
+                "default": "1000m"
+              },
+              "memory": {
+                "type": "string",
+                "default": "1Gi"
+              }
+            }
+          }
+        }
+      },
+      "serviceAccount": {
+        "description": "Service account configuration",
+        "type": "object",
+        "properties": {
+          "create": {
+            "description": "Create service account",
+            "type": "boolean",
+            "default": true
+          },
+          "annotations": {
+            "description": "Service account annotations",
+            "type": "object",
+            "default": {}
+          },
+          "name": {
+            "description": "Service account name",
+            "type": "string",
+            "default": ""
+          }
+        }
+      },
+      "podAnnotations": {
+        "description": "Pod annotations",
+        "type": "object",
+        "default": {}
+      },
+      "podSecurityContext": {
+        "description": "Pod security context",
+        "type": "object",
+        "default": {}
+      },
+      "securityContext": {
+        "description": "Container security context",
+        "type": "object",
+        "default": {}
+      },
+      "nodeSelector": {
+        "description": "Node selector",
+        "type": "object",
+        "default": {}
+      },
+      "tolerations": {
+        "description": "Pod tolerations",
+        "type": "array",
+        "items": {
+          "type": "object"
+        },
+        "default": []
+      },
+      "affinity": {
+        "description": "Pod affinity",
+        "type": "object",
+        "default": {}
+      },
+      "headlessService": {
+        "description": "Headless service configuration (for StatefulSet)",
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "description": "Enable headless service",
+            "type": "boolean",
+            "default": true
+          },
+          "port": {
+            "description": "Headless service port",
+            "type": "integer",
+            "default": 8000
+          }
+        }
+      }
+    }
+  }

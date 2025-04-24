@@ -1,0 +1,16 @@
+{{- if and (eq .Values.deploymentType "statefulset") .Values.headlessService.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "syftbox-server.fullname" . }}-headless
+  labels:
+    {{- include "syftbox-server.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    {{- include "syftbox-server.selectorLabels" . | nindent 4 }}
+  ports:
+  - port: {{ .Values.headlessService.port }}
+    name: http
+{{- end }}

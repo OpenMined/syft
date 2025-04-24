@@ -1,0 +1,218 @@
+---
+# ConfigMap to store configuration for different roles
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: syftbox-config
+data:
+  server.env: |
+    ROLE=server
+  client-alice.env: |
+    ROLE=client
+    SYFTBOX_SERVER_URL=http://syftbox-sync-server:8000
+    SYFTBOX_CLIENT_CONFIG_PATH=~/.syftbox/config.json
+    SYFTBOX_EMAIL=alice@openmined.org
+  client-bob.env: |
+    ROLE=client
+    SYFTBOX_SERVER_URL=http://syftbox-sync-server:8000
+    SYFTBOX_CLIENT_CONFIG_PATH=~/.syftbox/config.json
+    SYFTBOX_EMAIL=bob@openmined.org
+---
+# Sync Server Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: syftbox-sync-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: syftbox-sync-server
+  template:
+    metadata:
+      labels:
+        app: syftbox-sync-server
+    spec:
+      containers:
+      - name: sync-server
+        image: syftboxregistry.azurecr.io/samples/syftbox:latest
+        envFrom:
+        - configMapRef:
+            name: syftbox-config
+            optional: false
+            prefix: ""
+        env:
+        - name: ENV_FILE
+          value: "/config/server.env"
+        volumeMounts:
+        - name: config-volume
+          mountPath: /config
+        ports:
+        - containerPort: 8000
+        # Default command for server - no special command needed
+      volumes:
+      - name: config-volume
+        configMap:
+          name: syftbox-config
+          items:
+          - key: server.env
+            path: server.env
+---
+# Sync Server Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: syftbox-sync-server
+spec:
+  selector:
+    app: syftbox-sync-server
+  ports:
+  - port: 8000
+    targetPort: 8000
+  type: ClusterIP
+---
+# Alice Client Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: syftbox-alice-client
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: syftbox-alice-client
+  template:
+    metadata:
+      labels:
+        app: syftbox-alice-client
+    spec:
+      containers:
+      - name: client
+        image: syftboxregistry.azurecr.io/samples/syftbox:latest
+        command: ["uv", "run", "syftbox", "client", "--service"]
+        envFrom:
+        - configMapRef:
+            name: syftbox-config
+            optional: false
+            prefix: ""
+        env:
+        - name: ENV_FILE
+          value: "/config/client-alice.env"
+        volumeMounts:
+        - name: config-volume
+          mountPath: /config
+        ports:
+        - containerPort: 8000
+      volumes:
+      - name: config-volume
+        configMap:
+          name: syftbox-config
+          items:
+          - key: client-alice.env
+            path: client-alice.env
+---
+# Alice Client Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: syftbox-alice-client
+spec:
+  selector:
+    app: syftbox-alice-client
+  ports:
+  - port: 8000
+    targetPort: 8000
+  type: ClusterIP
+---
+# Bob Client Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: syftbox-bob-client
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: syftbox-bob-client
+  template:
+    metadata:
+      labels:
+        app: syftbox-bob-client
+    spec:
+      containers:
+      - name: client
+        image: syftboxregistry.azurecr.io/samples/syftbox:latest
+        command: ["uv", "run", "syftbox", "client", "--service"]
+        envFrom:
+        - configMapRef:
+            name: syftbox-config
+            optional: false
+            prefix: ""
+        env:
+        - name: ENV_FILE
+          value: "/config/client-bob.env"
+        volumeMounts:
+        - name: config-volume
+          mountPath: /config
+        ports:
+        - containerPort: 8000
+      volumes:
+      - name: config-volume
+        configMap:
+          name: syftbox-config
+          items:
+          - key: client-bob.env
+            path: client-bob.env
+---
+# Bob Client Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: syftbox-bob-client
+spec:
+  selector:
+    app: syftbox-bob-client
+  ports:
+  - port: 8000
+    targetPort: 8000
+  type: ClusterIP
+---
+# Optional: Ingress for external access
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: syftbox-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+  - host: server.syftbox.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: syftbox-sync-server
+            port:
+              number: 8000
+  - host: alice.syftbox.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: syftbox-alice-client
+            port:
+              number: 8000
+  - host: bob.syftbox.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: syftbox-bob-client
+            port:
+              number: 8000

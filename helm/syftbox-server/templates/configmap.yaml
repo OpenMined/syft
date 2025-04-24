@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "syftbox-server.fullname" . }}-config
+  labels:
+    {{- include "syftbox-server.labels" . | nindent 4 }}
+data:
+  config.json: |
+    {{ .Values.server.config | toJson }}

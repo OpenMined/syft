@@ -1,0 +1,71 @@
+# Example values for SyftBox server deployment in production
+
+image:
+  repository: syftboxregistry.azurecr.io/samples/syftbox
+  tag: latest
+  pullPolicy: Always
+
+# Use StatefulSet for production
+deploymentType: "deployment"
+
+# Server configuration
+server:
+  port: 8000
+  config:
+    server_id: "prod-syftbox-server"
+    log_level: "warn"
+    enable_metrics: true
+    # Add other server configurations as needed
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 8000
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8000"
+
+# Ingress for external access
+ingress:
+  enabled: false
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    kubernetes.io/tls-acme: "true"
+  hosts:
+    - host: syftbox.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: syftbox-tls
+      hosts:
+        - syftbox.example.com
+
+# Production-grade storage
+persistence:
+  enabled: true
+  accessMode: ReadWriteOnce 
+  storageClass: "managed-premium"  # Cloud provider SSD storage
+  size: 20Gi
+
+# Production resources
+resources:
+  limits:
+    cpu: 4000m
+    memory: 8Gi
+  requests:
+    cpu: 2000m
+    memory: 4Gi
+
+# Pod distribution
+affinity:
+  nodeAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      preference:
+        matchExpressions:
+        - key: node-type
+          operator: In
+          values:
+          - data-processing

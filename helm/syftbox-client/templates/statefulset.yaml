@@ -1,0 +1,89 @@
+{{- if eq .Values.deploymentType "statefulset" }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "syftbox-client.fullname" . }}
+  labels:
+    {{- include "syftbox-client.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "syftbox-client.fullname" . }}-headless
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "syftbox-client.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "syftbox-client.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "syftbox-client.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+      - name: {{ .Chart.Name }}
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 10 }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command: ["uv", "run", "syftbox", "client", "--service"]
+        env:
+        - name: SYFTBOX_SERVER_URL
+          value: {{ .Values.client.server.url | default (printf "http://%s:%d" .Values.client.server.host (int .Values.client.server.port)) | quote }}
+        - name: SYFTBOX_CLIENT_CONFIG_PATH
+          value: {{ .Values.client.configPath | quote }}
+        - name: SYFTBOX_EMAIL
+          value: {{ .Values.client.email | quote }}
+        {{- if .Values.client.extraEnv }}
+        {{- toYaml .Values.client.extraEnv | nindent 8 }}
+        {{- end }}
+        volumeMounts:
+        - name: syftbox-data
+          mountPath: /data
+        - name: syftbox-data
+          mountPath: /config/syftbox
+          subPath: config
+        resources:
+          {{- toYaml .Values.resources | nindent 10 }}
+      volumes:
+      - name: syftbox-config
+        configMap:
+          name: {{ include "syftbox-client.fullname" . }}-config
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  {{- if .Values.persistence.enabled }}
+  volumeClaimTemplates:
+  - metadata:
+      name: syftbox-data
+      {{- with .Values.persistence.annotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      accessModes:
+        - {{ .Values.persistence.accessMode | quote }}
+      {{- if .Values.persistence.storageClass }}
+      storageClassName: {{ .Values.persistence.storageClass | quote }}
+      {{- end }}
+      resources:
+        requests:
+          storage: {{ .Values.persistence.size | quote }}
+  {{- end }}
+{{- end }}

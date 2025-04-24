@@ -1,0 +1,39 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema",
+    "type": "object",
+    "properties": {
+      "client": {
+        "description": "SyftBox client configuration",
+        "type": "object",
+        "properties": {
+          "server": {
+            "description": "Server connection configuration",
+            "type": "object",
+            "properties": {
+              "url": {
+                "description": "Full server URL",
+                "type": "string",
+                "default": "http://syftbox-server.syftbox-system.svc.cluster.local:8000"
+              }
+            }
+          },
+          "email": {
+            "description": "Client email identity",
+            "type": "string",
+            "default": "you@example.com"
+          },
+          "config": {
+            "description": "Client configuration values",
+            "type": "object",
+            "properties": {
+              "client_id": {
+                "description": "Client identifier, must be unique, used to identify the client in the server",
+                "type": "string",
+                "default": "yourname-syftbox-client"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
