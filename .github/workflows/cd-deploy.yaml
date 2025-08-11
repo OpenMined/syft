@@ -32,7 +32,7 @@ jobs:
           sudo apt-get install git openssh-client -y
 
       - name: Checkout SyftBox repo
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install Just
         uses: extractions/setup-just@v3

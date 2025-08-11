@@ -55,7 +55,7 @@ jobs:
           sudo apt-get install git -y
 
       - name: Checkout SyftBox repo with github token
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           token: ${{ secrets.SYFTBOX_BOT_COMMIT_TOKEN }}
 
