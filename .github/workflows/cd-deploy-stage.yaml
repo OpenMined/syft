@@ -59,7 +59,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Just
-        uses: extractions/setup-just@v3
+        uses: extractions/setup-just@v4
         with:
           just-version: "1.40.0"
 
