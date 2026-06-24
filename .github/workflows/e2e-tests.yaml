@@ -101,7 +101,7 @@ jobs:
           just-version: "1.40.0"
 
       - name: "Setup jq"
-        uses: dcarbone/install-jq-action@v3
+        uses: dcarbone/install-jq-action@v4
         with:
           version: "1.7"
 
