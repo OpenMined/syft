@@ -20,7 +20,7 @@ dependencies = [
     "python-multipart==0.0.20",
     "rich==14.0.0",
     "croniter==6.0.0",
-    "typer==0.15.2",
+    "typer==0.27.2",
     "pid==3.0.4",
     "pydantic[email]==2.11.3",
     "pyjwt==2.10.1",
