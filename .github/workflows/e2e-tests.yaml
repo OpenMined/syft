@@ -28,7 +28,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
-          version: "0.6.10"
+          version: "0.12.10"
 
       - name: Install Just
         uses: extractions/setup-just@v3
@@ -93,7 +93,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
-          version: "0.6.10"
+          version: "0.12.10"
 
       - name: Install Just
         uses: extractions/setup-just@v3
