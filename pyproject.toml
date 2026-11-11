@@ -14,7 +14,7 @@ dependencies = [
     "httpx==0.28.1",
     "pyyaml==6.0.2",
     "psutil==6.1.1",
-    "loguru==0.7.3",
+    "loguru==0.8.0",
     "py-fast-rsync==0.1.0",
     "pathspec==0.12.1",
     "python-multipart==0.0.20",
